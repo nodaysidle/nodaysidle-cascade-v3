@@ -1,0 +1,11 @@
+.DS_Store
+.env
+.env.*
+*.log
+node_modules/
+dist/
+.netlify
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/

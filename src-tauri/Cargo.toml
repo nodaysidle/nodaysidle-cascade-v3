@@ -1,0 +1,32 @@
+[package]
+name = "nodaysidle-cascade-v3"
+version = "3.0.0"
+description = "Deterministic five-document execution-contract compiler"
+authors = ["NODAYSIDLE"]
+edition = "2021"
+rust-version = "1.85"
+
+[lib]
+name = "nodaysidle_cascade_v3_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+default = []
+fixture-smoke = []
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.11.0"
+tauri = { version = "2.11.5", features = [] }
+tauri-plugin-dialog = "2.7.2"
+tokio = { version = "1.53.1", features = ["macros", "rt", "sync", "time"] }
+url = "2.5.8"
+zeroize = "1.9.0"
+
+[dev-dependencies]
+tempfile = "3.27.0"

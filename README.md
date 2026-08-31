@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Turn one software idea into five agent-ready markdown contracts.</strong><br>
-  One DeepSeek call for product meaning. Local code owns everything else.
+  One model call for product meaning. Local code owns everything else.
 </p>
 
 <p align="center">

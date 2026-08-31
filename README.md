@@ -1,5 +1,3 @@
-<img src=".github/social-preview.png" alt="NODAYSIDLE Cascade V3 — five agent-ready markdown contracts from one software idea" width="100%">
-
 <p align="center">
   <img src="Resources/icon.png" width="148" height="148" alt="NODAYSIDLE Cascade V3 icon">
 </p>

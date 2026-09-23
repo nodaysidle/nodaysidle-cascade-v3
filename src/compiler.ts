@@ -2,34 +2,13 @@ import { auditAgentReadinessGraph, auditMechanicalGraph, auditPacket, auditProje
 import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS, planAstroWeb, type AstroRoutePlan } from "./astroWeb"
 import { PRESETS, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
 import { renderPacket } from "./renderers"
-import { SUPPORTED_IMPORTED_AUDIO_FORMATS, TranscriptionRoutingSchema, type PlatformNeed, type SemanticBlueprint, type SemanticIssue, type TranscriptionRouting } from "./schema"
+import { type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
+import type { JevAtomicAuditDecision, JevStorageTier } from "./jev"
 
 export const DOCUMENT_NAMES = ["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS.md"] as const
 export type DocumentName = (typeof DOCUMENT_NAMES)[number]
 export type ContractKind = "interface" | "data" | "integration" | "lifecycle" | "persistence" | "credential" | "permission" | "recovery" | "security" | "packaging"
-
-export interface DeepgramLiveMicrophoneContract {
-  readonly providerName: string
-  readonly contractId: string
-  readonly endpoint: string
-  readonly model: string
-  readonly authorizationScheme: string
-  readonly encoding: string
-  readonly sampleRateHz: number
-  readonly channels: number
-  readonly frameFormat: string
-  readonly transport: string
-  readonly connectionTimeoutSeconds: number
-  readonly resourceTimeoutMinutes: number
-  readonly clientMessages: readonly string[]
-  readonly serverEvents: readonly string[]
-  readonly finalityField: string
-  readonly failureMapping: "privacy-safe"
-  readonly cancellation: "discard-late-events"
-  readonly recoveryActions: readonly string[]
-  readonly automaticPaidRetry: false
-}
 
 export interface TemporaryAudioLifecycle {
   readonly scope: "active-request-only"
@@ -72,8 +51,6 @@ export interface NormalizedBlueprint {
     readonly failureBehavior: string
     readonly recovery: string
   }[]
-  readonly transcriptionRouting?: TranscriptionRouting
-  readonly deepgramLiveContract?: DeepgramLiveMicrophoneContract
   readonly temporaryAudioLifecycle?: TemporaryAudioLifecycle
   readonly domainData: readonly {
     readonly name: string
@@ -94,6 +71,7 @@ export interface NormalizedBlueprint {
     readonly deletionBehavior: string
     readonly sensitivity: "public" | "internal" | "personal" | "sensitive"
     readonly temporary: boolean
+    readonly placementTier?: JevStorageTier
   }[]
   readonly lifecycleRequirements: readonly {
     readonly event: string
@@ -286,7 +264,9 @@ function fnv1a(value: string): number {
 }
 
 function semanticKey(value: string): string {
-  return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("en-US").replace(/[^a-z0-9]+/g, "")
+  const key = value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("en-US").replace(/[^a-z0-9]+/g, "")
+  const trimmed = value.trim()
+  return key || (trimmed ? `u${fnv1a(trimmed).toString(16)}` : "")
 }
 
 function uniqueStrings(values: readonly string[]): string[] {
@@ -320,7 +300,12 @@ function cleanMeaning(value: string): string {
     .replace(command, "the local validation command")
     .replace(providerId, "")
     .replace(documentName, "the applicable contract document")
-    .replace(/\s+([,.;:!?])/g, "$1")
+    .replace(/\beither\s+/gi, "")
+    .replace(/\breject\s+or\s+(?:explicitly\s+)?split\b/gi, "reject")
+    .replace(/\bchoose (?:one|between)\b/gi, "select")
+    .replace(/\bdecide whether\b/gi, "determine whether")
+    .replace(/\s+([,;:!?])/g, "$1")
+    .replace(/\s+\.(?![A-Za-z0-9])/g, ".")
     .replace(/([,;:])(?:\s*[,;:])+/g, "$1")
     .replace(/\s+/g, " ")
     .replace(/^\s*[:;,.-]+\s*|\s*[:;,-]+\s*$/g, "")
@@ -338,41 +323,12 @@ function isCredentialData(value: string): boolean {
 const NATIVE_INSERTION_CAPABILITY = "CAP-NATIVE-INSERTION"
 
 function providesNativeInsertion(name: string, behavior: string): boolean {
-  return /\b(?:paste-back|auto-paste|insertion|insert(?:ion)? behavior|clipboard handling)\b/i.test(name)
+  return /\b(?:paste-back|auto-paste|insert(?:ion)? behavior|clipboard handling)\b/i.test(name)
     || (/\b(?:insert|paste)\b/i.test(behavior) && /\b(?:target application|focused application|clipboard|preview mode)\b/i.test(behavior))
 }
 
 function requiresNativeInsertion(value: string): boolean {
-  return /\b(?:insert(?:ed|ion)?|paste(?:d|back)?|target application|target text field)\b/i.test(value)
-}
-
-function transcriptionLike(value: string): boolean {
-  return /\b(?:transcri(?:be|bes|bed|bing|ption)|speech[- ]to[- ]text|dictat(?:e|es|ed|ing|ion))\b/i.test(value)
-}
-
-function importedAudioTranscriptionLike(value: string): boolean {
-  return transcriptionLike(value) && /\b(?:audio|recorded)\b[^.\n]{0,80}\bfiles?\b|\bfiles?\b[^.\n]{0,80}\b(?:audio|recorded)\b/i.test(value)
-}
-
-function liveTranscriptionLike(value: string): boolean {
-  return transcriptionLike(value)
-    && !importedAudioTranscriptionLike(value)
-    && /\b(?:live|stream(?:ing)?)\b/i.test(value)
-    && /\b(?:microphone|capture[sd]?|record(?:s|ed|ing)?)\b/i.test(value)
-}
-
-function streamingTranscriptionServiceLike(value: string): boolean {
-  return transcriptionLike(value) && /\b(?:live|stream(?:ing)?|microphone)\b/i.test(value)
-}
-
-function batchTranscriptionServiceLike(value: string): boolean {
-  return transcriptionLike(value) && !streamingTranscriptionServiceLike(value) && /\b(?:audio|batch|file|finalized|speech[- ]to[- ]text)\b/i.test(value)
-}
-
-function providerLabel(name: string): string {
-  if (/\bdeepgram\b/i.test(name)) return "Deepgram"
-  if (/\bopenrouter\b/i.test(name)) return "OpenRouter"
-  return name
+  return /\b(?:paste-back|auto-paste|target application|target text field)\b/i.test(value)
 }
 
 const nativeInsertionBehavior = "After one successful final transcription and optional successful refinement, choose exactly one complete insertion candidate and apply the configured auto-paste, copy-only, or preview mode through the deterministic native macOS insertion contract; never insert partial, empty, failed, cancelled, or unapproved text."
@@ -385,28 +341,6 @@ const nativeInsertionAcceptance = [
   "Copy-only mode leaves the complete transcript on the clipboard without restoration",
   "Partial, empty, failed, cancelled, and unapproved text is never inserted",
 ]
-
-export const DEEPGRAM_LIVE_MICROPHONE_CONTRACT: DeepgramLiveMicrophoneContract = Object.freeze({
-  providerName: "Deepgram Nova streaming transcription",
-  contractId: "CON-INTEGRATION-DEEPGRAM-NOVA-STREAMING-TRANSCRIPTION",
-  endpoint: "wss://api.deepgram.com/v1/listen",
-  model: "nova-3",
-  authorizationScheme: "Token",
-  encoding: "linear16",
-  sampleRateHz: 16_000,
-  channels: 1,
-  frameFormat: "raw binary WebSocket frames",
-  transport: "URLSessionWebSocketTask",
-  connectionTimeoutSeconds: 15,
-  resourceTimeoutMinutes: 30,
-  clientMessages: Object.freeze(["KeepAlive", "Finalize", "CloseStream"]),
-  serverEvents: Object.freeze(["Results", "SpeechStarted", "UtteranceEnd", "Metadata"]),
-  finalityField: "is_final",
-  failureMapping: "privacy-safe",
-  cancellation: "discard-late-events",
-  recoveryActions: Object.freeze(["explicit retry", "explicit provider switch"]),
-  automaticPaidRetry: false,
-})
 
 export const TEMPORARY_AUDIO_LIFECYCLE: TemporaryAudioLifecycle = Object.freeze({
   scope: "active-request-only",
@@ -470,49 +404,6 @@ function uniqueByName<T extends { readonly name: string }>(values: readonly T[])
   })
 }
 
-function deriveTranscriptionRouting(
-  features: readonly NormalizedBlueprint["features"][number][],
-  services: readonly NormalizedBlueprint["externalServices"][number][],
-): TranscriptionRouting | undefined {
-  const featureMeaning = (feature: NormalizedBlueprint["features"][number]) => [feature.name, feature.behavior, ...feature.inputs, ...feature.outputs].join(" ")
-  const serviceMeaning = (service: NormalizedBlueprint["externalServices"][number]) => [service.name, service.purpose, ...service.dataSent].join(" ")
-  const liveFeatures = features.filter(feature => liveTranscriptionLike(featureMeaning(feature)))
-  const importedFeatures = features.filter(feature => importedAudioTranscriptionLike(featureMeaning(feature)))
-  const liveService = services.find(service => streamingTranscriptionServiceLike(serviceMeaning(service)))
-  const importedService = services.find(service => batchTranscriptionServiceLike(serviceMeaning(service)))
-  if (!liveFeatures.length || !importedFeatures.length || !liveService || !importedService) return undefined
-
-  return TranscriptionRoutingSchema.parse({
-    liveFeatureNames: liveFeatures.map(feature => feature.name),
-    importedFeatureNames: importedFeatures.map(feature => feature.name),
-    liveProviderName: providerLabel(liveService.name),
-    importedProviderName: providerLabel(importedService.name),
-    supportedImportedFormats: [...SUPPORTED_IMPORTED_AUDIO_FORMATS],
-    maxImportedDurationSeconds: 60,
-    maxImportedPayloadBytes: 25_000_000,
-    overLimitBehavior: "reject-before-paid-upload",
-    audioRewriteBehavior: "forbidden",
-  })
-}
-
-const supportedImportedAudioFormats = "wav, mp3, flac, m4a, ogg, webm, and aac"
-
-function liveTranscriptionBehavior(routing: TranscriptionRouting): string {
-  return `${routing.liveProviderName} WebSocket streaming is exclusively for live microphone audio; it accepts microphone PCM from the live capture path and never accepts imported audio files.`
-}
-
-function importedTranscriptionBehavior(routing: TranscriptionRouting): string {
-  return `Imported audio-file transcription uses the configured batch/file-capable provider, ${routing.importedProviderName}. Supported imported formats are ${supportedImportedAudioFormats}. Inspect the format, duration, and payload size locally before loading the audio content or constructing a provider request. Reject unsupported files and files exceeding 60 seconds or 25 MB (25,000,000 bytes) before any paid upload with clear user guidance and create no provider request. Do not split, chunk, transcode, or stitch long files unless a future preset explicitly defines that behavior.`
-}
-
-function importedTranscriptionFailure(): string {
-  return "Reject an unsupported, unreadable, longer-than-60-seconds, or larger-than-25-MB imported file locally with clear user guidance before any paid upload; create no provider request and leave existing transcripts unchanged."
-}
-
-function importedTranscriptionRecovery(): string {
-  return "Release local inspection resources, preserve the last valid state, and let the user select a supported file within the locked duration and payload limits."
-}
-
 const permissionByNeed: Partial<Record<PlatformNeed, PermissionCapability>> = {
   "audio-input": "microphone",
   camera: "camera",
@@ -555,15 +446,15 @@ const deniedBehavior: Readonly<Record<PermissionCapability, string>> = {
 
 const permissionFeaturePatterns: Readonly<Record<PermissionCapability, RegExp>> = {
   microphone: /\b(?:microphone|audio capture|record(?:ing|ed)?|dictat(?:e|ion)|speech[- ]to[- ]text)\b/i,
-  accessibility: /\b(?:accessibility|AXUIElement|focused application|target application|insert(?:ion|ed)?|auto-paste)\b/i,
-  notifications: /\b(?:notification|alert|reminder)\b/i,
-  filesystem: /\b(?:file|folder|filesystem|document|import|export)\b/i,
-  network: /\b(?:network|provider|remote|cloud|request|stream(?:ing)?)\b/i,
-  camera: /\b(?:camera|photo|video capture)\b/i,
+  accessibility: /\b(?:accessibility|AXUIElement|focused application|target application|auto-paste)\b/i,
+  notifications: /\b(?:notification|alert|reminder)s?\b/i,
+  filesystem: /\b(?:files?|folders?|filesystem|imports?|exports?|(?:open|save|select|read|write|load)(?:s|ing|ed)?\s+(?:a\s+|the\s+)?documents?)\b/i,
+  network: /\b(?:network|remote|cloud|provider|request|stream(?:ing)?|http[s]?|websocket|api endpoint)s?\b/i,
+  camera: /\b(?:camera|photo|video capture)s?\b/i,
   location: /\b(?:location|position|map|geolocation)\b/i,
-  "global-input": /\b(?:global hotkey|system-wide shortcut|push-to-talk|toggle recording|input monitoring)\b/i,
-  clipboard: /\b(?:clipboard|copy(?:-only)?|paste(?:-back|d)?|insert(?:ion|ed)?)\b/i,
-  "background-startup": /\b(?:background|launch[- ]at[- ]login|login (?:item|preference|behavior|launch)|startup|scheduled)\b/i,
+  "global-input": /\b(?:global hotkey|system-wide shortcut|push-to-talk|toggle recording|input monitoring)s?\b/i,
+  clipboard: /\b(?:clipboard|pasteboard|copy(?:-only)?|paste(?:-back|d)?)\b/i,
+  "background-startup": /\b(?:launch[- ]at[- ]login|login (?:item|preference|behavior|launch)|start(?:up)? at login|start at login|run in background|background service|background execution|scheduled routine)s?\b/i,
 }
 
 function permissionResourceId(capability: PermissionCapability): string {
@@ -580,6 +471,54 @@ const dataResourceCategories = [
   ["usage", /\b(?:usage|cost|billing)\b/i],
 ] as const
 
+function dataRoles(text: string): string[] {
+  const roles: string[] = []
+  if (/\b(?:buffer|cursor|in[- ]memory text|editing session)\b/i.test(text)) roles.push("buffer")
+  if (/\b(?:plain[- ]?text|note file|document content|file content)\b/i.test(text)) roles.push("document")
+  if (/\b(?:search index|searchable terms)\b/i.test(text)) roles.push("search")
+  if (/\b(?:workspace|folder path)\b/i.test(text)) roles.push("workspace")
+  if (/\b(?:font|typography|point size)\b/i.test(text)) roles.push("typography")
+  if (/\b(?:keybindings?|key bindings?|key assignments?)\b/i.test(text)) roles.push("keybinding")
+  if (/\b(?:font|typography|point size|keybindings?|key bindings?|key assignments?|preferences|settings)\b/i.test(text)) roles.push("settings")
+  if (atomicRenameScratch(text)) return ["atomic-write"]
+  if (roles.includes("search")) return roles.filter(role => role !== "document")
+  return roles
+}
+
+function featureRecovery(name: string, failure: string): string {
+  if (/\b(?:exits?|quits?|terminates?)\b/i.test(failure)) return `Release partial resources before exiting so a relaunch of ${name} starts from a clean state.`
+  if (/\b(?:substitutes?|falls? back|uses the default)\b/i.test(failure)) return `Apply the stated fallback automatically, keep ${name} usable, and require no user retry.`
+  return `Preserve the last valid state, explain the failure, and allow an explicit retry of ${name}.`
+}
+
+function affirmedText(text: string): string {
+  return text
+    .replace(/\b(?:no|not|never|without|cannot|nor)\b[^.,;:]*/gi, " ")
+    .replace(/\b(?:the|an?|currently) open\b/gi, "the current")
+}
+
+function atomicRenameScratch(text: string): boolean {
+  return /\btemporary\b/i.test(text) && /\brenam/i.test(text)
+}
+
+function featureRoles(text: string): string[] {
+  const roles: string[] = []
+  if (/\b(?:type|typing|keystroke|cursor|edit|undo|redo)\b/i.test(text)) roles.push("buffer")
+  if (/\b(?:save|write|open|close|load)\b/i.test(text) && /\b(?:file|note|document|path)\b/i.test(text)) roles.push("document")
+  if (/\b(?:search|fuzzy|query)\b/i.test(text)) roles.push("search")
+  if (/\b(?:workspace|folder)\b/i.test(text)) roles.push("workspace")
+  if (/\b(?:font|typography|point size)\b/i.test(text)) roles.push("typography")
+  if (/\b(?:keybindings?|key bindings?|key assignments?)\b/i.test(text)) roles.push("keybinding")
+  if (/\b(?:settings|preferences)\b/i.test(text)) roles.push("settings")
+  if (/\btemporary file\b/i.test(text) && /\brenam/i.test(text)) roles.push("atomic-write")
+  return roles
+}
+
+function sharesDataRole(featureText: string, dataText: string): boolean {
+  const wanted = new Set(dataRoles(dataText))
+  return featureRoles(featureText).some(role => wanted.has(role))
+}
+
 function dataResourceIds(name: string, meaning: string): string[] {
   const text = `${name} ${meaning}`
   return unique([
@@ -588,47 +527,36 @@ function dataResourceIds(name: string, meaning: string): string[] {
   ])
 }
 
-function serviceResourceIds(name: string, purpose: string): string[] {
-  const text = `${name} ${purpose}`
-  if (/\bdeepgram\b/i.test(text)) return ["service:deepgram-live-transcription"]
-  if (/\bopenrouter\b/i.test(text)) {
-    const ids: string[] = []
-    if (/\b(?:speech[- ]to[- ]text|transcri(?:be|ption)|audio)\b/i.test(text)) ids.push("service:openrouter-transcription")
-    if (/\b(?:refin(?:e|ement)|language model|rewrite|formatting|translation)\b/i.test(text)) ids.push("service:openrouter-refinement")
-    return ids.length ? ids : ["service:openrouter"]
-  }
+function serviceResourceIds(name: string): string[] {
   return [`service:${slug(name)}`]
 }
 
 function deriveFeatureResourceIds(
-  feature: NormalizedBlueprint["features"][number],
   sourceMeaning: string,
+  outcomeMeaning: string,
   dataObjects: readonly { readonly name: string; readonly purpose: string }[],
   services: readonly NormalizedBlueprint["externalServices"][number][],
-  routing: TranscriptionRouting | undefined,
 ): string[] {
+  const affirmedSource = affirmedText(sourceMeaning)
+  const affirmedOutcome = affirmedText(outcomeMeaning)
   const resources = Object.entries(permissionFeaturePatterns)
-    .filter(([, pattern]) => pattern.test(sourceMeaning))
+    .filter(([, pattern]) => pattern.test(affirmedSource))
     .map(([capability]) => permissionResourceId(capability as PermissionCapability))
 
   for (const item of dataObjects) {
     const exactName = cleanMeaning(item.name).toLocaleLowerCase("en-US")
     const categories = dataResourceIds(item.name, item.purpose).filter(id => id.startsWith("data-category:"))
-    if ((exactName && sourceMeaning.toLocaleLowerCase("en-US").includes(exactName))
-      || categories.some(id => dataResourceCategories.find(([category]) => id === `data-category:${category}`)?.[1].test(sourceMeaning))) {
-      resources.push(...dataResourceIds(item.name, item.purpose))
+    const matchedCategories = categories.filter(id => dataResourceCategories.find(([category]) => id === `data-category:${category}`)?.[1].test(affirmedOutcome))
+    if ((exactName && affirmedSource.toLocaleLowerCase("en-US").includes(exactName))
+      || matchedCategories.length
+      || sharesDataRole(affirmedOutcome, `${item.name} ${item.purpose}`)) {
+      resources.push(`data:${slug(item.name)}`, ...matchedCategories)
     }
   }
 
   for (const service of services) {
-    const ids = serviceResourceIds(service.name, service.purpose)
-    const exactProvider = providerLabel(service.name).toLocaleLowerCase("en-US")
-    const routed = routing?.liveFeatureNames.includes(feature.name) && ids.includes("service:deepgram-live-transcription")
-      || routing?.importedFeatureNames.includes(feature.name) && ids.includes("service:openrouter-transcription")
-    const roleMatch = ids.includes("service:openrouter-refinement") && /\b(?:refin(?:e|ement)|rewrite|format|translate|language model)\b/i.test(sourceMeaning)
-      || ids.includes("service:openrouter-transcription") && importedAudioTranscriptionLike(sourceMeaning)
-      || ids.includes("service:deepgram-live-transcription") && liveTranscriptionLike(sourceMeaning)
-    if (routed || roleMatch || (exactProvider && sourceMeaning.toLocaleLowerCase("en-US").includes(exactProvider))) resources.push(...ids)
+    const exactProvider = service.name.toLocaleLowerCase("en-US")
+    if (exactProvider && sourceMeaning.toLocaleLowerCase("en-US").includes(exactProvider)) resources.push(...serviceResourceIds(service.name), permissionResourceId("network"))
   }
 
   return unique(resources)
@@ -638,9 +566,11 @@ function deriveProblemStatement(targetUsers: readonly string[], goals: readonly 
   const audience = targetUsers[0] ?? "Users"
   const primaryGoal = goals[0] ?? "achieve the documented outcomes"
   const avoided = nonGoals[0] ?? "unnecessary scope expansion"
-  const goalText = primaryGoal.endsWith(".") ? primaryGoal.slice(0, -1) : primaryGoal
-  const avoidText = avoided.endsWith(".") ? avoided.slice(0, -1) : avoided
-  return `${audience} need a focused way to ${goalText.charAt(0).toLowerCase()}${goalText.slice(1)} without ${avoidText.charAt(0).toLowerCase()}${avoidText.slice(1)}.`
+  const goalText = primaryGoal.replace(/\.$/, "")
+  const avoidText = avoided.replace(/\.$/, "").replace(/^(?:no|never|not|without)\s+/i, "")
+  const verb = /^(?:a|an|one|each|every)\b/i.test(audience) ? "needs" : "need"
+  const lowerFirst = (text: string) => `${text.charAt(0).toLowerCase()}${text.slice(1)}`
+  return `${audience} ${verb} a focused way to ${lowerFirst(goalText)} without ${lowerFirst(avoidText)}.`
 }
 
 function astroContentSiteSemantics(source: SemanticBlueprint, presetId: PresetId): boolean {
@@ -656,12 +586,11 @@ function normalizationIssue(path: string): never {
   throw new NormalizationError([{ path, rule: "normalization.unusable-meaning", message: "Provider mechanics left no usable product meaning at this path." }])
 }
 
-export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId): NormalizedBlueprint {
+export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId, atomicAudits?: JevAtomicAuditDecision): NormalizedBlueprint {
   if (!PRESETS[presetId]) throw new NormalizationError([{ path: "$preset", rule: "normalization.unknown-preset", message: "The selected preset is not available." }])
   const projectName = source.productName.normalize("NFKC").trim().replace(/\s+/g, " ")
   const summary = cleanMeaning(source.summary)
   const hasTemporaryAudio = source.dataObjects.some(item => temporaryAudioSubject(`${item.name} ${item.purpose} ${item.retentionIntent}`))
-    || source.externalServices.some(item => isDeepgramNovaStreaming(`${item.name} ${item.purpose}`))
   const temporaryAudioLifecycle = isNativeMacPreset(presetId) && hasTemporaryAudio
     ? TEMPORARY_AUDIO_LIFECYCLE
     : undefined
@@ -677,7 +606,9 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
     const name = cleanMeaning(feature.name)
     const semantic = `${feature.name} ${feature.behavior} ${feature.trigger} ${feature.userOutcome} ${feature.acceptanceSignals.join(" ")}`
     const nativePaste = isNativeMacPreset(presetId) && providesNativeInsertion(feature.name, feature.behavior)
-    const behavior = nativePaste ? nativeInsertionBehavior : cleanMeaning(feature.behavior)
+    const behavior = nativePaste
+      ? nativeInsertionBehavior
+      : alignAtomicWrite(cleanMeaning(feature.behavior), `${source.summary} ${source.productConstraints.join(" ")} ${source.features.map(item => item.behavior).join(" ")}`)
     const userOutcome = cleanMeaning(feature.userOutcome)
     if (!name) normalizationIssue(`features[${index}].name`)
     if (!behavior) normalizationIssue(`features[${index}].behavior`)
@@ -694,16 +625,17 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       outputs: [userOutcome],
       acceptanceOutcomes: acceptance.length ? acceptance : [`${name} produces the documented user outcome.`],
       failureBehavior: failure,
-      recoveryExpectations: [`Preserve the last valid state, explain the failure, and allow an explicit retry of ${name}.`],
+      recoveryExpectations: [featureRecovery(name, failure)],
       providedCapabilities: nativePaste ? [NATIVE_INSERTION_CAPABILITY] : [],
       requiredCapabilities: isNativeMacPreset(presetId) && !nativePaste && requiresNativeInsertion(semantic) ? [NATIVE_INSERTION_CAPABILITY] : [],
       resourceIds: [],
       sourceMeaning: cleanMeaning(semantic),
+      outcomeMeaning: cleanMeaning(`${feature.name} ${behavior} ${feature.userOutcome} ${feature.acceptanceSignals.join(" ")}`),
     }
   }))
   if (!baseFeatures.length) normalizationIssue("features")
 
-  const dataObjects = uniqueByName(source.dataObjects.map(item => {
+  const dataObjects = uniqueByName(source.dataObjects.map((item, sourceIndex) => {
     const name = cleanMeaning(item.name)
     const purpose = cleanMeaning(item.purpose)
     const nativeTemporaryAudio = temporaryAudioLifecycle !== undefined && temporaryAudioSubject(`${name} ${purpose} ${item.retentionIntent}`)
@@ -712,13 +644,13 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       purpose,
       sensitivity: item.sensitivity,
       retentionIntent: nativeTemporaryAudio ? temporaryAudioLifecycleText(temporaryAudioLifecycle) : cleanMeaning(item.retentionIntent),
+      sourceIndex,
     }
   }).filter(item => item.name && item.purpose && item.retentionIntent))
   const externalServices = uniqueByName(source.externalServices.map(item => {
     const purpose = cleanMeaning(item.purpose)
-    const sourceMeaning = `${item.name} ${purpose}`
     return {
-      name: isNativeMacPreset(presetId) && isDeepgramNovaStreaming(sourceMeaning) ? DEEPGRAM_LIVE_MICROPHONE_CONTRACT.providerName : cleanMeaning(item.name),
+      name: cleanMeaning(item.name),
       purpose,
       dataSent: cleanList(item.dataSent),
       credentialRequirement: item.credentialRequired ? "api-key" as const : "none" as const,
@@ -726,35 +658,17 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       recovery: "Preserve recoverable local input and allow only an explicit retry or explicit service change.",
     }
   }).filter(item => item.name && item.purpose))
-  const deepgramLiveContract = isNativeMacPreset(presetId) && externalServices.some(service => service.name === DEEPGRAM_LIVE_MICROPHONE_CONTRACT.providerName)
-    ? DEEPGRAM_LIVE_MICROPHONE_CONTRACT
-    : undefined
-  const transcriptionRouting = deriveTranscriptionRouting(baseFeatures, externalServices)
-  const routedFeatures = transcriptionRouting ? baseFeatures.map(feature => {
-    if (transcriptionRouting.liveFeatureNames.includes(feature.name)) {
-      return { ...feature, behavior: liveTranscriptionBehavior(transcriptionRouting) }
-    }
-    if (transcriptionRouting.importedFeatureNames.includes(feature.name)) {
-      return {
-        ...feature,
-        behavior: importedTranscriptionBehavior(transcriptionRouting),
-        acceptanceOutcomes: [
-          `Only ${supportedImportedAudioFormats} are accepted for imported audio`,
-          "Files exceeding 60 seconds or 25 MB (25,000,000 bytes) are rejected locally before any paid upload and create no provider request",
-          "Long imported files are never split, chunked, transcoded, or stitched",
-        ],
-        failureBehavior: importedTranscriptionFailure(),
-        recoveryExpectations: [importedTranscriptionRecovery()],
-      }
-    }
-    return feature
-  }) : baseFeatures
-  const features = routedFeatures.map(({ sourceMeaning, ...feature }) => ({
+  const features = baseFeatures.map(({ sourceMeaning, outcomeMeaning, ...feature }) => ({
     ...feature,
-    resourceIds: deriveFeatureResourceIds(feature, sourceMeaning, dataObjects, externalServices, transcriptionRouting),
+    resourceIds: deriveFeatureResourceIds(sourceMeaning, outcomeMeaning, dataObjects, externalServices),
   }))
-  const platformNeeds = unique(source.platformNeeds)
-  const permissionCapabilities = unique(platformNeeds.flatMap(need => permissionByNeed[need] ? [permissionByNeed[need]!] : []))
+  const rawPlatformNeeds = unique([
+    ...source.platformNeeds,
+    ...(atomicAudits?.addedPlatformNeeds ?? []),
+  ])
+  const permissionCapabilities = unique(rawPlatformNeeds.flatMap(need => permissionByNeed[need] ? [permissionByNeed[need]!] : []))
+    .filter(capability => features.some(f => f.resourceIds.includes(permissionResourceId(capability))))
+  const platformNeeds = rawPlatformNeeds
   const permissionNeeds = permissionCapabilities.map(capability => ({ capability, purpose: needPurpose[capability], deniedBehavior: deniedBehavior[capability] }))
   const contentSite = astroContentSiteSemantics(source, presetId)
   const persistenceRequired = platformNeeds.includes("local-storage") || contentSite
@@ -763,15 +677,25 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
     .filter(item => persistenceRequired || !/\b(?:do not retain|not retained|memory only|session only)\b/i.test(item.retentionIntent))
     .map(item => {
       const temporaryAudio = temporaryAudioLifecycle !== undefined && temporaryAudioSubject(`${item.name} ${item.purpose} ${item.retentionIntent}`)
+      const dataAudit = atomicAudits?.dataAudits?.find(d => d.dataIndex === item.sourceIndex)
+      const itemText = `${item.name} ${item.purpose} ${item.retentionIntent}`
+      const memoryResident = memoryResidentRetention(itemText)
+      const placementTier = dataAudit?.storageTier
+      const temporary = temporaryAudio || (!memoryResident && (placementTier === "ephemeral" || atomicRenameScratch(itemText) || /\b(?:temporary(?: \w+)? file|scratch file|temp file)\b/i.test(itemText)))
       return {
         data: item.name,
         purpose: item.purpose,
         retention: item.retentionIntent,
         deletionBehavior: temporaryAudio
           ? temporaryAudioLifecycleStatements(temporaryAudioLifecycle)[2]!
-          : `Delete ${item.name} only through an explicit user action or the stated retention boundary, and report deletion failure honestly.`,
+          : temporary
+            ? `Delete ${item.name} automatically at its stated retention boundary without waiting for a user action, verify it is absent, and report a cleanup failure honestly.`
+            : memoryResident
+              ? `${item.name} is never written to disk and is discarded when the session ends; verify no file for it exists.`
+              : `Delete ${item.name} only through an explicit user action or the stated retention boundary, and report deletion failure honestly.`,
         sensitivity: item.sensitivity,
-        temporary: /\b(?:temporary|active recovery|retry decision|current request|current operation|session only)\b/i.test(`${item.name} ${item.purpose} ${item.retentionIntent}`),
+        temporary,
+        ...(placementTier ? { placementTier } : {}),
       }
     })
   const privacySecurityRequirements = uniqueStrings([
@@ -793,7 +717,9 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
     {
       event: "Application termination",
       behavior: "Stop new work, cancel active operations, and preserve only state covered by the persistence contracts.",
-      cleanup: "Release permissions, listeners, handles, tasks, clipboard snapshots, and temporary resources before termination completes.",
+      cleanup: features.some(feature => feature.resourceIds.includes(permissionResourceId("clipboard")) || feature.providedCapabilities.includes(NATIVE_INSERTION_CAPABILITY))
+        ? "Release permissions, listeners, handles, tasks, clipboard snapshots, and temporary resources before termination completes."
+        : "Release permissions, listeners, handles, tasks, and temporary resources before termination completes.",
     },
     ...(platformNeeds.includes("audio-input") ? [{
       event: "Audio capture termination",
@@ -808,12 +734,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
   const qualityRequirements = uniqueStrings(source.qualityRequirements.map(requirement => canonicalizeTemporaryAudioMeaning(requirement, temporaryAudioLifecycle)).filter(Boolean)).map(requirement => hasNativePaste
     ? requirement.replace(/\s+where practical\b/gi, " only when the current changeCount still equals the app-owned post-write changeCount")
     : requirement)
-  const productConstraints = uniqueStrings(source.productConstraints.map(constraint => canonicalizeTemporaryAudioMeaning(constraint, temporaryAudioLifecycle)).filter(Boolean)).map(constraint => {
-    if (transcriptionRouting && /(?:send|stream|route)[^.\n]{0,120}(?:selected|chosen) (?:transcription )?(?:provider|service)/i.test(constraint)) {
-      return `Live microphone audio is sent only to ${transcriptionRouting.liveProviderName}; imported audio files are sent only to ${transcriptionRouting.importedProviderName}; disclose both cloud boundaries before enablement.`
-    }
-    return constraint
-  })
+  const productConstraints = uniqueStrings(source.productConstraints.map(constraint => canonicalizeTemporaryAudioMeaning(constraint, temporaryAudioLifecycle)).filter(Boolean))
 
   return {
     projectName,
@@ -830,8 +751,6 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
     })),
     features,
     externalServices,
-    transcriptionRouting,
-    deepgramLiveContract,
     temporaryAudioLifecycle,
     domainData: dataObjects.map(item => ({ name: item.name, meaning: item.purpose, retention: item.retentionIntent, sensitivity: item.sensitivity })),
     privacySecurityRequirements,
@@ -846,11 +765,16 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
   }
 }
 
+function bundleSegment(part: string, fallback: string): string {
+  const segment = part || fallback
+  return /^[a-z]/.test(segment) ? segment : `p${segment}`
+}
+
 function projectIdentity(projectName: string): ProjectIdentity {
   const projectSlug = slug(projectName)
   const parts = projectSlug.split("-")
-  const vendor = parts[0] ?? "project"
-  const product = parts.slice(1).join("") || "app"
+  const vendor = bundleSegment(parts[0] ?? "", "project")
+  const product = bundleSegment(parts.slice(1).join(""), "app")
   const packageName = `com.${vendor}.${product}`
   return {
     projectName,
@@ -956,10 +880,16 @@ function lowerAcceptanceOwnership(sourceFeatures: readonly GraphFeature[]): {
   const features = sourceFeatures.map(feature => ({ ...feature, acceptanceOutcomes: directByFeature.get(feature.id)! }))
   const requirements = features.map(feature => {
     const ownedAcceptance = acceptance.filter(item => item.kind === "feature" && item.featureIds[0] === feature.id)
+    const behaviorText = feature.behavior.trim()
+    const statement = /^(?:the\s+|this\s+|if\s+|when\s+|after\s+|before\s+|while\s+|during\s+|once\s+|unless\s+|a\s+|an\s+)/i.test(behaviorText)
+      ? behaviorText
+      : /^(?:must\s+|shall\s+)/i.test(behaviorText)
+      ? `The product ${behaviorText}`
+      : `The product must ${behaviorText}`
     return {
       id: feature.id.replace(/^FEAT-/, "REQ-"),
       featureId: feature.id,
-      statement: `The product must ${feature.behavior}`,
+      statement,
       acceptanceIds: ownedAcceptance.map(item => item.id),
       acceptanceCriteria: ownedAcceptance.map(item => item.criterion),
     }
@@ -974,22 +904,9 @@ function featureIdsForResources(resourceIds: readonly string[], features: readon
 
 function integrationFeatureIds(
   service: NormalizedBlueprint["externalServices"][number],
-  blueprint: NormalizedBlueprint,
   features: readonly GraphFeature[],
 ): string[] {
-  const related = featureIdsForResources(serviceResourceIds(service.name, service.purpose), features)
-  const routing = blueprint.transcriptionRouting
-  if (!routing) return related
-
-  const liveIds = features.filter(feature => routing.liveFeatureNames.includes(feature.name)).map(feature => feature.id)
-  const importedIds = features.filter(feature => routing.importedFeatureNames.includes(feature.name)).map(feature => feature.id)
-  const meaning = `${service.name} ${service.purpose}`
-  if (streamingTranscriptionServiceLike(meaning)) {
-    return unique([...related.filter(id => !importedIds.includes(id)), ...liveIds])
-  }
-  if (batchTranscriptionServiceLike(meaning)) {
-    return unique([...related.filter(id => !liveIds.includes(id)), ...importedIds])
-  }
+  const related = featureIdsForResources(serviceResourceIds(service.name), features)
   return related
 }
 
@@ -1018,57 +935,15 @@ function isNativeMacPreset(presetId: PresetId): boolean {
   return presetId === "native-macos-swiftui-desktop" || presetId === "native-macos-swiftui-menubar"
 }
 
-function isOpenRouter(value: string): boolean {
-  return /\bopenrouter\b/i.test(value)
-}
-
-function isDeepgramNovaStreaming(value: string): boolean {
-  return /\bdeepgram\b/i.test(value) && /\b(?:nova|streaming)\b/i.test(value)
-}
-
-function compilerIntegrationServices(blueprint: NormalizedBlueprint): NormalizedBlueprint["externalServices"] {
-  const services: NormalizedBlueprint["externalServices"][number][] = []
-  let emittedOpenRouter = false
-  for (const service of blueprint.externalServices) {
-    if (!isOpenRouter(`${service.name} ${service.purpose}`)) {
-      services.push(service)
-      continue
-    }
-    if (emittedOpenRouter) continue
-    emittedOpenRouter = true
-    services.push(
-      {
-        name: "OpenRouter transcription",
-        purpose: "Transcribe one finalized audio input through the independent OpenRouter transcription role.",
-        dataSent: ["Finalized audio bytes", "Audio format", "Selected language and transcription model"],
-        credentialRequirement: "api-key",
-        failureBehavior: service.failureBehavior,
-        recovery: service.recovery,
-      },
-      {
-        name: "OpenRouter refinement",
-        purpose: "Refine one accepted raw transcript through the independent OpenRouter refinement role.",
-        dataSent: ["Raw transcript", "Mode instructions", "Selected output language and refinement model"],
-        credentialRequirement: "api-key",
-        failureBehavior: service.failureBehavior,
-        recovery: service.recovery,
-      },
-    )
-  }
-  return services
+function compilerIntegrationServices(
+  blueprint: NormalizedBlueprint,
+): NormalizedBlueprint["externalServices"] {
+  return blueprint.externalServices
 }
 
 function credentialDetails(presetId: PresetId, identity: ProjectIdentity, serviceName: string, kind: string): string[] {
   const serviceSlug = slug(serviceName)
   if (isNativeMacPreset(presetId)) {
-    if (isOpenRouter(serviceName)) {
-      return [
-        "API key placement: macOS Keychain only; never UserDefaults, SQLite, files, logs, UI state, diagnostics, or generated output.",
-        `Keychain service: ${identity.bundleId}.credentials`,
-        "Keychain account: openrouter-api-key",
-        "Both OpenRouter model roles read the same account value into request-local memory and never persist a second copy.",
-      ]
-    }
     return [
       "API key placement: macOS Keychain only; never UserDefaults, SQLite, files, logs, UI state, diagnostics, or generated output.",
       `Keychain service: ${identity.bundleId}.credentials`,
@@ -1082,82 +957,6 @@ function credentialDetails(presetId: PresetId, identity: ProjectIdentity, servic
     return [`Android Keystore alias: ${identity.bundleId}.${serviceSlug}.credential`, "Decrypted values remain inside the service boundary and never enter Compose state."]
   }
   return [`Credential vault service: ${identity.bundleId}.credentials`, `Credential account: ${serviceSlug}-${kind}`, "The frontend receives only configured or missing state."]
-}
-
-export function deepgramIntegrationValues(
-  wire: DeepgramLiveMicrophoneContract = DEEPGRAM_LIVE_MICROPHONE_CONTRACT,
-  audio: TemporaryAudioLifecycle = TEMPORARY_AUDIO_LIFECYCLE,
-): Pick<GraphContract, "decision" | "details" | "failureBehavior" | "recovery"> {
-  const [keepAlive, finalize, closeStream] = wire.clientMessages
-  const [results, speechStarted, utteranceEnd, metadata] = wire.serverEvents
-  return {
-    decision: `Deepgram WebSocket streaming is exclusively for live microphone audio. Open exactly one GET WebSocket to ${wire.endpoint} with ${wire.transport} and model=${wire.model} for each user-started live transcription; use typed Codable messages and never start another stream as an automatic retry or automatic paid retry.`,
-    details: [
-      "Imported audio files never enter this microphone PCM stream and are never routed through the Deepgram WebSocket integration.",
-      `Build the URL with URLComponents and the locked query model=${wire.model}&encoding=${wire.encoding}&sample_rate=${wire.sampleRateHz}&channels=${wire.channels}&interim_results=true&endpointing=300&utterance_end_ms=1000&vad_events=true&smart_format=true; add one validated supported language value only when the user selects it and add repeated keyterm values only from the validated custom vocabulary.`,
-      `Authentication header: Authorization: ${wire.authorizationScheme} plus the request-local Deepgram API key loaded from macOS Keychain. Bearer is reserved for a documented temporary JWT and is not used for the stored API key.`,
-      `Audio contract: convert microphone input to raw headerless ${wire.encoding}, 16-bit little-endian signed PCM at ${wire.sampleRateHz} Hz and one channel; send only non-empty Data aligned to two-byte samples as ${wire.frameFormat}, never as JSON, text, base64, a WAV container, or an empty binary frame.`,
-      `Timeouts: require the WebSocket upgrade within a ${wire.connectionTimeoutSeconds}-second connection timeout and set a ${wire.resourceTimeoutMinutes}-minute resource timeout; the user stop, cancellation, app termination, and provider state machine may end the stream sooner.`,
-      `${keepAlive}: after at least one real audio frame, send the text frame {"type":"${keepAlive}"} every 4 seconds only while no audio frame is being sent; Deepgram sends no ${keepAlive} response, its idle window is 10 seconds, and ${keepAlive} never substitutes for sending the first non-empty audio frame within that 10-second window.`,
-      `Finalization: after capture stops, send the text frame {"type":"${finalize}"}, continue receiving, append every non-empty ${results} segment whose ${wire.finalityField} is true exactly once in channel order, and treat from_finalize as optional because Deepgram does not guarantee it when no buffered audio remains.`,
-      `Normal close: after the final ${results} boundary, send the text frame {"type":"${closeStream}"}, receive the final ${metadata} summary and normal server close, then release ${wire.transport}, timers, adapters, and capture resources.`,
-      `Decode a typed Codable event enum by type. ${results} fields are type, channel_index, duration, start, channel.alternatives with transcript, confidence, and words, metadata.request_id, metadata.model_info, metadata.model_uuid, ${wire.finalityField}, speech_final, and optional from_finalize; interim ${results} may update the HUD but never become insertion or persistence candidates.`,
-      `When vad_events=true, decode ${speechStarted} with type, channel, and timestamp and use it only for visible recording state. When utterance_end_ms=1000 and interim_results=true, decode ${utteranceEnd} with type, channel, and last_word_end; neither event replaces ${wire.finalityField} ${results} accumulation or user-controlled stop and finalization.`,
-      `Decode ${metadata} fields type, request_id, sha256, created, duration, channels, and deprecated transaction_key. The streaming socket has no documented usage object or cost field: retain request_id and provider-reported duration as request evidence and mark monetary usage unavailable rather than inventing it.`,
-      `Failure mapping: classify failed upgrades and HTTP 400 malformed configuration, 401 authentication, 403 permission, 429 project concurrency or rate limits, 5xx provider failures, URLSession transport and TLS failures, the local connection or resource timeout, malformed or unknown typed messages, and empty final output through ${wire.failureMapping} categories without exposing raw response content.`,
-      "Close-frame mapping: classify 1008 DATA-0000 as malformed or mismatched audio, 1011 NET-0000 as provider or insufficient-audio response timeout, NET-0001 as the client-to-server frame timeout, and NET-0002 as no_audio_timeout; retain privacy-safe dg-request-id correlation and never surface raw dg-error content.",
-      `Cancellation: invalidate the operation generation before cancelling ${wire.transport}, stop audio and ${keepAlive} sends, ${wire.cancellation.replaceAll("-", " ")} and callbacks, and never insert, refine, persist, or report cancelled, partial, failed, malformed, or empty text as complete.`,
-      ...temporaryAudioLifecycleStatements(audio),
-      `Test connection: load only configured-or-missing credential state, open the same authenticated endpoint, verify the upgrade and dg-request-id, immediately send {"type":"${closeStream}"}, accept ${metadata} with zero duration, and close; it never opens the microphone, reads a temporary recording, or sends a binary frame, and it never sends recorded user audio.`,
-    ],
-    failureBehavior: `Authentication, rate, transport, provider, timeout, malformed-message, malformed-audio, cancellation, and empty-final failures are distinct ${wire.failureMapping} terminal states; no automatic provider retry, automatic paid retry, paid fallback, history record, refinement, or insertion may follow them.`,
-    recovery: [`Preserve temporary audio only while awaiting ${wire.recoveryActions.join(" or ")} after a recoverable provider failure; keep completed transcript state visible and expose only copy, preview, or discard actions otherwise.`],
-  }
-}
-
-function openRouterIntegrationValues(serviceName: string): Pick<GraphContract, "decision" | "details" | "failureBehavior" | "recovery"> {
-  const commonErrors = "Decode OpenRouter's JSON error envelope error.code, error.message, and error.metadata.error_type for HTTP 400, 401, 402, 403, 408, 413, 422, 429, 500, 502, and 503; treat a top-level error in an HTTP 200 body, malformed JSON, or a missing accepted output as failure."
-  const commonPrivacy = "OpenRouter states prompt and response logging is disabled by default unless the account opts in; request metadata is retained, and the selected upstream provider has its own data policy. Disclose that boundary before enabling cloud processing and send no optional X-OpenRouter-Metadata, HTTP-Referer, or X-Title headers."
-  const commonRate = "OpenRouter rate limits are account, model, provider, and abuse-protection dependent: allow one in-flight request per recording and role, handle 429 without a numeric quota assumption, honor Retry-After and X-RateLimit-Limit/Remaining/Reset when supplied, and require explicit user action after the bounded retry state."
-  if (serviceName === "OpenRouter transcription") {
-    return {
-      decision: "Imported audio-file transcription uses the configured batch/file-capable provider, OpenRouter. Use POST https://openrouter.ai/api/v1/audio/transcriptions for one finalized audio input with default model openai/gpt-4o-transcribe. This is a batch final-transcription contract and produces no live partial results.",
-      details: [
-        "Required headers: Authorization: Bearer plus the request-local macOS Keychain value; Content-Type: application/json. Do not send the key anywhere else.",
-        `Supported imported formats are ${supportedImportedAudioFormats}. Encode the raw audio bytes as ordinary base64, not a data URI, in input_audio.data and send the matching lowercase input_audio.format.`,
-        "Preflight the user-selected file's extension, media duration, and file size locally before reading audio bytes, base64 encoding, URLRequest construction, or URLSessionTask creation.",
-        "Reject unsupported files and files exceeding the locally locked maximum duration of 60 seconds or payload of 25 MB (25,000,000 bytes) with clear user guidance before any paid upload; create no provider request and release local inspection resources.",
-        "Do not split, chunk, transcode, or stitch long files unless a future preset explicitly defines that behavior.",
-        "Request JSON fields: model: \"openai/gpt-4o-transcribe\"; input_audio: { data, format }; optional language as ISO-639-1; temperature: 0.0; optional provider routing only when the user explicitly configured it.",
-        "Accept only a non-empty response text. Decode usage.seconds, usage.total_tokens, usage.input_tokens, usage.output_tokens, and usage.cost, and capture the X-Generation-Id response header for request correlation without transcript content.",
-        "Cancellation: retain the URLSessionTask, call URLSessionTask.cancel(), discard late responses, delete no recoverable audio prematurely, and never insert or persist partial, cancelled, failed, or empty text.",
-        "Timeout: set the request and resource timeout to 65 seconds after local preflight succeeds; never label this batch endpoint as live transcription.",
-        commonRate,
-        "Verified model price snapshot: USD $2.50 per million input tokens and $10.00 per million output tokens. Persist provider-returned usage.cost as authoritative and mark cost unavailable rather than estimating it.",
-        commonErrors,
-        commonPrivacy,
-      ],
-      failureBehavior: "Authentication, credit, permission, payload, timeout, rate, provider, decode, cancellation, and empty-transcript failures are distinct privacy-safe terminal states; none may create history or paste text.",
-      recovery: ["Preserve the one finalized audio input only through the declared recovery decision, then allow an explicit retry or explicit provider change without an automatic paid fallback."],
-    }
-  }
-  return {
-    decision: "Use POST https://openrouter.ai/api/v1/chat/completions for optional non-live refinement with default model google/gemini-2.5-flash-lite, temperature: 0.0, reasoning: { effort: \"none\" }, and stream: false.",
-    details: [
-      "Required headers: Authorization: Bearer plus the same request-local macOS Keychain value used by the OpenRouter transcription role; Content-Type: application/json.",
-      "Request JSON fields: model: \"google/gemini-2.5-flash-lite\"; messages with exactly one locked system instruction and one user payload containing the raw transcript plus selected mode instructions; temperature: 0.0; reasoning: { effort: \"none\" }; stream: false.",
-      "Locked system instruction: Edit only the supplied transcript. Preserve meaning, names, code, and technical terms; never invent speech, facts, speakers, or omitted content; apply only the selected mode; return only the refined transcript.",
-      "Accept only choices[0].message.content as a non-empty string with choices[0].finish_reason equal to stop; retain id, model, created, and provider-reported usage.prompt_tokens, usage.completion_tokens, usage.total_tokens, usage.cost, and usage.cost_details without transcript logging.",
-      "Cancellation: retain the URLSessionTask, call URLSessionTask.cancel(), discard late output, and keep the raw completed transcript unchanged and available.",
-      "Timeout: set the request and resource timeout to 30 seconds; timeout is a refinement failure and never changes or hides the raw transcript.",
-      commonRate,
-      "Verified model price snapshot: USD $0.10 per million input tokens and $0.40 per million output tokens. Persist provider-returned usage.cost as authoritative and mark cost unavailable rather than estimating it.",
-      commonErrors,
-      commonPrivacy,
-    ],
-    failureBehavior: "Disabled, cancelled, timed-out, filtered, malformed, rate-limited, unauthenticated, empty, or non-stop refinement never replaces, deletes, or pastes over the accepted raw transcript.",
-    recovery: ["Keep the raw transcript, expose an explicit refinement retry or use-raw action, and never make a second paid request automatically."],
-  }
 }
 
 function hasVoicePersistence(blueprint: NormalizedBlueprint): boolean {
@@ -1184,20 +983,77 @@ function nativeVoicePersistenceDetails(identity: ProjectIdentity, audio: Tempora
   ]
 }
 
-function persistencePlacement(item: NormalizedBlueprint["persistenceNeeds"][number], preset: PresetContract, identity: ProjectIdentity, astroPlan?: AstroRoutePlan): string {
+function memoryResidentRetention(text: string): boolean {
+  return /\b(?:not written|never written|memory only|in[- ]memory|held in memory|discarded when|session only|not persisted|(?:only )?for the current session|current session only)\b/i.test(text)
+}
+
+function alignAtomicWrite(behavior: string, blueprintText: string): string {
+  const stated = /\b(?:write|writes|written|save|saves|saved|replace|replaces|replaced)\b[^.]{0,80}\batomically\b|\batomically\b[^.]{0,80}\b(?:write|writes|written|save|saves|saved|replace|replaces|replaced)\b|\brenam(?:e|ing) a temporary file\b|\breplaces? the destination(?: file)? by (?:writing a temporary file and )?renaming\b|\btemporary file\b[^.]{0,80}\brenam|\brenam\w*\b[^.]{0,80}\btemporary file\b/i
+  if (!stated.test(blueprintText)) return behavior
+  if (!/\b(?:save|write|writes|writing)\b/i.test(behavior) || !/\bfiles?\b/i.test(behavior)) return behavior
+  if (/\brenam/i.test(behavior)) return behavior
+  return `${behavior} The write replaces the destination by renaming a temporary file in the same directory.`
+}
+
+const USER_SELECTED_FILE_PLACEMENT = "Local filesystem at user-selected paths via native open/save panels."
+const ATOMIC_RENAME_SCRATCH_PLACEMENT = "A temporary file in the destination file's own directory, renamed over the destination on success and removed on failure; never in temporaryDirectory or Application Support."
+
+function persistencePlacement(
+  item: NormalizedBlueprint["persistenceNeeds"][number],
+  preset: PresetContract,
+  identity: ProjectIdentity,
+  astroPlan?: AstroRoutePlan,
+  hasAudio = false,
+  hasCredentials = false,
+): string {
+  const userDefaultsPlacement = hasCredentials
+    ? "UserDefaults with versioned lightweight keys; API keys are forbidden."
+    : "UserDefaults with versioned lightweight keys."
   if (preset.id === "astro-web" && astroPlan?.usesContentCollections) {
     return `src/content/${astroPlan.contentCollection}/ as build-time markdown or MDX compiled through src/content/config.ts.`
   }
   if (preset.id === "astro-web" && astroPlan?.browserPersistence) return preset.persistence.recordsPlacement
   if (!isNativeMacPreset(preset.id)) return item.temporary ? preset.persistence.temporaryPlacement : preset.persistence.recordsPlacement
-  if (item.temporary) {
-    return `FileManager.default.temporaryDirectory/${identity.bundleId}/recordingUUID/audio.format, with Saved recordings moved to Application Support/${identity.bundleId}/Recordings only after explicit user action.`
+  if (memoryResidentRetention(`${item.data} ${item.purpose} ${item.retention}`) && !item.temporary) {
+    return "Held in memory for the session and not written to disk."
   }
+  if (item.temporary && !hasAudio && atomicRenameScratch(`${item.data} ${item.purpose} ${item.retention}`)) {
+    return ATOMIC_RENAME_SCRATCH_PLACEMENT
+  }
+  if (item.temporary) {
+    return hasAudio
+      ? `FileManager.default.temporaryDirectory/${identity.bundleId}/recordingUUID/audio.format, with Saved recordings moved to Application Support/${identity.bundleId}/Recordings only after explicit user action.`
+      : `FileManager.default.temporaryDirectory/${identity.bundleId}/ for ephemeral runtime scratch files.`
+  }
+  if (item.placementTier) {
+    switch (item.placementTier) {
+      case "keychain":
+        return "macOS Keychain via Security framework with app-scoped service; never stored in plaintext."
+      case "userdefaults":
+        return userDefaultsPlacement
+      case "sqlite":
+        return hasAudio
+          ? `SQLite at Application Support/${identity.bundleId}/voice.sqlite3 under the matching history, modes, or vocabulary schema.`
+          : `SQLite at Application Support/${identity.bundleId}/${identity.slug}.sqlite3 under the application schema.`
+      case "ephemeral":
+        return hasAudio
+          ? `FileManager.default.temporaryDirectory/${identity.bundleId}/recordingUUID/audio.format, with Saved recordings moved to Application Support/${identity.bundleId}/Recordings only after explicit user action.`
+          : `FileManager.default.temporaryDirectory/${identity.bundleId}/ for ephemeral runtime scratch files.`
+      case "filesystem":
+        return USER_SELECTED_FILE_PLACEMENT
+    }
+  }
+  const isDocumentOrFile = /\b(?:document|plain[- ]?text|workspace|file|note|scratch)\b/i.test(`${item.data} ${item.purpose}`)
   const settings = /\b(?:provider|hotkey|preferences?|settings?|shortcut|launch)\b/i.test(item.data)
   const records = /\b(?:history|transcript|modes?|vocabulary|replacement)\b/i.test(item.data)
-  if (settings && records) return `Split by value: lightweight provider, hotkey, preference, and launch settings in UserDefaults; history, modes, vocabulary, and replacements in SQLite at Application Support/${identity.bundleId}/voice.sqlite3.`
-  if (settings) return "UserDefaults with versioned lightweight keys; API keys are forbidden."
-  if (records) return `SQLite at Application Support/${identity.bundleId}/voice.sqlite3 under the matching history, modes, or vocabulary schema.`
+  if (isDocumentOrFile) return USER_SELECTED_FILE_PLACEMENT
+  if (settings && records) return hasAudio
+    ? `Split by value: lightweight provider, hotkey, preference, and launch settings in UserDefaults; history, modes, vocabulary, and replacements in SQLite at Application Support/${identity.bundleId}/voice.sqlite3.`
+    : `Split by value: lightweight settings in UserDefaults; records in SQLite at Application Support/${identity.bundleId}/${identity.slug}.sqlite3.`
+  if (settings) return userDefaultsPlacement
+  if (records) return hasAudio
+    ? `SQLite at Application Support/${identity.bundleId}/voice.sqlite3 under the matching history, modes, or vocabulary schema.`
+    : `SQLite at Application Support/${identity.bundleId}/${identity.slug}.sqlite3 under the matching record schema.`
   return preset.persistence.recordsPlacement
 }
 
@@ -1234,10 +1090,13 @@ function pasteWorkflowContract(feature: GraphFeature): GraphContract {
   )
 }
 
-function nativePackagingDetails(preset: PresetContract, identity: ProjectIdentity): string[] {
+function nativePackagingDetails(preset: PresetContract, identity: ProjectIdentity, needsMicrophone = false): string[] {
+  const micDeclaration = needsMicrophone
+    ? `, NSMicrophoneUsageDescription = "${identity.projectName} uses the microphone only while you explicitly record dictation."`
+    : ""
   return [
     `Bundle identity: CFBundleIdentifier = ${identity.bundleId}; CFBundleName = ${identity.projectName}; CFBundleExecutable = ${identity.moduleName}; CFBundleIconFile = AppIcon; CFBundlePackageType = APPL; CFBundleShortVersionString = 1.0.0; CFBundleVersion = 1.`,
-    `Info.plist ownership: Resources/Info.plist declares CFBundleIdentifier, CFBundleExecutable, CFBundleIconFile, LSMinimumSystemVersion = 13.0, NSHighResolutionCapable = true, NSMicrophoneUsageDescription = "${identity.projectName} uses the microphone only while you explicitly record dictation.", and LSUIElement = ${preset.id === "native-macos-swiftui-menubar" ? "true" : "false"}.`,
+    `Info.plist ownership: Resources/Info.plist declares CFBundleIdentifier, CFBundleExecutable, CFBundleIconFile, LSMinimumSystemVersion = 14.0 (matching Package.swift platforms: [.macOS(.v14)], the floor for @Observable), NSHighResolutionCapable = true${micDeclaration}, and LSUIElement = ${preset.id === "native-macos-swiftui-menubar" ? "true" : "false"}.`,
     "Entitlements ownership: Resources/App.entitlements is the only entitlements source and is an XML plist with an empty dictionary for the local unsandboxed build; com.apple.security.app-sandbox and broad file or automation entitlements are absent, and signing passes this reviewed file explicitly.",
     "Icon ownership: Resources/AppIcon.icns is the single source icon copied to Contents/Resources/AppIcon.icns and referenced by CFBundleIconFile.",
     `Architecture: Scripts/package_app.sh runs swift build -c release --arch arm64, rejects a non-arm64 Mach-O executable, and copies .build/arm64-apple-macosx/release/${identity.moduleName}.`,
@@ -1267,8 +1126,8 @@ function buildOwnersAndContracts(
   identity: ProjectIdentity,
   features: readonly GraphFeature[],
   astroPlan?: AstroRoutePlan,
+  integrationServices: NormalizedBlueprint["externalServices"] = compilerIntegrationServices(blueprint),
 ): { ownerDrafts: OwnerDraft[]; contracts: GraphContract[] } {
-  const integrationServices = compilerIntegrationServices(blueprint)
   const runtimeMode = preset.runtimeMode(blueprint)
   const staticAstroMinimal = preset.id === "astro-web"
     && runtimeMode === "static"
@@ -1294,9 +1153,10 @@ function buildOwnersAndContracts(
   }])).values()]
 
   const credentialServices = integrationServices.filter(service => service.credentialRequirement !== "none")
-  const credentialOwnerFeatureIds = unique(credentialServices.flatMap(service => integrationFeatureIds(service, blueprint, features)))
+  const credentialOwnerFeatureIds = unique(credentialServices.flatMap(service => integrationFeatureIds(service, features)))
+  const hasCredentialDomainData = blueprint.domainData.some(item => isCredentialData(`${item.name} ${item.meaning}`))
   const coreDrafts: OwnerDraft[] = []
-  if (credentialServices.length) {
+  if (credentialServices.length || hasCredentialDomainData) {
     coreDrafts.push({ id: "OWN-CREDENTIAL-VAULT", name: "CredentialVault", kind: "credential", dependencyIds: [] })
   }
   if (blueprint.domainData.length || blueprint.persistenceNeeds.length) {
@@ -1327,20 +1187,7 @@ function buildOwnersAndContracts(
   const contracts: GraphContract[] = []
   for (const feature of features) {
     const key = feature.id.replace(/^FEAT-/, "")
-    const importedAudio = blueprint.transcriptionRouting?.importedFeatureNames.includes(feature.name) === true
-    const interfaceDetails = importedAudio
-      ? [
-          `Inputs: ${feature.inputs.join("; ")}`,
-          `Outputs: ${feature.outputs.join("; ")}`,
-          `Supported imported formats are ${supportedImportedAudioFormats}.`,
-          isNativeMacPreset(preset.id)
-            ? "Preflight the user-selected file's extension, media duration, and file size locally before reading audio bytes, base64 encoding, URLRequest construction, or URLSessionTask creation."
-            : "Preflight the user-selected file's format, media duration, and file size locally before loading audio content or constructing a provider request.",
-          "Reject unsupported files and files exceeding 60 seconds or 25 MB (25,000,000 bytes) with clear user guidance before any paid upload; create no provider request.",
-          "Do not split, chunk, transcode, or stitch long files unless a future preset explicitly defines that behavior.",
-          "Cleanup: release local inspection resources on acceptance, rejection, cancellation, and failure.",
-        ]
-      : [`Inputs: ${feature.inputs.join("; ")}`, `Outputs: ${feature.outputs.join("; ")}`]
+    const interfaceDetails = [`Inputs: ${feature.inputs.join("; ")}`, `Outputs: ${feature.outputs.join("; ")}`]
     contracts.push(contract(
       `CON-${key}-INTERFACE`,
       "interface",
@@ -1370,9 +1217,12 @@ function buildOwnersAndContracts(
   const dataOwnerId = blueprint.domainData.length || blueprint.persistenceNeeds.length ? "OWN-DATA-STORE" : lifecycleOwnerId
   for (const item of blueprint.domainData) {
     const credentialData = isCredentialData(`${item.name} ${item.meaning}`)
+    const inMemoryData = !credentialData && memoryResidentRetention(`${item.name} ${item.meaning} ${item.retention}`)
     const ownerId = credentialData ? "OWN-CREDENTIAL-VAULT" : dataOwnerId
     const credentialDataDetails = credentialData
-      ? unique(credentialServices.flatMap(service => credentialDetails(preset.id, identity, service.name, service.credentialRequirement)))
+      ? (credentialServices.length
+        ? unique(credentialServices.flatMap(service => credentialDetails(preset.id, identity, service.name, service.credentialRequirement)))
+        : credentialDetails(preset.id, identity, item.name, "credential"))
       : [`Retention: ${item.retention}`, `Sensitivity: ${item.sensitivity}`]
     contracts.push(contract(
       `CON-DATA-${slug(item.name).toUpperCase()}`,
@@ -1384,30 +1234,23 @@ function buildOwnersAndContracts(
       ownerId,
       credentialData ? `${preset.credentialPlacement} CredentialVault exclusively owns credential storage, retrieval, replacement, and deletion; DataStore receives no secret value.` : item.meaning,
       credentialData ? [...credentialDataDetails, `Retention: ${item.retention}`, `Sensitivity: ${item.sensitivity}`] : credentialDataDetails,
-      credentialData ? "Missing, rejected, unreadable, replacement-failed, or deletion-failed credentials block only the affected provider action without exposing or copying a secret." : "Reject invalid or incomplete records without replacing the last valid state.",
-      credentialData ? ["Preserve the prior Keychain value after failed replacement, report deletion only after Keychain confirms it, and expose an explicit replacement or provider-selection action."] : ["Preserve the last valid record and expose a bounded correction or rebuild path."],
+      credentialData ? "Missing, rejected, unreadable, replacement-failed, or deletion-failed credentials block only the affected provider action without exposing or copying a secret." : inMemoryData ? "A failed update leaves the last in-memory state valid." : "Reject invalid or incomplete records without replacing the last valid state.",
+      credentialData ? ["Preserve the prior Keychain value after failed replacement, report deletion only after Keychain confirms it, and expose an explicit replacement or provider-selection action."] : inMemoryData ? ["Keep the last in-memory value and rebuild it from its source on the next explicit action."] : ["Preserve the last valid record and expose a bounded correction or rebuild path."],
     ))
   }
 
   for (const service of integrationServices) {
     const ownerId = `OWN-INTEGRATION-${slug(service.name).toUpperCase()}`
-    const specialized = isNativeMacPreset(preset.id)
-      ? isOpenRouter(service.name)
-        ? openRouterIntegrationValues(service.name)
-        : isDeepgramNovaStreaming(`${service.name} ${service.purpose}`)
-          ? deepgramIntegrationValues(blueprint.deepgramLiveContract ?? DEEPGRAM_LIVE_MICROPHONE_CONTRACT, blueprint.temporaryAudioLifecycle ?? TEMPORARY_AUDIO_LIFECYCLE)
-          : undefined
-      : undefined
     contracts.push(contract(
       `CON-INTEGRATION-${slug(service.name).toUpperCase()}`,
       "integration",
       `${service.name} integration`,
-      integrationFeatureIds(service, blueprint, features),
+      integrationFeatureIds(service, features),
       ownerId,
-      specialized?.decision ?? `${service.purpose} ${preset.integrationBoundary}`,
-      specialized?.details ?? [`Data sent: ${service.dataSent.join("; ") || "No product data beyond the explicit request."}`, `Credential requirement: ${service.credentialRequirement}`, `Preset boundary: ${preset.platform}`, `Framework boundary: ${preset.integrationBoundary}`],
-      specialized?.failureBehavior ?? service.failureBehavior,
-      specialized?.recovery ?? [service.recovery],
+      `${service.purpose} ${preset.integrationBoundary}`,
+      [`Data sent: ${service.dataSent.join("; ") || "No product data beyond the explicit request."}`, `Credential requirement: ${service.credentialRequirement}`, `Preset boundary: ${preset.platform}`, `Framework boundary: ${preset.integrationBoundary}`],
+      service.failureBehavior,
+      [service.recovery],
     ))
   }
 
@@ -1441,12 +1284,33 @@ function buildOwnersAndContracts(
 
   if (blueprint.persistenceNeeds.length) {
     for (const item of blueprint.persistenceNeeds) {
-      const placement = persistencePlacement(item, preset, identity, astroPlan)
+      const placement = persistencePlacement(
+        item,
+        preset,
+        identity,
+        astroPlan,
+        blueprint.platformNeeds.includes("audio-input") || hasVoicePersistence(blueprint),
+        blueprint.externalServices.some(service => service.credentialRequirement !== "none")
+          || blueprint.domainData.some(data => isCredentialData(`${data.name} ${data.meaning}`)),
+      )
+      const memoryResident = /not written to disk/i.test(placement)
       const persistenceDecision = preset.id === "astro-web" && astroPlan?.usesContentCollections
         ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.enabledDecision
         : preset.id === "astro-web" && astroPlan?.browserPersistence
           ? preset.persistence.enabledDecision
-          : item.temporary ? "Temporary recovery storage is enabled." : preset.persistence.enabledDecision
+          : memoryResident
+            ? "Kept in memory for the session and not written to disk."
+            : /\bSQLite\b/.test(placement)
+              ? preset.persistence.enabledDecision
+              : /\bUserDefaults\b/.test(placement)
+                ? "Persistence: lightweight settings in UserDefaults with versioned keys."
+                : /open\/save panels|local filesystem/i.test(placement)
+                  ? "Persistence: local filesystem at user-selected paths via native open and save panels."
+                  : placement === ATOMIC_RENAME_SCRATCH_PLACEMENT
+                    ? "Persistence: temporary same-directory write file for atomic replacement."
+                    : placement === ATOMIC_RENAME_SCRATCH_PLACEMENT
+                    ? "Persistence: temporary same-directory write file for atomic replacement."
+                    : item.temporary ? "Temporary recovery storage is enabled." : preset.persistence.enabledDecision
       contracts.push(contract(
         `CON-PERSISTENCE-${slug(item.data).toUpperCase()}`,
         "persistence",
@@ -1455,8 +1319,10 @@ function buildOwnersAndContracts(
         "OWN-DATA-STORE",
         `${persistenceDecision} ${item.purpose}`,
         [`Placement: ${placement}`, `Retention: ${item.retention}`, `Deletion: ${item.deletionBehavior}`, `Sensitivity: ${item.sensitivity}`],
-        "A failed write leaves the prior durable state valid and the new state visibly unsaved.",
-        ["Retry through the same atomic boundary without duplicating the record.", item.deletionBehavior],
+        memoryResident ? "A failed update leaves the last in-memory state valid." : "A failed write leaves the prior durable state valid and the new state visibly unsaved.",
+        memoryResident
+          ? ["Keep the last in-memory value and allow an explicit retry.", item.deletionBehavior]
+          : ["Retry through the same atomic boundary without duplicating the record.", item.deletionBehavior],
       ))
     }
     if (isNativeMacPreset(preset.id) && hasVoicePersistence(blueprint)) {
@@ -1486,26 +1352,12 @@ function buildOwnersAndContracts(
     ))
   }
 
-  const credentialGroups = credentialServices.filter(service => !isOpenRouter(service.name))
-  if (credentialServices.some(service => isOpenRouter(service.name))) {
-    credentialGroups.push({
-      name: "OpenRouter",
-      purpose: "Authenticate both independent OpenRouter model roles through one account.",
-      dataSent: [],
-      credentialRequirement: "api-key",
-      failureBehavior: credentialServices.find(service => isOpenRouter(service.name))!.failureBehavior,
-      recovery: credentialServices.find(service => isOpenRouter(service.name))!.recovery,
-    })
-  }
-  for (const service of credentialGroups) {
-    const credentialFeatures = isOpenRouter(service.name)
-      ? unique(integrationServices.filter(item => isOpenRouter(item.name)).flatMap(item => integrationFeatureIds(item, blueprint, features)))
-      : integrationFeatureIds(service, blueprint, features)
+  for (const service of credentialServices) {
     contracts.push(contract(
       `CON-CREDENTIAL-${slug(service.name).toUpperCase()}`,
       "credential",
       `${service.name} credential`,
-      credentialFeatures,
+      integrationFeatureIds(service, features),
       "OWN-CREDENTIAL-VAULT",
       preset.credentialPlacement,
       credentialDetails(preset.id, identity, service.name, service.credentialRequirement),
@@ -1547,7 +1399,7 @@ function buildOwnersAndContracts(
     features.map(feature => feature.id),
     "OWN-PACKAGING",
     preset.packagingRules.join(" "),
-    [...preset.packagingRules, ...(isNativeMacPreset(preset.id) ? nativePackagingDetails(preset, identity) : []), `Installation: ${preset.installationDecision(identity)}`, `Output artifact: ${preset.outputArtifact}`],
+    [...preset.packagingRules, ...(isNativeMacPreset(preset.id) ? nativePackagingDetails(preset, identity, blueprint.platformNeeds.includes("audio-input")) : []), `Installation: ${preset.installationDecision(identity)}`, `Output artifact: ${preset.outputArtifact}`],
     "A failed build, signature, package, install, or launch check blocks completion.",
     ["Fix the first failing validation command, rebuild the artifact, and rerun every later release gate."],
   ))
@@ -1663,7 +1515,7 @@ function buildPhases(
     focusedTests: [foundationTest],
     acceptanceIds: [],
     acceptanceCriteria: foundationCriteria,
-    prompt: `Create the ${preset.label} foundation with identity ${identity.bundleId}. Use only the locked stack and create every listed file before any later task modifies it.${preset.id === "astro-web" ? " package.json must define npm run check, test, test:a11y, build, and audit:performance before any later validation gate." : ""} Add a contract test that fails on stack or identity drift.`,
+    prompt: `Create the ${preset.label} foundation with identity ${identity.bundleId}. Use only the locked stack and create every listed file before any later task modifies it.${isNativeMacPreset(preset.id) ? ` ${identity.moduleName}App.swift must strictly declare the @main App scene entry and delegate all application state and commands to AppState.swift.` : ""}${preset.id === "astro-web" ? " package.json must define npm run check, test, test:a11y, build, and audit:performance before any later validation gate." : ""} Add a contract test that fails on stack or identity drift.`,
     validationCommands: [preset.validationCommands[0]!(identity)],
   }
   const phases: GraphPhase[] = [{ id: "PHASE-01-FOUNDATION", title: "Locked foundation", dependencies: [], tasks: [foundationTask] }]
@@ -1743,46 +1595,91 @@ function buildPhases(
   return { owners, phases }
 }
 
+function deriveLockedStack(
+  preset: PresetContract,
+  blueprint: NormalizedBlueprint,
+  credentialServices: readonly NormalizedBlueprint["externalServices"][number][],
+  contracts: readonly GraphContract[],
+): readonly string[] {
+  if (!isNativeMacPreset(preset.id)) return preset.allowedTechnologies
+  const hasCredentials = credentialServices.length > 0 || blueprint.domainData.some(d => isCredentialData(`${d.name} ${d.meaning}`))
+  const hasSqlite = hasVoicePersistence(blueprint) || blueprint.persistenceNeeds.some(p => p.placementTier === "sqlite" || /\b(?:sqlite|database|sql)\b/i.test(`${p.data} ${p.purpose}`))
+  const hasLogin = blueprint.platformNeeds.includes("launch-at-login") || blueprint.platformNeeds.includes("background-execution")
+  const usesApplicationSupport = hasSqlite || contracts.some(item => item.kind === "persistence" && item.details.some(detail => /Application Support/.test(detail.replace(/never in [^.;]*Application Support/g, ""))))
+  return preset.allowedTechnologies.filter(tech => {
+    if (tech === "Keychain" && !hasCredentials) return false
+    if (tech === "SQLite3" && !hasSqlite) return false
+    if (tech === "SMAppService" && !hasLogin) return false
+    if (tech === "Application Support" && !usesApplicationSupport) return false
+    return true
+  })
+}
+
 export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: PresetId): ProjectGraph {
   const preset = PRESETS[presetId]
   if (!preset) throw new Error(`Unknown preset: ${String(presetId)}`)
   const identity = projectIdentity(blueprint.projectName)
   const featureIds = allocateStableIds("FEAT", blueprint.features.map(feature => feature.name))
-  const resolvedFeatures = resolveRequiredOwners(blueprint.features.map((feature, index): GraphFeature => ({
-    id: featureIds[index]!,
-    name: feature.name,
-    ownerId: feature.providedCapabilities.includes(NATIVE_INSERTION_CAPABILITY) ? "OWN-PASTE-COORDINATOR" : `OWN-${featureIds[index]!.replace(/^FEAT-/, "")}`,
-    behavior: feature.behavior,
-    inputs: feature.inputs,
-    outputs: feature.outputs,
-    acceptanceOutcomes: feature.acceptanceOutcomes,
-    failureBehavior: feature.failureBehavior,
-    recoveryExpectations: feature.recoveryExpectations,
-    providedCapabilities: feature.providedCapabilities,
-    requiredCapabilities: feature.requiredCapabilities,
-    resourceIds: feature.resourceIds,
-    requiredOwnerIds: [],
-  })))
+  const resolvedFeatures = resolveRequiredOwners(blueprint.features.map((feature, index): GraphFeature => {
+    const rawOwnerId = feature.providedCapabilities.includes(NATIVE_INSERTION_CAPABILITY)
+      ? "OWN-PASTE-COORDINATOR"
+      : `OWN-${featureIds[index]!.replace(/^FEAT-/, "")}`
+    const reservedOwners = new Set([
+      "OWN-CREDENTIAL-VAULT",
+      "OWN-DATA-STORE",
+      "OWN-PERMISSION-COORDINATOR",
+      "OWN-LIFECYCLE-COORDINATOR",
+      "OWN-PACKAGING",
+    ])
+    const ownerId = reservedOwners.has(rawOwnerId) || rawOwnerId.startsWith("OWN-INTEGRATION-")
+      ? `${rawOwnerId}-FEATURE`
+      : rawOwnerId
+    return {
+      id: featureIds[index]!,
+      name: feature.name,
+      ownerId,
+      behavior: feature.behavior,
+      inputs: feature.inputs,
+      outputs: feature.outputs,
+      acceptanceOutcomes: feature.acceptanceOutcomes,
+      failureBehavior: feature.failureBehavior,
+      recoveryExpectations: feature.recoveryExpectations,
+      providedCapabilities: feature.providedCapabilities,
+      requiredCapabilities: feature.requiredCapabilities,
+      resourceIds: feature.resourceIds,
+      requiredOwnerIds: [],
+    }
+  }))
   const { features, acceptance, requirements } = lowerAcceptanceOwnership(resolvedFeatures)
   const mode = preset.runtimeMode(blueprint)
   const astroPlan = presetId === "astro-web" ? planAstroWeb(blueprint, features, mode) : undefined
 
-  const { ownerDrafts, contracts } = buildOwnersAndContracts(blueprint, preset, identity, features, astroPlan)
-  const { owners, phases } = buildPhases(preset, identity, ownerDrafts, contracts, features, requirements, acceptance, astroPlan, blueprint.externalServices)
+  const integrationServices = compilerIntegrationServices(blueprint)
+  const { ownerDrafts, contracts } = buildOwnersAndContracts(blueprint, preset, identity, features, astroPlan, integrationServices)
+  const { owners, phases } = buildPhases(preset, identity, ownerDrafts, contracts, features, requirements, acceptance, astroPlan, integrationServices)
   const persistenceEnabled = blueprint.persistenceNeeds.length > 0
+  const isDocNativeMac = isNativeMacPreset(presetId) && !hasVoicePersistence(blueprint) && !blueprint.persistenceNeeds.some(p => p.placementTier === "sqlite" || /\b(?:sqlite|database|sql)\b/i.test(`${p.data} ${p.purpose}`))
   const persistenceDecision = persistenceEnabled
     ? astroPlan?.usesContentCollections
       ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.enabledDecision
       : astroPlan?.browserPersistence
         ? preset.persistence.enabledDecision
-        : preset.persistence.enabledDecision
+        : isDocNativeMac
+          ? "Persistence: enabled with UserDefaults for lightweight settings and local filesystem at user-selected paths for document storage."
+          : preset.persistence.enabledDecision
     : preset.persistence.disabledDecision
   const persistenceSettings = astroPlan?.usesContentCollections
     ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.settingsPlacement
     : preset.persistence.settingsPlacement
   const persistenceRecords = astroPlan?.usesContentCollections
     ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.recordsPlacement.replace("{collection}", astroPlan.contentCollection)
-    : preset.persistence.recordsPlacement
+    : isDocNativeMac
+      ? USER_SELECTED_FILE_PLACEMENT
+      : preset.persistence.recordsPlacement
+
+  const effectiveIntegrationBoundary = integrationServices.length === 0 && !blueprint.platformNeeds.includes("network")
+    ? "Standalone local application: no remote network endpoints, cloud credentials, or third-party web services are used."
+    : preset.integrationBoundary
 
   const graph: ProjectGraph = {
     blueprint,
@@ -1797,7 +1694,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
     owners,
     phases,
     foundationFiles: unique([...preset.sourceLayout(identity), ...(astroPlan?.foundationExtras ?? []), ...(astroPlan?.seedContentPaths ?? [])]),
-    lockedStack: preset.allowedTechnologies,
+    lockedStack: deriveLockedStack(preset, blueprint, integrationServices.filter(s => s.credentialRequirement !== "none"), contracts),
     forbiddenTechnologies: preset.forbiddenTechnologies,
     testFramework: preset.testFramework,
     persistence: {
@@ -1813,7 +1710,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
     lifecycleRules: preset.lifecycleRules,
     accessibilityRules: preset.accessibilityRules,
     runtimeArchitecture: preset.runtimeArchitecture,
-    integrationBoundary: preset.integrationBoundary,
+    integrationBoundary: effectiveIntegrationBoundary,
     recoveryRules: preset.recoveryRules,
     outputArtifact: preset.outputArtifact,
     artifactPath: preset.artifactPath(identity),

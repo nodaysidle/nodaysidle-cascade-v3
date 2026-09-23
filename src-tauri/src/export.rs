@@ -9,6 +9,9 @@ use std::{
 };
 
 pub const DOCUMENT_NAMES: [&str; 5] = ["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS.md"];
+const MAX_EXPORT_FILE_BYTES: usize = 2_000_000;
+#[cfg(target_os = "macos")]
+const RENAME_EXCL: u32 = 0x0000_0004;
 static STAGING_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -64,6 +67,7 @@ pub fn validate_export_files(files: &[ExportFile]) -> Result<(), ExportFailure> 
     for (file, expected_name) in files.iter().zip(DOCUMENT_NAMES) {
         if file.name != expected_name
             || file.content.trim().is_empty()
+            || file.content.len() > MAX_EXPORT_FILE_BYTES
             || file.sha256 != sha256_hex(file.content.as_bytes())
         {
             return Err(ExportFailure::invalid_packet());
@@ -81,7 +85,6 @@ pub fn write_packet_atomic(
     if !valid_slug(slug) {
         return Err(ExportFailure::invalid_destination());
     }
-    let requested_destination = parent.join(slug);
     let parent = parent
         .canonicalize()
         .map_err(|_| ExportFailure::invalid_destination())?;
@@ -99,14 +102,54 @@ pub fn write_packet_atomic(
         let _cleanup = fs::remove_dir_all(&staging);
         return Err(ExportFailure::write_failure());
     }
-    if fs::rename(&staging, &destination).is_err() {
+    if rename_exclusive(&staging, &destination).is_err() {
         let _cleanup = fs::remove_dir_all(&staging);
+        return Err(ExportFailure::write_failure());
+    }
+    if verify_written_packet(&destination, files).is_err() {
+        let _cleanup = fs::remove_dir_all(&destination);
         return Err(ExportFailure::write_failure());
     }
     if let Ok(directory) = File::open(&parent) {
         let _sync_result = directory.sync_all();
     }
-    Ok(requested_destination)
+    Ok(destination)
+}
+
+fn rename_exclusive(from: &Path, to: &Path) -> io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::CString;
+        use std::os::raw::c_char;
+        use std::os::unix::ffi::OsStrExt;
+        extern "C" {
+            fn renamex_np(from: *const c_char, to: *const c_char, flags: u32) -> i32;
+        }
+        let from_c = CString::new(from.as_os_str().as_bytes())
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "export path"))?;
+        let to_c = CString::new(to.as_os_str().as_bytes())
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "export path"))?;
+        let rc = unsafe { renamex_np(from_c.as_ptr(), to_c.as_ptr(), RENAME_EXCL) };
+        return if rc == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        };
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        fs::rename(from, to)
+    }
+}
+
+fn verify_written_packet(destination: &Path, files: &[ExportFile]) -> io::Result<()> {
+    for file in files {
+        let bytes = fs::read(destination.join(&file.name))?;
+        if sha256_hex(&bytes) != file.sha256 {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "export hash mismatch"));
+        }
+    }
+    Ok(())
 }
 
 fn valid_slug(slug: &str) -> bool {

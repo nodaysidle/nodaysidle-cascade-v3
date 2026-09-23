@@ -7,6 +7,18 @@ import {
   type LocalCompileStage,
   type NormalizedBlueprint,
 } from "./compiler"
+import {
+  jevFailureIssue,
+  jevForeignStackIssue,
+  jevIntakeRejectedIssue,
+  jevUnverifiableAcceptanceIssue,
+  runJevPostflight,
+  runJevPreflight,
+  type JevAtomicAuditDecision,
+  type JevPresetMismatch,
+  type JevProvider,
+  type JevReport,
+} from "./jev"
 import type { PresetId } from "./presets"
 import {
   auditSemanticIntake,
@@ -18,12 +30,15 @@ import {
 
 export const DEFAULT_API_URL = "https://api.deepseek.com/responses"
 export const MAX_BLUEPRINT_OUTPUT_TOKENS = 16_384
+export const MAX_IDEA_CHARS = 32_000
 export const PROVIDER_MODELS = [
+  { id: "deepseek-flash", label: "DeepSeek Flash — Fastest and cheapest (V4.1)" },
   { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro — Best quality" },
-  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash — Faster and cheaper" },
 ] as const
-export type ProviderModel = (typeof PROVIDER_MODELS)[number]["id"]
-export type ProgressStage = "provider" | "blueprint-validation" | "local-normalization" | LocalCompileStage
+// The legacy "deepseek-v4-flash" transport alias stays accepted (state validation, the smoke
+// fixture path, and the Rust provider all accept it) without joining the selectable list.
+export type ProviderModel = (typeof PROVIDER_MODELS)[number]["id"] | "deepseek-v4-flash"
+export type ProgressStage = "jev-preflight" | "provider" | "blueprint-validation" | "jev-integrity" | "local-normalization" | LocalCompileStage
 export type ProviderFailureKind = "transport" | "timeout" | "http" | "incomplete" | "failed-response" | "invalid-wrapper" | "invalid-json" | "invalid-request" | "cancelled" | "unknown"
 
 export interface ProviderFailure {
@@ -61,11 +76,13 @@ export interface GeneratePacketInput {
   readonly model: ProviderModel
   readonly apiUrl: string
   readonly apiKey: string
+  readonly jevApiKey?: string
+  readonly atomicAuditor?: boolean
   readonly signal?: AbortSignal
   readonly onProgress?: (stage: ProgressStage) => void
 }
 
-export type PipelineStatus = "gate-clean" | "provider-failure" | "blueprint-validation-failed" | "local-normalization-failed" | "local-compiler-failure" | "lint-failure" | "cancelled"
+export type PipelineStatus = "gate-clean" | "provider-failure" | "blueprint-validation-failed" | "local-normalization-failed" | "local-compiler-failure" | "lint-failure" | "cancelled" | "intake-rejected" | "blueprint-integrity-failed" | "jev-failure"
 
 export interface GeneratePacketResult {
   readonly status: PipelineStatus
@@ -73,6 +90,7 @@ export interface GeneratePacketResult {
   readonly packet?: CompiledPacket
   readonly failure?: ProviderFailure
   readonly issues: readonly SemanticIssue[]
+  readonly jev?: JevReport
 }
 
 const failureKinds = new Set<ProviderFailureKind>(["transport", "timeout", "http", "incomplete", "failed-response", "invalid-wrapper", "invalid-json", "invalid-request", "cancelled", "unknown"])
@@ -213,22 +231,50 @@ function failureResult(
   status: Exclude<PipelineStatus, "gate-clean">,
   issues: readonly SemanticIssue[],
   failure?: ProviderFailure,
+  jev?: JevReport,
 ): GeneratePacketResult {
-  return { status, exportable: false, issues, ...(failure ? { failure } : {}) }
+  return { status, exportable: false, issues, ...(failure ? { failure } : {}), ...(jev ? { jev } : {}) }
 }
 
 export async function generatePacket(
   input: GeneratePacketInput,
   provider: BlueprintProvider,
   compiler: PacketCompiler = compileNormalizedPacket,
+  jevProvider?: JevProvider,
 ): Promise<GeneratePacketResult> {
   if (cancelled(input)) {
     const failure = { kind: "cancelled", classification: "cancelled" } as const
     return failureResult("cancelled", [providerIssue(failure)], failure)
   }
+  if (input.idea.length > MAX_IDEA_CHARS) {
+    const failure = { kind: "invalid-request", classification: "invalid-request" } as const
+    return failureResult("provider-failure", [{ path: "$idea", rule: "provider.idea-too-long", message: "The software idea exceeds the 32,000 character request limit." }], failure)
+  }
   if (!isSafeProviderUrl(input.apiUrl)) {
-    const failure = { kind: "invalid-wrapper", classification: "invalid-provider-wrapper" } as const
+    const failure = { kind: "invalid-request", classification: "invalid-request" } as const
     return failureResult("provider-failure", [{ path: "$provider.url", rule: "provider.invalid-url", message: "The provider URL must be an HTTPS Responses endpoint without embedded data." }], failure)
+  }
+
+  let presetMismatch: JevPresetMismatch | undefined
+  if (jevProvider) {
+    input.onProgress?.("jev-preflight")
+    if (cancelled(input)) {
+      const failure = { kind: "cancelled", classification: "cancelled" } as const
+      return failureResult("cancelled", [providerIssue(failure)], failure)
+    }
+    const preflight = await runJevPreflight({
+      requestId: input.requestId,
+      apiKey: input.jevApiKey ?? "",
+      idea: input.idea,
+      presetId: input.presetId,
+    }, jevProvider)
+    if (cancelled(input)) {
+      const failure = { kind: "cancelled", classification: "cancelled" } as const
+      return failureResult("cancelled", [providerIssue(failure)], failure)
+    }
+    if (!preflight.ok) return failureResult("jev-failure", [jevFailureIssue(preflight.failure)])
+    if (!preflight.decision.viable) return failureResult("intake-rejected", [jevIntakeRejectedIssue()])
+    presetMismatch = preflight.decision.presetMismatch
   }
 
   input.onProgress?.("provider")
@@ -257,15 +303,53 @@ export async function generatePacket(
   const intakeIssues = auditSemanticIntake(parsed.blueprint)
   if (intakeIssues.length) return failureResult("blueprint-validation-failed", intakeIssues)
 
+  let blueprint = parsed.blueprint
+  let jevReport: JevReport | undefined
+  let atomicAudits: JevAtomicAuditDecision | undefined
+  if (jevProvider) {
+    input.onProgress?.("jev-integrity")
+    if (cancelled(input)) {
+      const failure = { kind: "cancelled", classification: "cancelled" } as const
+      return failureResult("cancelled", [providerIssue(failure)], failure)
+    }
+    const postflight = await runJevPostflight({
+      requestId: input.requestId,
+      apiKey: input.jevApiKey ?? "",
+      presetId: input.presetId,
+      blueprint,
+      atomicAuditor: input.atomicAuditor,
+    }, jevProvider)
+    if (cancelled(input)) {
+      const failure = { kind: "cancelled", classification: "cancelled" } as const
+      return failureResult("cancelled", [providerIssue(failure)], failure)
+    }
+    if (!postflight.ok) return failureResult("jev-failure", [jevFailureIssue(postflight.failure)])
+    if (postflight.decision.foreignStackLeakage) return failureResult("blueprint-integrity-failed", [jevForeignStackIssue()])
+    if (postflight.decision.atomicAudits) {
+      if (postflight.decision.atomicAudits.featureIssues.length > 0) {
+        return failureResult("blueprint-integrity-failed", postflight.decision.atomicAudits.featureIssues)
+      }
+    } else if (postflight.decision.unverifiableAcceptance) {
+      return failureResult("blueprint-integrity-failed", [jevUnverifiableAcceptanceIssue()])
+    }
+    blueprint = postflight.decision.blueprint
+    atomicAudits = postflight.decision.atomicAudits
+    jevReport = {
+      ...(presetMismatch ? { presetMismatch } : {}),
+      addedPlatformNeeds: postflight.decision.addedPlatformNeeds,
+      ...(atomicAudits ? { atomicAudits } : {}),
+    }
+  }
+
   input.onProgress?.("local-normalization")
   let normalized: NormalizedBlueprint
   try {
-    normalized = normalizeBlueprint(parsed.blueprint, input.presetId)
+    normalized = normalizeBlueprint(blueprint, input.presetId, atomicAudits)
   } catch (error) {
     const issues = error instanceof NormalizationError
       ? error.issues
       : [{ path: "$normalization", rule: "normalization.failure", message: "Local normalization could not produce a safe semantic model." }]
-    return failureResult("local-normalization-failed", issues)
+    return failureResult("local-normalization-failed", issues, undefined, jevReport)
   }
   if (cancelled(input)) {
     const failure = { kind: "cancelled", classification: "cancelled" } as const
@@ -286,7 +370,7 @@ export async function generatePacket(
     const issues = error instanceof GraphConstructionError
       ? [error.failure]
       : [{ path: "$compiler", rule: "compiler.failure", message: "The deterministic local compiler could not produce a packet." }]
-    return failureResult("local-compiler-failure", issues)
+    return failureResult("local-compiler-failure", issues, undefined, jevReport)
   }
   if (cancelled(input)) {
     const failure = { kind: "cancelled", classification: "cancelled" } as const
@@ -295,7 +379,7 @@ export async function generatePacket(
   if (!packet.exportable) {
     const issues = packet.failures?.map(item => ({ path: item.path, rule: item.rule, message: item.message }))
       ?? [{ path: "$packet", rule: "packet.gate-failure", message: "The rendered packet did not pass the local readiness gate." }]
-    return failureResult("lint-failure", issues)
+    return failureResult("lint-failure", issues, undefined, jevReport)
   }
-  return { status: "gate-clean", exportable: true, issues: [], packet }
+  return { status: "gate-clean", exportable: true, issues: [], packet, ...(jevReport ? { jev: jevReport } : {}) }
 }

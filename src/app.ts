@@ -1,6 +1,13 @@
 import { open } from "@tauri-apps/plugin-dialog"
-import { cancelProviderRequest, exportPacketTo, invokeBlueprintProvider } from "./bridge"
+import { cancelProviderRequest, exportPacketTo, invokeBlueprintProvider, invokeJevDecision } from "./bridge"
 import { DOCUMENT_NAMES, type DocumentName } from "./compiler"
+import {
+  jevHealedNeedsDetail,
+  jevPresetMismatchDetail,
+  runJevIntake,
+  type JevIntakeDecision,
+  type JevProvider,
+} from "./jev"
 import {
   generatePacket,
   PROVIDER_MODELS,
@@ -21,8 +28,10 @@ import {
 } from "./state"
 
 const progressStages: ReadonlyArray<{ id: ProgressStage; label: string }> = [
+  { id: "jev-preflight", label: "Jev preflight" },
   { id: "provider", label: "Provider" },
   { id: "blueprint-validation", label: "Blueprint validation" },
+  { id: "jev-integrity", label: "Jev integrity" },
   { id: "local-normalization", label: "Local normalization" },
   { id: "preset-compiler", label: "Preset compiler" },
   { id: "mechanical-audit", label: "Mechanical audit" },
@@ -44,6 +53,9 @@ const statusCopy: Readonly<Record<AppState["status"], { label: string; detail: s
   "gate-clean": { label: "Gate Clean", detail: "Preview bytes are hashed and eligible for exact-five export.", tone: "success" },
   "export-success": { label: "Export complete", detail: "Exactly five verified files were written to a new folder.", tone: "success" },
   cancelled: { label: "Cancelled", detail: "No packet was accepted and export remains locked.", tone: "neutral" },
+  "intake-rejected": { label: "Intake rejected", detail: "Jev did not confirm this idea as viable, so no provider request was made.", tone: "error" },
+  "blueprint-integrity-failed": { label: "Integrity blocked", detail: "Jev found a technology-stack conflict in the completed blueprint. Export remains locked.", tone: "error" },
+  "jev-failure": { label: "Jev failure", detail: "The Jev decision request failed closed without a retry. Review safe details and retry.", tone: "error" },
 }
 
 function escapeHtml(value: string): string {
@@ -95,9 +107,43 @@ function appMarkup(): string {
             <p id="api-key-help" class="field-help">Never saved, logged, exported, or placed in the request body.</p>
           </div>
 
+          <div class="field-group">
+            <div class="field-label-row">
+              <label for="jev-api-key">TypeSafe / Jev API key</label>
+              <span class="memory-chip">MEMORY ONLY</span>
+            </div>
+            <input id="jev-api-key" name="jev-api-key" type="password" autocomplete="off" spellcheck="false" aria-describedby="jev-api-key-help" />
+            <p id="jev-api-key-help" class="field-help">Used for in-memory TypeSafe Jev decisions; never saved, logged, or exported.</p>
+          </div>
+
           <div class="field-group idea-field">
-            <label for="idea">Software idea</label>
+            <div class="field-label-row">
+              <label for="idea">Software idea</label>
+              <span id="intake-evaluating" class="intake-badge evaluating" hidden>Analyzing with Jev...</span>
+            </div>
             <textarea id="idea" name="idea" rows="8" spellcheck="true" placeholder="Describe the product, users, behavior, constraints, privacy, recovery, and desired outcome."></textarea>
+            <div id="intake-feedback" class="intake-feedback" hidden>
+              <div class="intake-status-row">
+                <div class="intake-badges">
+                  <span id="intake-viability" class="intake-pill pill-viable">Viable</span>
+                  <span id="intake-clarity" class="intake-pill pill-clarity">Clarity: Basic</span>
+                </div>
+                <div id="intake-clarity-meter" class="intake-clarity-meter" title="Clarity level">
+                  <span class="meter-step"></span>
+                  <span class="meter-step"></span>
+                  <span class="meter-step"></span>
+                  <span class="meter-step"></span>
+                </div>
+              </div>
+              <div id="intake-preset-suggestion" class="intake-suggestion-row">
+                <span id="intake-preset-label" class="suggestion-text"></span>
+                <button id="intake-apply-preset" type="button" class="button-intake-apply" hidden>Apply</button>
+              </div>
+              <div id="intake-capabilities" class="intake-capabilities-row" hidden>
+                <span class="capabilities-title">Detected needs:</span>
+                <div id="intake-capabilities-list" class="capabilities-tags"></div>
+              </div>
+            </div>
           </div>
 
           <div class="action-row">
@@ -176,7 +222,10 @@ function requiredElement<T extends Element>(root: ParentNode, selector: string):
   return element
 }
 
-export function mountApp(provider: BlueprintProvider = invokeBlueprintProvider) {
+export function mountApp(
+  provider: BlueprintProvider = invokeBlueprintProvider,
+  jevProvider: JevProvider = invokeJevDecision,
+) {
   const root = requiredElement<HTMLElement>(document, "#app")
   root.innerHTML = appMarkup()
 
@@ -186,7 +235,17 @@ export function mountApp(provider: BlueprintProvider = invokeBlueprintProvider) 
   const model = requiredElement<HTMLSelectElement>(root, "#model")
   const apiUrl = requiredElement<HTMLInputElement>(root, "#api-url")
   const apiKey = requiredElement<HTMLInputElement>(root, "#api-key")
+  const jevApiKey = requiredElement<HTMLInputElement>(root, "#jev-api-key")
   const idea = requiredElement<HTMLTextAreaElement>(root, "#idea")
+  const intakeEvaluating = requiredElement<HTMLElement>(root, "#intake-evaluating")
+  const intakeFeedback = requiredElement<HTMLElement>(root, "#intake-feedback")
+  const intakeViability = requiredElement<HTMLElement>(root, "#intake-viability")
+  const intakeClarity = requiredElement<HTMLElement>(root, "#intake-clarity")
+  const intakeClarityMeter = requiredElement<HTMLElement>(root, "#intake-clarity-meter")
+  const intakePresetLabel = requiredElement<HTMLElement>(root, "#intake-preset-label")
+  const intakeApplyPreset = requiredElement<HTMLButtonElement>(root, "#intake-apply-preset")
+  const intakeCapabilities = requiredElement<HTMLElement>(root, "#intake-capabilities")
+  const intakeCapabilitiesList = requiredElement<HTMLElement>(root, "#intake-capabilities-list")
   const generateButton = requiredElement<HTMLButtonElement>(root, "#generate")
   const cancelButton = requiredElement<HTMLButtonElement>(root, "#cancel")
   const copyButton = requiredElement<HTMLButtonElement>(root, "#copy-document")
@@ -209,13 +268,17 @@ export function mountApp(provider: BlueprintProvider = invokeBlueprintProvider) 
     model,
     apiUrl,
     apiKey,
+    jevApiKey,
     idea,
   }
   let state = createInitialState()
+  let activeJevProvider = jevProvider
   let activeDocument: DocumentName = "PRD.md"
   let abortController: AbortController | undefined
   let generation: Promise<AppState> | undefined
   let noticeTimer: number | undefined
+  let activeIntakeRequestId: string | undefined
+  let latestIntakeDecision: JevIntakeDecision | undefined
 
   function announce(message: string, tone: "neutral" | "success" | "error" = "neutral"): void {
     notice.textContent = message
@@ -235,7 +298,11 @@ export function mountApp(provider: BlueprintProvider = invokeBlueprintProvider) 
     model.value = state.form.model
     apiUrl.value = state.form.apiUrl
     apiKey.value = state.form.apiKey
+    jevApiKey.value = state.form.jevApiKey
     idea.value = state.form.idea
+    if (latestIntakeDecision) {
+      updateIntakePresetSuggestion(latestIntakeDecision)
+    }
   }
 
   function updateProgress(): void {
@@ -259,6 +326,8 @@ export function mountApp(provider: BlueprintProvider = invokeBlueprintProvider) 
     ])
     if (!details.length) details.push(["State", state.status], ["Preset", state.form.presetId], ["Model", state.form.model])
     if (!state.issues.length && state.progress) details.push(["Stage", state.progress])
+    if (state.jev?.presetMismatch) details.push(["Jev preset check", jevPresetMismatchDetail(state.jev.presetMismatch)])
+    if (state.jev?.addedPlatformNeeds.length) details.push(["Jev healed platform needs", jevHealedNeedsDetail(state.jev.addedPlatformNeeds)])
     if (state.failure?.wrapperOutputTypes?.length) {
       details.push(["Wrapper output types", state.failure.wrapperOutputTypes.join(", ")])
     }
@@ -317,8 +386,109 @@ export function mountApp(provider: BlueprintProvider = invokeBlueprintProvider) 
     updateTechnicalDetails()
   }
 
+  function updateIntakePresetSuggestion(decision: JevIntakeDecision): void {
+    const currentPreset = state.form.presetId
+    if (decision.recommendedPreset !== currentPreset && decision.presetConfidence >= 0.60) {
+      intakePresetLabel.textContent = `Recommended: ${PRESETS[decision.recommendedPreset].label} (${Math.round(decision.presetConfidence * 100)}% match)`
+      intakeApplyPreset.textContent = `Switch to ${PRESETS[decision.recommendedPreset].label}`
+      intakeApplyPreset.hidden = false
+    } else {
+      intakePresetLabel.textContent = `✓ Preset match: ${PRESETS[currentPreset].label}`
+      intakeApplyPreset.hidden = true
+    }
+  }
+
+  function renderIntakeFeedback(decision: JevIntakeDecision): void {
+    intakeFeedback.hidden = false
+
+    intakeViability.className = "intake-pill " + (decision.viable ? "pill-viable" : "pill-warning")
+    intakeViability.textContent = decision.viable
+      ? `✓ Viable (${Math.round(decision.viabilityScore * 100)}%)`
+      : `⚠ Low Viability (${Math.round(decision.viabilityScore * 100)}%)`
+
+    const clarityCapitalized = decision.clarity.charAt(0).toUpperCase() + decision.clarity.slice(1)
+    intakeClarity.className = "intake-pill pill-clarity"
+    intakeClarity.textContent = `Clarity: ${clarityCapitalized} (${decision.clarityScore + 1}/4)`
+
+    const steps = intakeClarityMeter.querySelectorAll<HTMLElement>(".meter-step")
+    steps.forEach((step, idx) => {
+      step.classList.toggle("active", idx <= decision.clarityScore)
+    })
+    intakeClarityMeter.title = `Clarity: ${clarityCapitalized} (${decision.clarityScore + 1} of 4)`
+
+    updateIntakePresetSuggestion(decision)
+
+    if (decision.detectedCapabilities.length > 0) {
+      intakeCapabilities.hidden = false
+      intakeCapabilitiesList.innerHTML = decision.detectedCapabilities
+        .map(need => `<span class="capability-tag">${escapeHtml(need)}</span>`)
+        .join("")
+    } else {
+      intakeCapabilities.hidden = true
+      intakeCapabilitiesList.innerHTML = ""
+    }
+  }
+
+  function clearIntakeFeedback(): void {
+    activeIntakeRequestId = undefined
+    latestIntakeDecision = undefined
+    intakeEvaluating.hidden = true
+    intakeFeedback.hidden = true
+  }
+
+  async function triggerIntakeEvaluation(): Promise<void> {
+    const currentIdea = state.form.idea.trim()
+    const apiKey = state.form.jevApiKey.trim()
+
+    if (currentIdea.length < 20 || !apiKey) {
+      clearIntakeFeedback()
+      return
+    }
+
+    if (activeIntakeRequestId) {
+      const previous = activeIntakeRequestId
+      activeIntakeRequestId = undefined
+      try {
+        await cancelProviderRequest(previous)
+      } catch {
+        // A stale intake response is ignored even if cancellation already missed the request.
+      }
+    }
+
+    const requestId = `intake-${crypto.randomUUID()}`
+    activeIntakeRequestId = requestId
+    intakeEvaluating.hidden = false
+    try {
+      const result = await runJevIntake(
+        {
+          requestId,
+          apiKey,
+          idea: currentIdea,
+          presetId: state.form.presetId,
+        },
+        activeJevProvider,
+      )
+      if (activeIntakeRequestId !== requestId) return
+      intakeEvaluating.hidden = true
+      if (result.ok) {
+        latestIntakeDecision = result.decision
+        renderIntakeFeedback(result.decision)
+      } else {
+        intakeFeedback.hidden = true
+      }
+    } catch {
+      if (activeIntakeRequestId === requestId) {
+        intakeEvaluating.hidden = true
+        intakeFeedback.hidden = true
+      }
+    }
+  }
+
   function changeField(field: keyof FormState, value: string): void {
     dispatch({ type: "form-changed", field, value })
+    if (field === "presetId" && latestIntakeDecision) {
+      updateIntakePresetSuggestion(latestIntakeDecision)
+    }
   }
 
   for (const [field, control] of Object.entries(controls) as Array<[keyof FormState, typeof controls[keyof FormState]]>) {
@@ -336,16 +506,17 @@ export function mountApp(provider: BlueprintProvider = invokeBlueprintProvider) 
 
     generation = generatePacket({
       ...input,
+      atomicAuditor: true,
       requestId,
       signal: abortController.signal,
       onProgress: stage => dispatch({ type: "progressed", stage }),
-    }, provider).then(result => {
+    }, provider, undefined, activeJevProvider).then(result => {
       if (result.status === "gate-clean" && result.packet) {
-        dispatch({ type: "generation-succeeded", packet: result.packet })
+        dispatch({ type: "generation-succeeded", packet: result.packet, jev: result.jev })
         syncControls()
       } else {
         const status = result.status === "gate-clean" ? "local-compiler-failure" : result.status
-        dispatch({ type: "generation-failed", status, failure: result.failure, issues: result.issues })
+        dispatch({ type: "generation-failed", status, failure: result.failure, issues: result.issues, jev: result.jev })
       }
       return state
     }).catch(() => {
@@ -438,6 +609,16 @@ export function mountApp(provider: BlueprintProvider = invokeBlueprintProvider) 
       }
     })
   }
+  idea.addEventListener("blur", () => void triggerIntakeEvaluation())
+  jevApiKey.addEventListener("blur", () => void triggerIntakeEvaluation())
+  intakeApplyPreset.addEventListener("click", () => {
+    if (!latestIntakeDecision) return
+    const newPreset = latestIntakeDecision.recommendedPreset
+    changeField("presetId", newPreset)
+    preset.value = newPreset
+    updateIntakePresetSuggestion(latestIntakeDecision)
+    announce(`Switched to ${PRESETS[newPreset].label}.`, "neutral")
+  })
 
   syncControls()
   updateView()
@@ -447,6 +628,9 @@ export function mountApp(provider: BlueprintProvider = invokeBlueprintProvider) 
       changeField(field, value)
       controls[field].value = value
     },
+    setJevProvider(newProvider: JevProvider): void {
+      activeJevProvider = newProvider
+    },
     generate,
     cancel,
     selectDocument,
@@ -454,6 +638,8 @@ export function mountApp(provider: BlueprintProvider = invokeBlueprintProvider) 
     getState: (): AppState => state,
     getPreviewText: (): string => previewContent.textContent ?? "",
     isExportEnabled: (): boolean => !exportButton.disabled,
+    getIntakeDecision: (): JevIntakeDecision | undefined => latestIntakeDecision,
+    triggerIntakeEvaluation,
   }
 }
 

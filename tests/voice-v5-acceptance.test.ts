@@ -35,64 +35,17 @@ describe("full NODAYSIDLE Voice V5 acceptance regression", () => {
     expect(auditProjectGraph(cyclic)).toContainEqual(expect.objectContaining({ rule: "graph.cycles" }))
   })
 
-  it("locks the two exact OpenRouter roles behind one Keychain account", async () => {
+  it("keeps named speech services as separate generic integrations", async () => {
     const packet = await compilePacket(nodaysidleVoiceV5Blueprint, "native-macos-swiftui-menubar")
-    const transcription = packet.graph.contracts.find(contract => contract.id === "CON-INTEGRATION-OPENROUTER-TRANSCRIPTION")!
-    const refinement = packet.graph.contracts.find(contract => contract.id === "CON-INTEGRATION-OPENROUTER-REFINEMENT")!
-    const credentials = packet.graph.contracts.filter(contract => contract.id.startsWith("CON-CREDENTIAL-OPENROUTER"))
-    const transcriptionText = [transcription.decision, ...transcription.details, transcription.failureBehavior, ...transcription.recovery].join("\n")
-    const refinementText = [refinement.decision, ...refinement.details, refinement.failureBehavior, ...refinement.recovery].join("\n")
-
-    for (const marker of [
-      "POST https://openrouter.ai/api/v1/audio/transcriptions",
-      "openai/gpt-4o-transcribe",
-      "Authorization: Bearer",
-      "Content-Type: application/json",
-      "input_audio",
-      "base64",
-      "data",
-      "format",
-      "language",
-      "temperature",
-      "X-Generation-Id",
-      "usage.seconds",
-      "usage.total_tokens",
-      "usage.cost",
-      "URLSessionTask.cancel()",
-      "65 seconds",
-      "429",
-      "Retry-After",
-      "error.metadata.error_type",
-      "metadata is retained",
-      "prompt and response logging is disabled by default",
-    ]) expect(transcriptionText.toLowerCase()).toContain(marker.toLowerCase())
-    expect(transcriptionText).toContain("one finalized audio input")
-    expect(transcriptionText).not.toContain("URLSessionWebSocketTask")
-    expect(transcriptionText).not.toContain("streamed audio")
-
-    for (const marker of [
-      "POST https://openrouter.ai/api/v1/chat/completions",
-      "google/gemini-2.5-flash-lite",
-      "temperature: 0.0",
-      "reasoning: { effort: \"none\" }",
-      "stream: false",
-      "preserve meaning, names, code, and technical terms",
-      "never invent speech",
-      "choices[0].message.content",
-      "finish_reason",
-      "usage.prompt_tokens",
-      "usage.completion_tokens",
-      "usage.total_tokens",
-      "usage.cost",
-      "URLSessionTask.cancel()",
-      "30 seconds",
-      "Retry-After",
-      "prompt and response logging is disabled by default",
-    ]) expect(refinementText.toLowerCase()).toContain(marker.toLowerCase())
-
-    expect(credentials).toHaveLength(1)
-    expect(credentials[0]!.details).toContain(`Keychain account: openrouter-api-key`)
-    expect(credentials[0]!.featureIds).toEqual(expect.arrayContaining([...transcription.featureIds, ...refinement.featureIds]))
+    const text = Object.values(packet.documents).join("\n")
+    expect(packet.graph.contracts.some(contract => contract.id === "CON-INTEGRATION-OPENROUTER-SPEECH-TO-TEXT")).toBe(true)
+    expect(packet.graph.contracts.some(contract => contract.id === "CON-INTEGRATION-OPENROUTER-LANGUAGE-MODEL")).toBe(true)
+    expect(packet.graph.contracts.some(contract => contract.id === "CON-CREDENTIAL-OPENROUTER-SPEECH-TO-TEXT")).toBe(true)
+    expect(packet.graph.contracts.some(contract => contract.id === "CON-CREDENTIAL-OPENROUTER-LANGUAGE-MODEL")).toBe(true)
+    expect(text).not.toContain("openrouter.ai")
+    expect(text).not.toContain("openai/gpt-4o-transcribe")
+    expect(text).not.toContain("google/gemini-2.5-flash-lite")
+    expect(text).not.toContain("Keychain account: openrouter-api-key")
   })
 
   it("renders one concrete persistence contract consistently through all five documents", async () => {

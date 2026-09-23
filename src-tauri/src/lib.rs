@@ -1,4 +1,7 @@
+#![allow(clippy::result_large_err)]
+
 pub mod export;
+pub mod jev;
 pub mod provider;
 
 use export::{write_packet_atomic, ExportFailure, ExportFile};
@@ -16,7 +19,7 @@ const PROVIDER_CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
 fn provider_request_timeout(model: &str) -> Result<Duration, ProviderFailure> {
     match model {
         "deepseek-v4-pro" => Ok(Duration::from_secs(600)),
-        "deepseek-v4-flash" => Ok(Duration::from_secs(300)),
+        "deepseek-flash" | "deepseek-v4-flash" => Ok(Duration::from_secs(300)),
         _ => Err(ProviderFailure::invalid_request()),
     }
 }
@@ -50,6 +53,8 @@ async fn deepseek_complete(
     let client = reqwest::Client::builder()
         .connect_timeout(PROVIDER_CONNECT_TIMEOUT)
         .timeout(request_timeout)
+        .redirect(reqwest::redirect::Policy::none())
+        .https_only(true)
         .build()
         .map_err(|_| ProviderFailure::transport())?;
 
@@ -182,13 +187,15 @@ pub fn run() {
         deepseek_complete,
         cancel_generation,
         export_packet,
+        jev::jev_decide,
         record_fixture_smoke
     ]);
     #[cfg(not(feature = "fixture-smoke"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         deepseek_complete,
         cancel_generation,
-        export_packet
+        export_packet,
+        jev::jev_decide
     ]);
     builder
         .setup(|app| {
@@ -259,6 +266,10 @@ mod tests {
         assert_eq!(
             provider_request_timeout("deepseek-v4-pro").unwrap(),
             Duration::from_secs(600)
+        );
+        assert_eq!(
+            provider_request_timeout("deepseek-flash").unwrap(),
+            Duration::from_secs(300)
         );
         assert_eq!(
             provider_request_timeout("deepseek-v4-flash").unwrap(),

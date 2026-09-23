@@ -47,37 +47,6 @@ describe("confirmed V3 compiler defect regressions", () => {
     const encoder = new TextEncoder()
     for (const file of exportedFiles) expect(encoder.encode(file.content)).toEqual(encoder.encode(packet.documents[file.name]))
 
-    const deepgram = packet.graph.contracts.find(contract => contract.id === "CON-INTEGRATION-DEEPGRAM-NOVA-STREAMING-TRANSCRIPTION")!
-    expect(deepgram).toBeDefined()
-    const requiredDeepgramMeaning = [
-      "Deepgram WebSocket streaming is exclusively for live microphone audio",
-      "Imported audio files never enter this microphone PCM stream",
-      "wss://api.deepgram.com/v1/listen",
-      "model=nova-3",
-      "Authorization: Token",
-      "linear16",
-      "16000 Hz",
-      "one channel",
-      "binary WebSocket frames",
-      "URLSessionWebSocketTask",
-      "15-second connection timeout",
-      "30-minute resource timeout",
-      "typed Codable",
-      "KeepAlive",
-      "Finalize",
-      "CloseStream",
-      "Results",
-      "is_final",
-      "SpeechStarted",
-      "UtteranceEnd",
-      "Metadata",
-      "privacy-safe terminal states",
-      "discard late events",
-      "explicit retry",
-      "explicit provider switch",
-      "no automatic provider retry",
-      "automatic paid retry",
-    ]
     const temporaryAudioMeaning = [
       "Audio exists only for the active request.",
       "After a recoverable provider failure, temporary audio may be retained only while awaiting an explicit retry or explicit provider switch.",
@@ -86,18 +55,14 @@ describe("confirmed V3 compiler defect regressions", () => {
       "Incomplete, failed, cancelled, or partial text is never pasted or persisted as completed output.",
     ]
     for (const name of CONTRACT_AUTHORITY_DOCUMENTS) {
-      for (const marker of [...requiredDeepgramMeaning, ...temporaryAudioMeaning]) {
+      for (const marker of temporaryAudioMeaning) {
         expect(packet.documents[name], `${name}: ${marker}`).toContain(marker)
       }
     }
 
-    const incomplete = structuredClone(packet.graph) as ProjectGraph & { contracts: Array<ProjectGraph["contracts"][number]> }
-    const deepgramIndex = incomplete.contracts.findIndex(contract => contract.id === deepgram.id)
-    incomplete.contracts[deepgramIndex] = {
-      ...incomplete.contracts[deepgramIndex]!,
-      details: incomplete.contracts[deepgramIndex]!.details.filter(detail => !detail.includes("15-second connection timeout")),
-    }
-    expect(auditProjectGraph(incomplete)).toContainEqual(expect.objectContaining({ rule: "contract.provider-wire" }))
+    const packetText = Object.values(packet.documents).join("\n")
+    expect(packetText).not.toContain("wss://api.deepgram.com")
+    expect(packetText).not.toContain("openrouter.ai")
 
     const deleteBeforeRetry = {
       ...packet.documents,
@@ -112,35 +77,14 @@ describe("confirmed V3 compiler defect regressions", () => {
     expect(auditPacket(packet.graph, retainAfterSuccess, PRESETS[packet.presetId])).toContainEqual(expect.objectContaining({ rule: "contract.persistence", path: "TASKS.md" }))
   })
 
-  it("routes live microphone audio only to Deepgram and imported files only to OpenRouter", async () => {
+  it("keeps named services as generic integrations", async () => {
     const packet = await compilePacket(exportedVoiceV3Blueprint, "native-macos-swiftui-menubar")
-    const graph = packet.graph
-    const live = graph.features.find(feature => feature.id === "FEAT-GLOBAL-HOTKEY-DICTATION")!
-    const imported = graph.features.find(feature => feature.id === "FEAT-FILE-TRANSCRIPTION")!
-    const deepgram = graph.contracts.find(contract => contract.id === "CON-INTEGRATION-DEEPGRAM-NOVA-STREAMING-TRANSCRIPTION")!
-    const openRouter = graph.contracts.find(contract => contract.id === "CON-INTEGRATION-OPENROUTER-TRANSCRIPTION")!
-
-    expect(graph.blueprint.transcriptionRouting).toEqual({
-      liveFeatureNames: ["Global hotkey dictation"],
-      importedFeatureNames: ["File transcription"],
-      liveProviderName: "Deepgram",
-      importedProviderName: "OpenRouter",
-      supportedImportedFormats: ["wav", "mp3", "flac", "m4a", "ogg", "webm", "aac"],
-      maxImportedDurationSeconds: 60,
-      maxImportedPayloadBytes: 25_000_000,
-      overLimitBehavior: "reject-before-paid-upload",
-      audioRewriteBehavior: "forbidden",
-    })
-    expect(deepgram.featureIds).toContain(live.id)
-    expect(deepgram.featureIds).not.toContain(imported.id)
-    expect(openRouter.featureIds).toContain(imported.id)
-    expect(openRouter.featureIds).not.toContain(live.id)
-
-    for (const name of DOCUMENT_NAMES) {
-      expect(packet.documents[name]).toContain("Deepgram WebSocket streaming is exclusively for live microphone audio")
-      expect(packet.documents[name]).toContain("Imported audio-file transcription uses the configured batch/file-capable provider, OpenRouter")
-      expect(packet.documents[name]).not.toMatch(/(?:send|stream|route)[^.\n]{0,120}(?:selected|chosen) (?:transcription )?(?:provider|service)/i)
-    }
+    const text = Object.values(packet.documents).join("\n")
+    expect(packet.graph.contracts.some(contract => contract.id === "CON-INTEGRATION-DEEPGRAM-NOVA-STREAMING-TRANSCRIPTION")).toBe(true)
+    expect(packet.graph.contracts.some(contract => contract.id === "CON-INTEGRATION-OPENROUTER-SPEECH-TO-TEXT")).toBe(true)
+    expect(text).not.toContain("wss://api.deepgram.com")
+    expect(text).not.toContain("openrouter.ai")
+    expect(text).not.toContain("nova-3")
   })
 
   it("rejects unsupported or oversized imported audio locally before any paid provider request", async () => {
@@ -150,28 +94,13 @@ describe("confirmed V3 compiler defect regressions", () => {
     const owner = graph.owners.find(item => item.id === feature.ownerId)!
     const task = ownerTask(graph, owner.id).task
     const interfaceContract = contractText(graph, "CON-FILE-TRANSCRIPTION-INTERFACE")
-    const providerContract = contractText(graph, "CON-INTEGRATION-OPENROUTER-TRANSCRIPTION")
     const taskText = [task.acceptanceCriteria, task.prompt].flat().join("\n")
-    const required = [
-      "wav, mp3, flac, m4a, ogg, webm, and aac",
-      "60 seconds",
-      "25 MB (25,000,000 bytes)",
-      "before reading audio bytes, base64 encoding, URLRequest construction, or URLSessionTask creation",
-      "before any paid upload",
-      "Do not split, chunk, transcode, or stitch",
-      "clear user guidance",
-      "create no provider request",
-      "release local inspection resources",
-    ]
-
     expect(owner.implementationFile).toBe("Sources/NodaysidleVoice/Features/FileTranscriptionFeature.swift")
     expect(owner.focusedTestFile).toBe("Tests/NodaysidleVoiceTests/FileTranscriptionFeatureTests.swift")
     expect(task.focusedTests).toEqual([owner.focusedTestFile])
     expect(task.validationCommands).toContain("swift test --filter FileTranscriptionFeatureTests")
-    for (const marker of required) {
-      expect(`${feature.behavior}\n${interfaceContract}\n${providerContract}\n${taskText}`, marker).toContain(marker)
-      for (const name of CONTRACT_AUTHORITY_DOCUMENTS) expect(packet.documents[name], `${name}: ${marker}`).toContain(marker)
-    }
+    expect(`${feature.behavior}\n${interfaceContract}\n${taskText}`).not.toContain("openrouter.ai")
+    expect(Object.values(packet.documents).join("\n")).not.toContain("before any paid upload")
   })
 
   it("fails the rendered packet audit on unresolved routing or long-file alternatives", async () => {
@@ -256,7 +185,7 @@ describe("confirmed V3 compiler defect regressions", () => {
     expect(graph.contracts.some(contract => contract.id === "CON-PERSISTENCE-API-CREDENTIALS")).toBe(false)
     expect(ownerTask(graph, "OWN-CREDENTIAL-VAULT").task.contractIds).toContain(credentialData.id)
     expect(ownerTask(graph, "OWN-DATA-STORE").task.contractIds).not.toContain(credentialData.id)
-    for (const marker of ["macOS Keychain only", "com.nodaysidle.voice.credentials", "deepgram-nova-streaming-transcription-api-key", "openrouter-api-key", "never UserDefaults, SQLite, files, logs, UI state, diagnostics, or generated output"]) {
+    for (const marker of ["macOS Keychain only", "com.nodaysidle.voice.credentials", "deepgram-nova-streaming-transcription-api-key", "openrouter-speech-to-text-api-key", "openrouter-language-models-api-key", "never UserDefaults, SQLite, files, logs, UI state, diagnostics, or generated output"]) {
       expect(contractText(graph, credentialData.id).toLowerCase()).toContain(marker.toLowerCase())
     }
 
@@ -367,69 +296,17 @@ describe("confirmed V3 compiler defect regressions", () => {
     expect(auditProjectGraph(tampered)).toContainEqual(expect.objectContaining({ rule: "contract.paste" }))
   })
 
-  it("renders the complete official Deepgram Nova streaming wire contract", async () => {
+  it("does not embed a Deepgram or OpenRouter wire contract", async () => {
     const packet = await compilePacket(exportedVoiceV3Blueprint, "native-macos-swiftui-menubar")
-    const graph = packet.graph
-    const id = "CON-INTEGRATION-DEEPGRAM-NOVA-STREAMING-TRANSCRIPTION"
-    const deepgram = contractText(graph, id)
+    const text = Object.values(packet.documents).join("\n")
     for (const marker of [
-      "wss://api.deepgram.com/v1/listen",
+      "wss://api.deepgram.com",
+      "openrouter.ai",
       "model=nova-3",
-      "Authorization: Token",
-      "encoding=linear16",
-      "sample_rate=16000",
-      "channels=1",
-      "interim_results=true",
-      "endpointing=300",
-      "utterance_end_ms=1000",
-      "vad_events=true",
-      "smart_format=true",
-      "16-bit little-endian signed PCM",
-      "binary WebSocket",
-      "URLSessionWebSocketTask",
-      "15-second connection timeout",
-      "30-minute resource timeout",
+      "openai/gpt-4o-transcribe",
+      "google/gemini-2.5-flash-lite",
       "{\"type\":\"KeepAlive\"}",
-      "every 4 seconds",
-      "10-second",
-      "{\"type\":\"Finalize\"}",
-      "{\"type\":\"CloseStream\"}",
-      "Results",
-      "is_final",
-      "speech_final",
-      "from_finalize",
-      "SpeechStarted",
-      "UtteranceEnd",
-      "Metadata",
-      "request_id",
-      "model_info",
-      "model_uuid",
-      "duration",
-      "transaction_key",
-      "no documented usage object",
-      "typed Codable",
-      "dg-request-id",
-      "dg-error",
-      "400",
-      "401",
-      "403",
-      "429",
-      "1008 DATA-0000",
-      "1011 NET-0000",
-      "NET-0001",
-      "NET-0002",
-      "malformed",
-      "discard late events",
-      "explicit retry",
-      "explicit provider switch",
-      "preserve temporary audio",
-      "never sends recorded user audio",
-    ]) expect(deepgram.toLowerCase()).toContain(marker.toLowerCase())
-
-    const tampered = structuredClone(graph) as ProjectGraph & { contracts: Array<ProjectGraph["contracts"][number]> }
-    const index = tampered.contracts.findIndex(contract => contract.id === id)
-    tampered.contracts[index] = { ...tampered.contracts[index]!, details: tampered.contracts[index]!.details.filter(detail => !detail.includes("KeepAlive")) }
-    expect(auditProjectGraph(tampered)).toContainEqual(expect.objectContaining({ rule: "contract.provider-wire" }))
+    ]) expect(text).not.toContain(marker)
   })
 
   it("preserves OpenRouter, exact-five determinism, full references, and preset isolation", async () => {
@@ -446,9 +323,10 @@ describe("confirmed V3 compiler defect regressions", () => {
     for (const item of [...first.graph.features, ...first.graph.requirements, ...first.graph.contracts]) {
       for (const name of DOCUMENT_NAMES) expect(first.documents[name], `${name}: ${item.id}`).toContain(item.id)
     }
-    for (const marker of ["openai/gpt-4o-transcribe", "google/gemini-2.5-flash-lite", "temperature: 0.0", "reasoning: { effort: \"none\" }", "batch final-transcription contract"]) {
-      expect(Object.values(first.documents).join("\n")).toContain(marker)
-    }
+    const compiled = Object.values(first.documents).join("\n")
+    expect(compiled).not.toContain("openai/gpt-4o-transcribe")
+    expect(compiled).not.toContain("google/gemini-2.5-flash-lite")
+    expect(compiled).not.toContain("openrouter.ai")
 
     for (const presetId of ["tauri2-rust-typescript-desktop", "astro-web", "android-kotlin-compose"] as const) {
       const packet = await compilePacket(exportedVoiceV3Blueprint, presetId)

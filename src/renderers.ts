@@ -13,19 +13,6 @@ function section(title: string, body: string): string {
   return `## ${title}\n\n${body.trim()}`
 }
 
-function transcriptionRoutingSection(graph: ProjectGraph, title: string): string[] {
-  const routing = graph.blueprint.transcriptionRouting
-  if (!routing) return []
-  return [section(title, bullets([
-    `${routing.liveProviderName} WebSocket streaming is exclusively for live microphone audio and never accepts imported audio files.`,
-    `Imported audio-file transcription uses the configured batch/file-capable provider, ${routing.importedProviderName}.`,
-    "Supported imported formats are wav, mp3, flac, m4a, ogg, webm, and aac.",
-    "Files exceeding the locally locked maximum duration of 60 seconds or payload of 25 MB (25,000,000 bytes) are rejected locally with clear user guidance before any paid upload and create no provider request.",
-    `Do not route imported audio files through the live ${routing.liveProviderName} microphone stream.`,
-    "Do not split, chunk, transcode, or stitch long files unless a future preset explicitly defines that behavior.",
-  ]))]
-}
-
 type TraceDetailLevel = "compact" | "full"
 
 function featureTrace(graph: ProjectGraph, detail: TraceDetailLevel): string {
@@ -137,7 +124,6 @@ function renderPRD(graph: ProjectGraph): string {
     section("Goals", bullets(blueprint.goals)),
     section("Non-Goals", bullets(blueprint.nonGoals)),
     section("Primary User Journeys", journeys),
-    ...transcriptionRoutingSection(graph, "Audio Transcription Routing"),
     ...astroRoutesSection(graph),
     ...contentSeedSection(graph),
     ...astroDesignSystemSection(graph),
@@ -155,7 +141,8 @@ function renderPRD(graph: ProjectGraph): string {
 }
 
 function renderARD(graph: ProjectGraph): string {
-  const ownerLines = graph.owners.map(owner => `${owner.id} — ${owner.name} owns ${owner.implementationFile}; focused test ${owner.focusedTestFile}; create phase ${owner.createPhaseId}; modify phases ${owner.modifyPhaseIds.join(", ") || "none"}`)
+  const foundationLine = `OWN-FOUNDATION — Foundation owns ${graph.foundationFiles.join(", ")}; focused test ${graph.phases[0]?.tasks[0]?.focusedTests[0] ?? "contract tests"}; create phase PHASE-01-FOUNDATION; modify phases none`
+  const ownerLines = [foundationLine, ...graph.owners.map(owner => `${owner.id} — ${owner.name} owns ${owner.implementationFile}; focused test ${owner.focusedTestFile}; create phase ${owner.createPhaseId}; modify phases ${owner.modifyPhaseIds.join(", ") || "none"}`)]
   const journeys = graph.blueprint.primaryUserJourneys.map(journey => `${journey.name}: ${journey.steps.join(" → ")} → ${journey.outcome}`)
   const lifecycle = graph.contracts.filter(contract => contract.kind === "lifecycle").map(contract => `${contract.id}: ${contract.decision} Cleanup: ${contract.recovery.join("; ")}`)
   const integrations = graph.contracts.filter(contract => contract.kind === "integration").map(contract => `${contract.id}: ${contract.decision} Failure: ${contract.failureBehavior} Recovery: ${contract.recovery.join("; ")}`)
@@ -169,7 +156,6 @@ function renderARD(graph: ProjectGraph): string {
     section("Runtime Boundaries", bullets(graph.features.map(feature => `${feature.id} — ${feature.name}: ${feature.behavior}`))),
     section("Component and Ownership Map", bullets(ownerLines)),
     section("Runtime Flows", numbered(journeys)),
-    ...transcriptionRoutingSection(graph, "Audio Transcription Routing"),
     section("State Ownership", bullets([
       `${graph.persistence.decision}`,
       `Settings placement: ${graph.persistence.settingsPlacement}`,
@@ -211,9 +197,11 @@ function renderTRD(graph: ProjectGraph): string {
     ...contentSeedSection(graph),
     ...astroDesignSystemSection(graph),
     section("Project Layout", bullets([...new Set(graph.phases.flatMap(phase => phase.tasks.flatMap(task => task.filesToCreate)))])),
-    section("Owner-to-File and Focused-Test Map", bullets(graph.owners.map(owner => `${owner.id} — ${owner.name} — implementation ${owner.implementationFile} — focused test ${owner.focusedTestFile} — command ${owner.focusedTestCommand}`))),
+    section("Owner-to-File and Focused-Test Map", bullets([
+      `OWN-FOUNDATION — Foundation — implementation ${graph.foundationFiles[0] ?? "Package.swift"} — focused test ${graph.phases[0]?.tasks[0]?.focusedTests[0] ?? "ContractTests.swift"} — command ${graph.validationCommands[0] ?? "swift test"}`,
+      ...graph.owners.map(owner => `${owner.id} — ${owner.name} — implementation ${owner.implementationFile} — focused test ${owner.focusedTestFile} — command ${owner.focusedTestCommand}`),
+    ])),
     section("Interface Contracts", contractsOfKind(graph, "interface")),
-    ...transcriptionRoutingSection(graph, "Audio Transcription Routing Contract"),
     section("Data Contracts", contractsOfKind(graph, "data")),
     section("External Integration Contracts", `${bullets([graph.integrationBoundary])}\n\n${contractsOfKind(graph, "integration")}`),
     section("Lifecycle Contracts", contractsOfKind(graph, "lifecycle")),
@@ -238,7 +226,7 @@ function renderTask(task: GraphTask): string {
     `### ${task.id} — ${task.title}`,
     "",
     `- Dependencies: ${task.dependencies.join(", ") || "none"}`,
-    `- Owners: ${task.ownerIds.join(", ") || "foundation"}`,
+    `- Owners: ${task.ownerIds.length ? task.ownerIds.join(", ") : "OWN-FOUNDATION"}`,
     `- Features: ${task.featureIds.join(", ") || "none"}`,
     `- Requirements: ${task.requirementIds.join(", ") || "none"}`,
     `- Contracts: ${task.contractIds.join(", ") || "foundation identity and stack contract"}`,
@@ -266,7 +254,6 @@ function renderTASKS(graph: ProjectGraph): string {
     `# Implementation Tasks — ${graph.blueprint.projectName}`,
     section("Document Purpose", "Define dependency-safe phases, exact create and modify ownership, focused tests, acceptance criteria, complete task prompts, and root-level proof commands."),
     section("Working Rules", bullets(["Execute phases and tasks in listed order.", "Create every listed file before a later task modifies it.", "Use only the locked preset stack and exact owner map.", "Write the focused test before each non-trivial implementation and observe its intended failure.", "Stop on the first failing validation command and fix the root cause.", "Implement full contract decision, details, failure, and recovery prose from TRD.md for every listed contract ID."])),
-    ...transcriptionRoutingSection(graph, "Audio Transcription Routing Tasks"),
     ...astroRoutesSection(graph),
     ...contentSeedSection(graph),
     phases,
@@ -288,15 +275,25 @@ function renderAGENTS(graph: ProjectGraph): string {
     section("Forbidden Substitutions", bullets(graph.forbiddenTechnologies.map(item => `Forbidden: ${item}`))),
     section("Locked Identity and Output", bullets([`Identity: ${graph.identity.bundleId}`, `Preset: ${graph.presetId}`, `Runtime mode: ${graph.runtimeMode}`, `Artifact: ${graph.outputArtifact}`, `Artifact path: ${graph.artifactPath}`])),
     section("Installation Rule", graph.installationDecision),
-    section("Execution Rules", bullets(["Do not reinterpret the idea, add scope, switch stacks, rename IDs, or invent owners.", "Use the exact owner, implementation file, focused test, feature, contract, task, and phase mappings.", "Create files only in the task that first owns them and modify them only after creation.", "Implement failure, denied, cancellation, cleanup, persistence, credential, permission, lifecycle, and recovery paths before declaring a feature complete.", "Keep secrets out of source, logs, tests, fixtures, examples, commands, and generated artifacts.", "Preserve unrelated user work and stop if an undeclared conflict prevents the exact task.", "For Astro static sites with content collections, never move catalog data into browser-side record storage."])),
+    section("Execution Rules", bullets([
+      "Do not reinterpret the idea, add scope, switch stacks, rename IDs, or invent owners.",
+      "Use the exact owner, implementation file, focused test, feature, contract, task, and phase mappings.",
+      "Create files only in the task that first owns them and modify them only after creation.",
+      "Implement failure, denied, cancellation, cleanup, persistence, credential, permission, lifecycle, and recovery paths before declaring a feature complete.",
+      "Keep secrets out of source, logs, tests, fixtures, examples, commands, and generated artifacts.",
+      "Preserve unrelated user work and stop if an undeclared conflict prevents the exact task.",
+      ...(graph.presetId === "astro-web" ? ["For Astro static sites with content collections, never move catalog data into browser-side record storage."] : []),
+    ])),
     section("Runtime Architecture Rules", bullets(graph.runtimeArchitecture)),
     section("Integration Boundary", graph.integrationBoundary),
-    ...transcriptionRoutingSection(graph, "Audio Transcription Routing Prohibitions"),
     ...astroRoutesSection(graph),
     section("Recovery Rules", bullets(graph.recoveryRules)),
     section("Lifecycle Rules", bullets(graph.lifecycleRules)),
     section("Accessibility Rules", bullets(graph.accessibilityRules)),
-    section("Owner Map", bullets(graph.owners.map(owner => `${owner.id} — ${owner.name} — ${owner.implementationFile} — ${owner.focusedTestFile} — create ${owner.createPhaseId} — modify ${owner.modifyPhaseIds.join(", ") || "none"}`))),
+    section("Owner Map", bullets([
+      `OWN-FOUNDATION — Foundation — ${graph.foundationFiles.join("; ")} — ${graph.phases[0]?.tasks[0]?.focusedTests[0] ?? "contract tests"} — create PHASE-01-FOUNDATION — modify none`,
+      ...graph.owners.map(owner => `${owner.id} — ${owner.name} — ${owner.implementationFile} — ${owner.focusedTestFile} — create ${owner.createPhaseId} — modify ${owner.modifyPhaseIds.join(", ") || "none"}`),
+    ])),
     section("Required Phase Order", numbered(phaseOrder)),
     section("Validation Gates", numbered(graph.validationCommands.map(command => `Run \`${command}\` and require exit status zero.`))),
     section("Stop Conditions", bullets(["Stop when a requested implementation decision is absent from all five documents.", "Stop when an ID, owner, file, focused test, dependency, or command conflicts across documents.", "Stop when a task would modify a file before its create task.", "Stop when a forbidden technology or undeclared remote service is required.", "Stop when a relevant test, build, package, signing, install, or launch check fails after root-cause diagnosis.", "Report the exact blocker without claiming completion."])),

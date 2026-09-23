@@ -272,6 +272,9 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "Provide product meaning only: users, outcomes, triggers, behavior, failure outcomes, acceptance signals, data meaning, service meaning, platform needs, quality, and constraints.",
     "Do not provide IDs, file paths, test paths, commands, framework APIs, package names, module ownership, architecture layers, task phases, credential storage mechanics, build instructions, signing instructions, Markdown, or final documents.",
     "Do not choose or recommend a technology stack. The selected local preset is authoritative.",
+    "Define features strictly as functional capabilities and system interactions (e.g. text editing, file persistence, search, settings). Do not create features for pure visual themes, branding, or aesthetic styling; place visual styling requirements under qualityRequirements or productConstraints.",
+    "Every feature acceptance signal must describe a concrete, mechanically verifiable condition (such as state transitions, UI element visibility, disk persistence, error code handling, or measured response under an explicit numerical threshold) that automated unit or integration tests can assert without human subjective impression. Never use subjective or hyperbolic phrases such as 'feels smooth', 'zero latency', 'instantaneous', or 'aesthetic appeal'.",
+    "When a behavior, failure outcome, or acceptance signal depends on a default, interval, or limit, state its concrete value (for example a font family and point size, or a duration in milliseconds). Never write 'documented defaults' or an interval without its value.",
     "Use no more than twelve features and no more than eight values in each prose list. Include every applicable platform need from the closed enum.",
     `Software idea: ${input.idea.trim()}`,
   ].join("\n\n")

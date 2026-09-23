@@ -52,7 +52,8 @@ Most idea-to-spec tools either dump vague prose or ask the model to invent file 
 
 | Layer | Who owns it |
 | --- | --- |
-| **Product meaning** | One DeepSeek V4 request (Pro or Flash) |
+| **Boundary decisions** | Jev viability, preset-fit, platform-needs, and stack-leakage judgments |
+| **Product meaning** | One DeepSeek request (Pro or Flash) after intake passes |
 | **IDs, graph, files, phases, contracts** | Deterministic local TypeScript compiler |
 | **Five markdown documents** | Locked renderers — preview bytes equal export bytes |
 | **Gate** | Mechanical + agent-readiness audits before export |
@@ -70,6 +71,7 @@ You describe the product once. Cascade returns exactly **`PRD.md`**, **`ARD.md`*
 | **Astro web quality** | Content collections, routes, design tokens, seed guidance for static portfolios |
 | **Exact-five export** | Atomic write of five canonical files; SHA-256 hash equality with preview |
 | **Safe provider boundary** | Rust HTTPS client; memory-only API key; no retry, no repair pass, no persisted secrets |
+| **Jev guardrails** | Rejects non-product intake before DeepSeek, warns on preset conflict, heals missing platform needs, and blocks foreign-stack leakage |
 | **Validation ledger** | Local proof of compiler gates, graph audits, and export eligibility in the UI |
 
 ## Privacy
@@ -77,7 +79,7 @@ You describe the product once. Cascade returns exactly **`PRD.md`**, **`ARD.md`*
 Cascade is local-first by design:
 
 - **No accounts**, cloud backend, telemetry, analytics, or settings sync.
-- Your **DeepSeek API key stays in memory** for the request, then is cleared after a Gate Clean export.
+- Your separate **DeepSeek and TypeSafe Jev API keys stay in memory** for their requests, then are cleared after Gate Clean.
 - Provider failures surface **safe, allowlisted diagnostics** — never raw response bodies or prompts in the UI.
 - Exported markdown is written only to the folder you choose.
 - The compiler and audits run **entirely on your Mac** after the single provider response.
@@ -120,11 +122,11 @@ open "/Applications/NODAYSIDLE Cascade V3.app"
 
 1. Launch **NODAYSIDLE Cascade V3**.
 2. Choose a **technology preset** (for example, Astro Web or native macOS SwiftUI).
-3. Select **DeepSeek V4 Pro** or **DeepSeek V4 Flash**.
+3. Select **DeepSeek V4 Pro** or **DeepSeek Flash**.
 4. Paste your **software idea** — product summary, users, features, data, and constraints.
-5. Enter your **DeepSeek API key** (memory-only; not saved to disk).
+5. Enter separate **DeepSeek** and **TypeSafe Jev** API keys (memory-only; not saved to disk).
 6. Click **Generate** and wait for the pipeline:
-   - Provider → blueprint validation → local normalization → preset compiler → audits → rendering
+   - Jev preflight → provider → blueprint validation → Jev integrity → local normalization → preset compiler → audits → rendering
 7. When status is **Gate Clean**, inspect the five preview tabs and **Export** to a folder.
 
 Hand the exported folder to your coding agent. Read **`AGENTS.md` first**, then follow **`TASKS.md`** in phase order.
@@ -166,9 +168,11 @@ Each preset owns runtime APIs, file layouts, ownership mappings, persistence, in
 ## Architecture
 
 ```text
-idea + locked preset + model + memory-only key
-  → one Rust DeepSeek Responses request
+idea + locked preset + model + two memory-only keys
+  → Jev viability + preset-fit preflight
+  → one Rust DeepSeek Responses request when viable
   → strict JSON schema validation
+  → Jev platform-needs healing + stack-leakage integrity gate
   → deterministic local normalization
   → preset compiler (graph, phases, tasks)
   → mechanical graph audit
@@ -186,9 +190,10 @@ idea + locked preset + model + memory-only key
 - `src/renderers.ts` — immutable markdown bytes
 - `src/audit.ts` — mechanical and agent-readiness gates
 - `src-tauri/src/provider.rs` — HTTPS boundary, cancellation, safe errors
+- `src/jev.ts` + `src-tauri/src/jev.rs` — closed Jev decisions and fixed TypeSafe Decisions boundary
 - `src-tauri/src/export.rs` — hash revalidation and atomic export
 
-Design notes and verification evidence live in [`docs/`](docs/).
+Design notes live in [`docs/`](docs/).
 
 ## Development
 
@@ -225,7 +230,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 ## Status
 
-Active development. The compiler, five-document render path, provider boundary, and Astro web preset improvements (content collections, routes, agent-ready task graphs) are implemented and covered by automated tests. See [`docs/evidence/verification.md`](docs/evidence/verification.md) for captured gate results.
+Active development. The compiler, five-document render path, provider boundary, and Astro web preset improvements (content collections, routes, agent-ready task graphs) are implemented and covered by automated tests.
 
 ## License
 

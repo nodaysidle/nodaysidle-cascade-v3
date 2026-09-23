@@ -1,8 +1,6 @@
 import {
-  DEEPGRAM_LIVE_MICROPHONE_CONTRACT,
   DOCUMENT_NAMES,
   TEMPORARY_AUDIO_LIFECYCLE,
-  deepgramIntegrationValues,
   temporaryAudioLifecycleContractValues,
   type ContractKind,
   type DocumentName,
@@ -46,8 +44,6 @@ const ledgerRules = [
   ["trace.missing-reference", "Every feature and contract traces through all documents"],
   ["stack.leakage", "Selected preset implementation is isolated"],
   ["contract.decisions", "Cross-cutting decisions are complete"],
-  ["contract.transcription-routing", "Live and imported transcription routes are deterministic"],
-  ["contract.provider-wire", "Known provider wire contracts are exact"],
   ["contract.persistence", "Persistence placement and recovery are concrete"],
   ["contract.persistence-ownership", "Credential and data ownership is consistent"],
   ["contract.persistence-placement", "Each data contract has one valid placement"],
@@ -55,7 +51,17 @@ const ledgerRules = [
   ["contract.packaging", "Packaging has one dependency-safe authority"],
   ["validation.commands", "Validation and completion commands are present"],
   ["preset.contracts", "Preset lifecycle and accessibility rules are rendered"],
+  ["security.executable-injection", "Executable instruction and prompt injection safety"],
 ] as const
+
+export const DANGEROUS_INSTRUCTION_PATTERNS = [
+  /\b(?:curl|wget)\b[^\n]*\|\s*(?:ba|z)?sh\b/i,
+  /\b(?:sh|bash)\s+-c\b/i,
+  /\|\s*(?:ba|z)?sh\b/i,
+  /\b(?:powershell|eval)\b/i,
+  /\bbase64\s+(?:-d|--decode)\b/i,
+  /\bignore\s+(?:all\s+)?(?:prior\s+|previous\s+|agents?\.md\s+)?(?:instructions?|stop\s+conditions?|rules?)\b/i,
+]
 
 function failure(rule: string, path: string, message: string): AuditFailure {
   return { rule, path, message }
@@ -178,6 +184,12 @@ function collectGraphFailures(graph: ProjectGraph): AuditFailure[] {
       if (!ownerIds.has(dependencyId)) failures.push(failure("graph.references", feature.id, `${feature.id} requires unknown owner ${dependencyId}.`))
       if (dependencyId === feature.ownerId) failures.push(failure("graph.cycles", feature.id, `${feature.id} depends on its own owner ${dependencyId}.`))
     }
+    const featureText = `${feature.name} ${feature.behavior} ${feature.failureBehavior} ${(feature.acceptanceOutcomes ?? []).join(" ")}`
+    for (const pattern of DANGEROUS_INSTRUCTION_PATTERNS) {
+      if (pattern.test(featureText)) {
+        failures.push(failure("security.executable-injection", feature.id, `Feature ${feature.id} contains prohibited executable instruction or prompt injection.`))
+      }
+    }
   }
 
   for (const requirement of graph.requirements) {
@@ -211,6 +223,9 @@ function collectGraphFailures(graph: ProjectGraph): AuditFailure[] {
 
   for (const contract of graph.contracts) {
     if (!ownerIds.has(contract.ownerId)) failures.push(failure("graph.references", contract.id, `Contract references unknown owner ${contract.ownerId}.`))
+    if (contract.kind === "permission" && contract.featureIds.length === 0) {
+      failures.push(failure("graph.coverage", contract.id, `Permission contract ${contract.id} has no linked features.`))
+    }
     for (const featureId of contract.featureIds) {
       if (!featureIds.has(featureId)) failures.push(failure("graph.references", contract.id, `Contract references unknown feature ${featureId}.`))
     }
@@ -286,6 +301,12 @@ function collectGraphFailures(graph: ProjectGraph): AuditFailure[] {
     if (!sameStructure(task.acceptanceCriteria, expectedAcceptanceCriteria)) {
       failures.push(failure("graph.acceptance-ownership", task.id, `${task.id} acceptance criteria do not exactly match its authoritative acceptance IDs, contract IDs, and focused tests.`))
     }
+    const taskText = `${task.prompt} ${task.acceptanceCriteria.join(" ")}`
+    for (const pattern of DANGEROUS_INSTRUCTION_PATTERNS) {
+      if (pattern.test(taskText)) {
+        failures.push(failure("security.executable-injection", task.id, `Task ${task.id} contains prohibited executable instruction or prompt injection.`))
+      }
+    }
   }
 
   const created = new Map<string, number>()
@@ -352,40 +373,14 @@ function collectGraphFailures(graph: ProjectGraph): AuditFailure[] {
   if (graph.blueprint.externalServices.some(service => service.credentialRequirement !== "none")) requiredKinds.push("credential")
   if (graph.blueprint.permissionNeeds.length) requiredKinds.push("permission")
   for (const kind of requiredKinds) if (!kinds.has(kind)) failures.push(failure("contract.decisions", kind, `Required ${kind} contract is missing.`))
-
-  const routing = graph.blueprint.transcriptionRouting
-  if (routing) {
-    const liveFeatureIds = graph.features.filter(feature => routing.liveFeatureNames.includes(feature.name)).map(feature => feature.id)
-    const importedFeatureIds = graph.features.filter(feature => routing.importedFeatureNames.includes(feature.name)).map(feature => feature.id)
-    const liveContract = graph.contracts.find(item => item.kind === "integration" && item.name.toLowerCase().includes(routing.liveProviderName.toLowerCase()) && /\b(?:stream(?:ing)?|WebSocket)\b/i.test(contractText(graph, item.id)))
-    const importedContract = graph.contracts.find(item => item.kind === "integration" && item.name.toLowerCase().includes(routing.importedProviderName.toLowerCase()) && /\btranscription\b/i.test(item.name) && /\b(?:batch|finalized audio|audio\/transcriptions|file-capable)\b/i.test(contractText(graph, item.id)))
-    if (!liveFeatureIds.length || !importedFeatureIds.length || !liveContract || !importedContract
-      || liveFeatureIds.some(id => !liveContract.featureIds.includes(id))
-      || importedFeatureIds.some(id => liveContract.featureIds.includes(id))
-      || importedFeatureIds.some(id => !importedContract.featureIds.includes(id))
-      || liveFeatureIds.some(id => importedContract.featureIds.includes(id))) {
-      failures.push(failure("contract.transcription-routing", "graph", "Live microphone and imported-audio features must resolve to separate streaming and batch integration contracts."))
+  const concreteValue = /\b\d+(?:\.\d+)?\s*(?:ms|milliseconds?|seconds?|minutes?)\b/i
+  for (const feature of graph.features) {
+    const text = [feature.behavior, ...feature.inputs, ...feature.outputs, feature.failureBehavior, ...feature.acceptanceOutcomes].join(" ")
+    if (/\bdocumented defaults?\b/i.test(text) || (/\binterval elapses\b/i.test(text) && !concreteValue.test(text))) {
+      failures.push(failure("contract.decisions", feature.id, `${feature.id} refers to a default or interval that the blueprint never states.`))
     }
-
-    const routingText = [
-      ...graph.features.map(feature => feature.behavior),
-      ...graph.contracts.flatMap(item => [item.decision, ...item.details, item.failureBehavior, ...item.recovery]),
-      ...graph.phases.flatMap(phase => phase.tasks.flatMap(task => [...task.acceptanceCriteria, task.prompt, ...task.validationCommands])),
-    ].join("\n")
-    const missing = missingMarkers(routingText, [
-      `${routing.liveProviderName} WebSocket streaming is exclusively for live microphone audio`,
-      `Imported audio-file transcription uses the configured batch/file-capable provider, ${routing.importedProviderName}`,
-      "wav, mp3, flac, m4a, ogg, webm, and aac",
-      "60 seconds",
-      "25 MB (25,000,000 bytes)",
-      "before any paid upload",
-      "create no provider request",
-      "release local inspection resources",
-      "Do not split, chunk, transcode, or stitch",
-    ])
-    if (missing.length) failures.push(failure("contract.transcription-routing", "graph", `Transcription routing and local preflight are incomplete: ${missing.join(", ")}.`))
-    if (unresolvedDecisionPattern.test(routingText)) failures.push(failure("content.unresolved-decision", "graph", "The project graph contains an unresolved implementation alternative."))
   }
+
 
   const nativeMac = graph.presetId.startsWith("native-macos")
   const credentialContracts = graph.contracts.filter(contract => contract.kind === "credential" || (["data", "persistence"] as const).includes(contract.kind as "data" | "persistence") && credentialLike(`${contract.id} ${contract.name}`))
@@ -416,28 +411,17 @@ function collectGraphFailures(graph: ProjectGraph): AuditFailure[] {
     if (records && !settings && (!/\bSQLite\b/.test(placement) || /\bUserDefaults\b/.test(placement))) {
       failures.push(failure("contract.persistence-placement", item.id, `${item.id} must place history, modes, and vocabulary only in SQLite.`))
     }
-  }
-
-  if (nativeMac && graph.blueprint.externalServices.some(service => /\bopenrouter\b/i.test(`${service.name} ${service.purpose}`))) {
-    const transcription = contractText(graph, "CON-INTEGRATION-OPENROUTER-TRANSCRIPTION")
-    const refinement = contractText(graph, "CON-INTEGRATION-OPENROUTER-REFINEMENT")
-    const transcriptionMissing = missingMarkers(transcription, ["POST https://openrouter.ai/api/v1/audio/transcriptions", "openai/gpt-4o-transcribe", "input_audio", "usage.cost", "URLSessionTask.cancel()", "Retry-After", "Imported audio-file transcription uses the configured batch/file-capable provider, OpenRouter", "wav, mp3, flac, m4a, ogg, webm, and aac", "before reading audio bytes, base64 encoding, URLRequest construction, or URLSessionTask creation", "60 seconds", "25 MB (25,000,000 bytes)", "before any paid upload", "create no provider request", "release local inspection resources", "Do not split, chunk, transcode, or stitch"])
-    const refinementMissing = missingMarkers(refinement, ["POST https://openrouter.ai/api/v1/chat/completions", "google/gemini-2.5-flash-lite", "temperature: 0.0", "reasoning: { effort: \"none\" }", "stream: false", "never invent speech", "usage.cost"])
-    const openRouterCredentials = graph.contracts.filter(contract => contract.id.startsWith("CON-CREDENTIAL-OPENROUTER"))
-    if (transcriptionMissing.length || transcription.includes("URLSessionWebSocketTask") || transcription.includes("streamed audio")) failures.push(failure("contract.provider-wire", "OpenRouter transcription", `OpenRouter transcription contract is incomplete or describes a batch request as live: ${transcriptionMissing.join(", ") || "forbidden live transport"}.`))
-    if (refinementMissing.length) failures.push(failure("contract.provider-wire", "OpenRouter refinement", `OpenRouter refinement contract is incomplete: ${refinementMissing.join(", ")}.`))
-    if (openRouterCredentials.length !== 1 || !openRouterCredentials[0]?.details.includes("Keychain account: openrouter-api-key")) failures.push(failure("contract.provider-wire", "OpenRouter credential", "Both OpenRouter roles must share exactly one deterministic Keychain account contract."))
-  }
-
-  if (nativeMac && graph.blueprint.externalServices.some(service => /\bdeepgram\b/i.test(`${service.name} ${service.purpose}`) && /\b(?:nova|streaming)\b/i.test(`${service.name} ${service.purpose}`))) {
-    const wire = graph.blueprint.deepgramLiveContract
-    const audio = graph.blueprint.temporaryAudioLifecycle
-    const deepgram = graph.contracts.find(contract => contract.id === wire?.contractId)
-    const expected = deepgramIntegrationValues(wire ?? DEEPGRAM_LIVE_MICROPHONE_CONTRACT, audio ?? TEMPORARY_AUDIO_LIFECYCLE)
-    if (!sameStructure(wire, DEEPGRAM_LIVE_MICROPHONE_CONTRACT) || !sameContractValues(deepgram, expected)) {
-      failures.push(failure("contract.provider-wire", "Deepgram Nova streaming", "Deepgram Nova streaming contract is incomplete."))
+    if (!item.details.some(detail => detail.startsWith("Placement:"))) continue
+    const decision = item.decision
+    const decisionSqlite = /\bSQLite\b/.test(decision)
+    const placementSqlite = /\bSQLite\b/.test(placement)
+    const placementMemory = /not written to disk/i.test(placement)
+    const decisionMemory = /not written to disk/i.test(decision)
+    if (decisionSqlite !== placementSqlite || (placementMemory && !decisionMemory) || (!placementMemory && decisionMemory)) {
+      failures.push(failure("contract.persistence-placement", item.id, `${item.id} persistence decision names a different store than its placement.`))
     }
   }
+
 
   if (nativeMac && graph.blueprint.temporaryAudioLifecycle) {
     const audio = graph.blueprint.temporaryAudioLifecycle
@@ -580,25 +564,6 @@ export function auditPacket(
     else failures.push(...markdownFailures(name, markdown))
   }
 
-  if (graph.blueprint.transcriptionRouting) {
-    const routing = graph.blueprint.transcriptionRouting
-    const markers = [
-      `${routing.liveProviderName} WebSocket streaming is exclusively for live microphone audio`,
-      `Imported audio-file transcription uses the configured batch/file-capable provider, ${routing.importedProviderName}`,
-      "wav, mp3, flac, m4a, ogg, webm, and aac",
-      "60 seconds",
-      "25 MB (25,000,000 bytes)",
-      "before any paid upload",
-      "create no provider request",
-      "release local inspection resources",
-      "Do not split, chunk, transcode, or stitch",
-    ]
-    if (graph.presetId.startsWith("native-macos")) markers.push("before reading audio bytes, base64 encoding, URLRequest construction, or URLSessionTask creation")
-    for (const name of ["TRD.md", "TASKS.md"] as const) {
-      const missing = missingMarkers(documents[name] ?? "", markers)
-      if (missing.length) failures.push(failure("contract.transcription-routing", name, `${name} omits transcription routing or preflight decisions: ${missing.join(", ")}.`))
-    }
-  }
 
   for (const item of [...graph.features, ...graph.acceptance, ...graph.requirements, ...graph.contracts]) {
     for (const name of DOCUMENT_NAMES) {
@@ -621,6 +586,11 @@ export function auditPacket(
     const markdown = documents[name] ?? ""
     if (graph.presetId.startsWith("native-macos") && contradictsTemporaryAudioLifecycle(markdown)) {
       failures.push(failure("contract.persistence", name, `${name} contradicts the temporary-audio retry and deletion boundary.`))
+    }
+    for (const pattern of DANGEROUS_INSTRUCTION_PATTERNS) {
+      if (pattern.test(markdown)) {
+        failures.push(failure("security.executable-injection", name, `${name} contains prohibited executable instruction or prompt injection.`))
+      }
     }
   }
   for (const name of placementDocuments) {
@@ -661,7 +631,7 @@ export function auditPacket(
   if (!graph.validationCommands.every(command => documents["TRD.md"]?.includes(command) && documents["TASKS.md"]?.includes(command) && documents["AGENTS.md"]?.includes(command))) {
     failures.push(failure("validation.commands", "packet", "One or more final validation commands are missing from TRD.md, TASKS.md, or AGENTS.md."))
   }
-  for (const rule of [...preset.runtimeArchitecture, preset.integrationBoundary, ...preset.recoveryRules, ...preset.lifecycleRules, ...preset.accessibilityRules, preset.installationDecision(graph.identity)]) {
+  for (const rule of [...preset.runtimeArchitecture, graph.integrationBoundary, ...preset.recoveryRules, ...preset.lifecycleRules, ...preset.accessibilityRules, preset.installationDecision(graph.identity)]) {
     if (!["ARD.md", "TRD.md", "AGENTS.md"].every(name => documents[name]?.includes(rule))) {
       failures.push(failure("preset.contracts", preset.id, "A preset lifecycle or accessibility rule is missing from the downstream contract."))
     }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
-import { cancelProviderRequest, exportPacketTo, invokeBlueprintProvider, type CommandInvoker } from "../src/bridge"
+import { cancelProviderRequest, exportPacketTo, invokeBlueprintProvider, invokeJevDecision, type CommandInvoker } from "../src/bridge"
 import { compilePacket, packetForExport } from "../src/compiler"
+import { buildJevPreflightRequest } from "../src/jev"
 import { DEFAULT_API_URL, type ProviderRequest } from "../src/pipeline"
 import { providerJsonSchema } from "../src/schema"
 import { fileOrganizerBlueprint } from "./fixtures/blueprints"
@@ -27,6 +28,57 @@ describe("Tauri IPC bridge", () => {
 
     await expect(invokeBlueprintProvider(request, invoke)).resolves.toBe('{"productName":"Harbor Sort"}')
     expect(calls).toEqual([{ command: "deepseek_complete", args: { request } }])
+  })
+
+  it("adapts the internal Jev request to the TypeSafe decisions command once", async () => {
+    const jevRequest = buildJevPreflightRequest({
+      requestId: "request-bridge-jev",
+      apiKey: "memory-only-jev-key",
+      idea: "Build a native file organizer with preview and exact undo.",
+      presetId: "native-macos-swiftui-desktop",
+    })
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = []
+    const invoke: CommandInvoker = async <T>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args })
+      return {
+        model: "~typesafe/jev-latest",
+        answers: {
+          viability: { type: "noul", noul: 0.91 },
+          "preset-selection": {
+            type: "choice",
+            choice: "native-macos-swiftui-desktop",
+            confidence: 0.88,
+            probabilities: { "native-macos-swiftui-desktop": 0.88 },
+          },
+        },
+      } as T
+    }
+
+    await expect(invokeJevDecision(jevRequest, invoke)).resolves.toBe(JSON.stringify({
+      outcomes: [
+        { kind: "boolean", id: "viability", pTrue: 0.91 },
+        { kind: "choice", id: "preset-selection", choice: "native-macos-swiftui-desktop", confidence: 0.88 },
+      ],
+    }))
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.command).toBe("jev_decide")
+    const commandRequest = calls[0]?.args?.request as Record<string, unknown>
+    expect(commandRequest).toEqual({
+      requestId: jevRequest.requestId,
+      apiKey: jevRequest.apiKey,
+      state: jevRequest.state,
+      questions: {
+        viability: { type: "noul", instructions: jevRequest.nouls[0]?.question },
+        "preset-selection": {
+          type: "choice",
+          instructions: jevRequest.nouls[1]?.question,
+          criteria: Object.fromEntries(jevRequest.nouls[1]?.kind === "choice"
+            ? jevRequest.nouls[1].options.map(option => [option, null])
+            : []),
+        },
+      },
+    })
+    expect(commandRequest).not.toHaveProperty("nouls")
   })
 
   it("cancels only the active request identifier", async () => {

@@ -27,6 +27,7 @@ const input = {
   presetId: "native-macos-swiftui-desktop" as const,
   model: "deepseek-v4-pro" as const,
   apiUrl: DEFAULT_API_URL,
+  jevApiKey: "memory-only-jev-key",
   apiKey: "memory-only-test-key",
 }
 
@@ -42,7 +43,7 @@ function sequenceProvider(responses: Array<string | ProviderFailure>): { provide
 }
 
 describe("one-request provider-to-packet pipeline", () => {
-  it.each(["deepseek-v4-pro", "deepseek-v4-flash"] as const)("uses the compact non-reasoning contract exactly once for %s", async model => {
+  it.each(["deepseek-flash", "deepseek-v4-pro", "deepseek-v4-flash"] as const)("uses the compact non-reasoning contract exactly once for %s", async model => {
     const { provider, requests } = sequenceProvider([JSON.stringify(fileOrganizerBlueprint)])
     const stages: string[] = []
     const result = await generatePacket({ ...input, model, onProgress: stage => stages.push(stage) }, provider)
@@ -240,6 +241,7 @@ describe("recoverable UI state", () => {
       })
       expect(state.form).toEqual(formBefore)
       expect(state.form.apiKey).toBe(input.apiKey)
+      expect(state.form.jevApiKey).toBe(input.jevApiKey)
       expect(statusActionLabel(state)).toBe("Retry")
       expect(canExport(state)).toBe(false)
     }
@@ -287,6 +289,8 @@ describe("recoverable UI state", () => {
     state = reduceAppState(state, { type: "progressed", stage: "local-normalization" })
     expect(state.status).toBe("generating")
     state = reduceAppState(state, { type: "cancel-requested" })
+    expect(state.status).toBe("cancelling")
+    state = reduceAppState(state, { type: "progressed", stage: "jev-integrity" })
     expect(state.status).toBe("cancelling")
     state = reduceAppState(state, { type: "generation-succeeded", packet })
     expect(state.status).toBe("gate-clean")

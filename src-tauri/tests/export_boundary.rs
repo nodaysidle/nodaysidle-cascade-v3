@@ -84,7 +84,7 @@ fn rejects_missing_extra_empty_reordered_and_hash_mismatch_packets() {
 fn atomically_writes_exactly_five_byte_identical_files() {
     let root = tempfile::tempdir().unwrap();
     let destination = write_packet_atomic(root.path(), "harbor-sort", &files()).unwrap();
-    assert_eq!(destination, root.path().join("harbor-sort"));
+    assert_eq!(destination, root.path().canonicalize().unwrap().join("harbor-sort"));
 
     let mut names: Vec<_> = fs::read_dir(&destination)
         .unwrap()
@@ -129,4 +129,13 @@ fn rejects_collision_traversal_and_invalid_packets_without_partial_staging() {
         .file_name()
         .to_string_lossy()
         .contains("staging")));
+}
+
+#[test]
+fn rejects_an_oversized_document_without_writing() {
+    let root = tempfile::tempdir().unwrap();
+    let mut packet = files();
+    packet[0].content = "x".repeat(2_000_001);
+    assert!(write_packet_atomic(root.path(), "too-large", &packet).is_err());
+    assert!(!root.path().join("too-large").exists());
 }

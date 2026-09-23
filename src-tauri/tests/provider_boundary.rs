@@ -1,6 +1,6 @@
 use nodaysidle_cascade_v3_lib::provider::{
     build_responses_body, classify_http_failure, extract_completed_text, validate_provider_url,
-    CancellationRegistry, ProviderFailure, ProviderRequestBody,
+    CancellationRegistry, ProviderFailure, ProviderRequestBody, MAX_PROVIDER_FIELD_BYTES,
 };
 use serde_json::json;
 
@@ -17,7 +17,7 @@ fn request(model: &str) -> ProviderRequestBody {
 
 #[test]
 fn builds_official_strict_responses_body_without_credentials() {
-    for model in ["deepseek-v4-pro", "deepseek-v4-flash"] {
+    for model in ["deepseek-flash", "deepseek-v4-pro", "deepseek-v4-flash"] {
         let body = build_responses_body(&request(model)).expect("valid model");
 
         assert_eq!(body["model"], model);
@@ -62,6 +62,16 @@ fn accepts_only_the_semantic_blueprint_output_ceiling() {
             "accepted {ceiling}"
         );
     }
+}
+
+#[test]
+fn rejects_provider_text_above_the_outbound_cap() {
+    let mut oversized = request("deepseek-v4-pro");
+    oversized.instructions = "a".repeat(MAX_PROVIDER_FIELD_BYTES + 1);
+    assert_eq!(
+        build_responses_body(&oversized).unwrap_err().classification,
+        "invalid-request"
+    );
 }
 
 #[test]
@@ -231,7 +241,8 @@ fn invalid_wrapper_includes_allowlisted_output_types_without_content() {
         ]
     });
 
-    let failure = extract_completed_text(&body.to_string()).expect_err("empty assistant content must fail");
+    let failure =
+        extract_completed_text(&body.to_string()).expect_err("empty assistant content must fail");
     assert_eq!(failure.kind, "invalid-wrapper");
     assert_eq!(
         failure.wrapper_output_types.as_deref(),

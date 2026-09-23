@@ -4,7 +4,9 @@ use std::{collections::HashMap, sync::Mutex};
 use tokio::sync::oneshot;
 use url::Url;
 
-const MODELS: [&str; 2] = ["deepseek-v4-pro", "deepseek-v4-flash"];
+const MODELS: [&str; 3] = ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro"];
+pub const MAX_PROVIDER_FIELD_BYTES: usize = 160 * 1024;
+pub const MAX_PROVIDER_BODY_BYTES: usize = 512 * 1024;
 const PROVIDER_CODES: [&str; 10] = [
     "invalid_request_error",
     "authentication_error",
@@ -115,12 +117,14 @@ pub fn build_responses_body(request: &ProviderRequestBody) -> Result<Value, Prov
         || request.reasoning_effort != "none"
         || request.instructions.trim().is_empty()
         || request.input.trim().is_empty()
+        || request.instructions.len() > MAX_PROVIDER_FIELD_BYTES
+        || request.input.len() > MAX_PROVIDER_FIELD_BYTES
         || !request.schema.is_object()
     {
         return Err(ProviderFailure::invalid_request());
     }
 
-    Ok(json!({
+    let body = json!({
         "model": request.model,
         "instructions": request.instructions,
         "input": request.input,
@@ -138,7 +142,12 @@ pub fn build_responses_body(request: &ProviderRequestBody) -> Result<Value, Prov
         },
         "stream": false,
         "store": false
-    }))
+    });
+    let encoded = serde_json::to_vec(&body).map_err(|_| ProviderFailure::invalid_request())?;
+    if encoded.len() > MAX_PROVIDER_BODY_BYTES {
+        return Err(ProviderFailure::invalid_request());
+    }
+    Ok(body)
 }
 
 pub fn validate_provider_url(value: &str) -> Result<Url, ProviderFailure> {
@@ -221,7 +230,9 @@ pub fn extract_completed_text(body: &str) -> Result<String, ProviderFailure> {
                 result = Some(text.to_owned());
             }
             Some(output_type) if ALLOWLISTED_OUTPUT_TYPES.contains(&output_type) => continue,
-            Some(_) | None => return Err(ProviderFailure::invalid_wrapper_with_types(&output_types)),
+            Some(_) | None => {
+                return Err(ProviderFailure::invalid_wrapper_with_types(&output_types))
+            }
         }
     }
 

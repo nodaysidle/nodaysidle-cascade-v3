@@ -11,4 +11,4 @@ Local Mac builds the DMG; CI only creates the GitHub Release with generated note
    Scripts/attach-release-asset.sh v3.1.0 ./path/to/NODAYSIDLE-Cascade-V3-3.1.0-aarch64.dmg
    ```
 
-Existing Latest release is **v3.0.0**. This automation does not republish or replace it; a new `v*` tag is required for a new release.
+Existing Latest release is **v3.0.1**. This automation does not republish or replace it; a new `v*` tag is required for a new release.

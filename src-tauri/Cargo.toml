@@ -1,6 +1,6 @@
 [package]
 name = "nodaysidle-cascade-v3"
-version = "3.0.0"
+version = "3.0.1"
 description = "Deterministic five-document execution-contract compiler"
 authors = ["NODAYSIDLE"]
 edition = "2021"

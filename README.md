@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nodaysidle/nodaysidle-cascade-v3/releases/download/v3.0.0/NODAYSIDLE-Cascade-V3-3.0.0-aarch64.dmg"><strong>Download Apple Silicon DMG (v3.0.0)</strong></a>
+  <a href="https://github.com/nodaysidle/nodaysidle-cascade-v3/releases/download/v3.0.1/NODAYSIDLE-Cascade-V3-3.0.1-aarch64.dmg"><strong>Download Apple Silicon DMG (v3.0.1)</strong></a>
   ·
   <a href="https://github.com/nodaysidle/nodaysidle-cascade-v3">GitHub</a>
 </p>
@@ -88,7 +88,7 @@ Cascade is local-first by design:
 
 ### Download (macOS Apple Silicon)
 
-1. Download [`NODAYSIDLE-Cascade-V3-3.0.0-aarch64.dmg`](https://github.com/nodaysidle/nodaysidle-cascade-v3/releases/download/v3.0.0/NODAYSIDLE-Cascade-V3-3.0.0-aarch64.dmg).
+1. Download [`NODAYSIDLE-Cascade-V3-3.0.1-aarch64.dmg`](https://github.com/nodaysidle/nodaysidle-cascade-v3/releases/download/v3.0.1/NODAYSIDLE-Cascade-V3-3.0.1-aarch64.dmg).
 2. Open the DMG and drag the app to `/Applications`.
 3. First launch: right-click → **Open** if Gatekeeper blocks it (ad-hoc / not notarized).
 

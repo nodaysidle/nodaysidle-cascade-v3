@@ -30,9 +30,17 @@ The only stack-specific knowledge lives in `src/presets.ts` (plus `src/astroWeb.
 - Each feature declares `usesPlatformNeeds`, `usesData`, and `usesServices`. Permission, data,
   persistence, and integration contracts link only to the features that declare them.
 - Each data object declares `storage` (settings, records, document, secret, temporary, session);
-  the preset maps that kind to a concrete store.
-- Unknown references, and data objects or services no feature uses, are rejected. Nothing is
-  inferred from wording. Don't add regexes that guess links or placement from feature prose.
+  the preset maps that kind to a concrete store. It also declares `writeMode` (direct,
+  atomic-replace), which sets the atomic-write rule and temporary-file placement.
+- Each feature declares `failureRecovery` (retry, fallback, exit) and `surface` (main, item-page,
+  about-page, not-found-page); Astro routes come from `surface`, and the content collection is
+  named after the declared public data object.
+- Unknown references, and data objects or services no feature uses, are rejected. Links, placement,
+  recovery, and routes are never inferred from wording. Don't add regexes that guess them from
+  feature prose; add a declared field instead. The remaining regexes clean text (stack-name
+  stripping, placeholder and secret detection), audit rendered output, or switch the Astro palette
+  from its dark-first Void Black (#0B0F14) default when a light palette is explicitly requested
+  (`src/renderers.ts`).
 
 ## Rules for work here
 
@@ -55,6 +63,10 @@ cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
+
+A change to the provider schema or `buildBlueprintInstructions` also needs one live probe
+(`npm run probe:live`, default `deepseek-flash`). It is a paid request with the user's key, so ask
+the user to run it; see README "Live provider probe".
 
 ## Build, install, release
 

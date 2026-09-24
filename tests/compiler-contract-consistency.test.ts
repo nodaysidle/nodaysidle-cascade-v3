@@ -16,6 +16,8 @@ const blueprint: SemanticBlueprint = {
       trigger: "The user types while the editor is focused.",
       behavior: "The editor updates the cursor while typing into documents up to 100000 characters.",
       failureOutcome: "The last visible text stays in place.",
+      failureRecovery: "retry",
+      surface: "main",
       acceptanceSignals: ["A typed character appears at the cursor"],
       usesPlatformNeeds: [],
       usesData: ["Editor Buffer", "Typography Preferences"],
@@ -27,6 +29,8 @@ const blueprint: SemanticBlueprint = {
       trigger: "The user chooses Save.",
       behavior: "Write the current text to the note file.",
       failureOutcome: "The previous file bytes stay in place.",
+      failureRecovery: "retry",
+      surface: "main",
       acceptanceSignals: ["The file bytes equal the editor text"],
       usesPlatformNeeds: ["filesystem"],
       usesData: ["Note File"],
@@ -38,6 +42,8 @@ const blueprint: SemanticBlueprint = {
       trigger: "The user closes the window.",
       behavior: "If the record has unsaved changes, the app prompts before closing.",
       failureOutcome: "The window stays open.",
+      failureRecovery: "retry",
+      surface: "main",
       acceptanceSignals: ["Cancel leaves the window open"],
       usesPlatformNeeds: [],
       usesData: ["Editor Buffer"],
@@ -49,6 +55,8 @@ const blueprint: SemanticBlueprint = {
       trigger: "The user types in the search field.",
       behavior: "Rank note file names with a fuzzy query.",
       failureOutcome: "The editor text stays unchanged.",
+      failureRecovery: "retry",
+      surface: "main",
       acceptanceSignals: ["A matching file name appears in the results"],
       usesPlatformNeeds: [],
       usesData: ["Search Index"],
@@ -56,10 +64,10 @@ const blueprint: SemanticBlueprint = {
     },
   ],
   dataObjects: [
-    { name: "Note File", purpose: "Plain-text content of one note file.", sensitivity: "personal", retentionIntent: "Keep the file on the local filesystem until the user deletes it.", storage: "document" },
-    { name: "Editor Buffer", purpose: "In-memory text and cursor state for the editing session.", sensitivity: "personal", retentionIntent: "Discarded when the window closes and not written to disk.", storage: "session" },
-    { name: "Typography Preferences", purpose: "Font family and font size for the editor.", sensitivity: "internal", retentionIntent: "Keep in UserDefaults until the user resets them.", storage: "settings" },
-    { name: "Search Index", purpose: "Derived searchable terms from note file names.", sensitivity: "personal", retentionIntent: "Held in memory for the session and not written to disk.", storage: "session" },
+    { name: "Note File", purpose: "Plain-text content of one note file.", sensitivity: "personal", retentionIntent: "Keep the file on the local filesystem until the user deletes it.", storage: "document", writeMode: "atomic-replace" },
+    { name: "Editor Buffer", purpose: "In-memory text and cursor state for the editing session.", sensitivity: "personal", retentionIntent: "Discarded when the window closes and not written to disk.", storage: "session", writeMode: "direct" },
+    { name: "Typography Preferences", purpose: "Font family and font size for the editor.", sensitivity: "internal", retentionIntent: "Keep in UserDefaults until the user resets them.", storage: "settings", writeMode: "direct" },
+    { name: "Search Index", purpose: "Derived searchable terms from note file names.", sensitivity: "personal", retentionIntent: "Held in memory for the session and not written to disk.", storage: "session", writeMode: "direct" },
   ],
   externalServices: [],
   platformNeeds: ["filesystem", "local-storage"],
@@ -101,8 +109,10 @@ describe("compiler contract consistency", () => {
     expect(index.featureIds).toContain("FEAT-FIND-NOTES")
 
     const save = packet.graph.features.find(feature => feature.id === "FEAT-SAVE-NOTE")!
-    expect(save.behavior).toMatch(/renaming a temporary file/)
     expect(save.behavior).toMatch(/note file/)
+    const noteFile = contract(packet, "CON-PERSISTENCE-NOTE-FILE")
+    expect(noteFile.featureIds).toContain("FEAT-SAVE-NOTE")
+    expect(noteFile.details).toContainEqual(expect.stringMatching(/^Write mode: .*renaming a temporary file/))
 
     const close = packet.graph.requirements.find(requirement => requirement.featureId === "FEAT-CLOSE-RECORD")!
     expect(close.statement.startsWith("If the record")).toBe(true)
@@ -130,6 +140,8 @@ describe("compiler contract consistency", () => {
           trigger: "The user presses Cmd+S.",
           behavior: "The app writes the current document contents to the note's file path.",
           failureOutcome: "The document stays marked as unsaved.",
+          failureRecovery: "retry",
+          surface: "main",
           acceptanceSignals: ["Reading the path returns the editor contents"],
           usesPlatformNeeds: ["filesystem"],
           usesData: ["Note File", "Temporary Write File"],
@@ -141,6 +153,8 @@ describe("compiler contract consistency", () => {
           trigger: "The user edits a note that already has a file path.",
           behavior: "The app performs non-blocking background writes that replace the destination file by writing a temporary file and renaming it over the destination.",
           failureOutcome: "The document stays dirty and an error is shown.",
+          failureRecovery: "retry",
+          surface: "main",
           acceptanceSignals: ["No temporary file remains after a successful write"],
           usesPlatformNeeds: ["filesystem"],
           usesData: ["Note File", "Temporary Write File"],
@@ -152,6 +166,8 @@ describe("compiler contract consistency", () => {
           trigger: "The user chooses Open from the File menu or uses the open shortcut.",
           behavior: "The app presents an open panel and reads the selected note into the editor.",
           failureOutcome: "The current document stays unchanged.",
+          failureRecovery: "retry",
+          surface: "main",
           acceptanceSignals: ["The chosen note text appears in the editor"],
           usesPlatformNeeds: ["filesystem"],
           usesData: ["Note File"],
@@ -163,6 +179,8 @@ describe("compiler contract consistency", () => {
           trigger: "The user types a query.",
           behavior: "The app ranks note file names in the workspace folder with a fuzzy query.",
           failureOutcome: "The app reports that search cannot run.",
+          failureRecovery: "retry",
+          surface: "main",
           acceptanceSignals: ["A matching note appears in the results"],
           usesPlatformNeeds: ["filesystem"],
           usesData: ["Workspace Folder Reference"],
@@ -174,6 +192,8 @@ describe("compiler contract consistency", () => {
           trigger: "The user chooses Settings.",
           behavior: "The app edits keybinding preferences stored in UserDefaults.",
           failureOutcome: "A conflicting keybinding is rejected.",
+          failureRecovery: "retry",
+          surface: "main",
           acceptanceSignals: ["A changed keybinding takes effect without relaunch"],
           usesPlatformNeeds: ["local-storage"],
           usesData: ["Keybinding Preferences"],
@@ -181,10 +201,10 @@ describe("compiler contract consistency", () => {
         },
       ],
       dataObjects: [
-        { name: "Note File", purpose: "Plain-text content of one note file.", sensitivity: "personal", retentionIntent: "Kept on the local filesystem until the user deletes it.", storage: "document" },
-        { name: "Keybinding Preferences", purpose: "Keybinding assignments for editor commands.", sensitivity: "internal", retentionIntent: "Retained in UserDefaults until the user resets them.", storage: "settings" },
-        { name: "Workspace Folder Reference", purpose: "Identifies the local folder whose notes are searched.", sensitivity: "internal", retentionIntent: "Retained only for the current session or until the user selects a different folder.", storage: "session" },
-        { name: "Temporary Write File", purpose: "Holds note contents during a write before being renamed over the destination file.", sensitivity: "personal", retentionIntent: "Removed immediately after a successful rename or cleaned up after a failed write.", storage: "temporary" },
+        { name: "Note File", purpose: "Plain-text content of one note file.", sensitivity: "personal", retentionIntent: "Kept on the local filesystem until the user deletes it.", storage: "document", writeMode: "atomic-replace" },
+        { name: "Keybinding Preferences", purpose: "Keybinding assignments for editor commands.", sensitivity: "internal", retentionIntent: "Retained in UserDefaults until the user resets them.", storage: "settings", writeMode: "direct" },
+        { name: "Workspace Folder Reference", purpose: "Identifies the local folder whose notes are searched.", sensitivity: "internal", retentionIntent: "Retained only for the current session or until the user selects a different folder.", storage: "session", writeMode: "direct" },
+        { name: "Temporary Write File", purpose: "Holds note contents during a write before being renamed over the destination file.", sensitivity: "personal", retentionIntent: "Removed immediately after a successful rename or cleaned up after a failed write.", storage: "temporary", writeMode: "atomic-replace" },
       ],
       externalServices: [],
       platformNeeds: ["filesystem", "local-storage"],
@@ -194,8 +214,9 @@ describe("compiler contract consistency", () => {
     const packet = await compilePacket(editor, "native-macos-swiftui-desktop")
     expect(packet.exportable).toBe(true)
 
-    const save = packet.graph.features.find(feature => feature.id === "FEAT-EXPLICIT-SAVE")!
-    expect(save.behavior).toMatch(/renaming a temporary file in the same directory/)
+    const noteFile = contract(packet, "CON-PERSISTENCE-NOTE-FILE")
+    expect(noteFile.featureIds).toContain("FEAT-EXPLICIT-SAVE")
+    expect(noteFile.details).toContainEqual(expect.stringMatching(/renaming a temporary file in the same directory/))
 
     const scratch = contract(packet, "CON-PERSISTENCE-TEMPORARY-WRITE-FILE")
     const scratchText = `${scratch.decision} ${scratch.details.join(" ")}`
@@ -240,6 +261,8 @@ describe("compiler contract consistency", () => {
           trigger: "The user presses Cmd+S.",
           behavior: "The app writes the current document contents to the note's file path.",
           failureOutcome: "The document stays marked unsaved.",
+          failureRecovery: "retry",
+          surface: "main",
           acceptanceSignals: ["Reading the path returns the editor contents"],
           usesPlatformNeeds: ["filesystem"],
           usesData: ["Note File", "Temporary Write File"],
@@ -251,6 +274,8 @@ describe("compiler contract consistency", () => {
           trigger: "The user edits a note that has a file path.",
           behavior: "The app replaces the destination file by writing a temporary file and renaming it over the destination.",
           failureOutcome: "The document stays marked unsaved.",
+          failureRecovery: "retry",
+          surface: "main",
           acceptanceSignals: ["No temporary file remains after a successful write"],
           usesPlatformNeeds: ["filesystem"],
           usesData: ["Note File", "Temporary Write File"],
@@ -262,6 +287,8 @@ describe("compiler contract consistency", () => {
           trigger: "The user chooses Open or uses the open shortcut.",
           behavior: "The app reads the selected .txt file into the editor.",
           failureOutcome: "The current document stays unchanged.",
+          failureRecovery: "retry",
+          surface: "main",
           acceptanceSignals: ["The editor shows the file contents"],
           usesPlatformNeeds: ["filesystem"],
           usesData: ["Note File"],
@@ -273,6 +300,8 @@ describe("compiler contract consistency", () => {
           trigger: "The user types a query.",
           behavior: "The app ranks note names in the open workspace folder with a fuzzy query.",
           failureOutcome: "The app reports that search cannot run.",
+          failureRecovery: "retry",
+          surface: "main",
           acceptanceSignals: ["A matching note appears in the results"],
           usesPlatformNeeds: ["filesystem"],
           usesData: ["Workspace Folder Reference"],
@@ -284,6 +313,8 @@ describe("compiler contract consistency", () => {
           trigger: "The user opens Settings.",
           behavior: "The app stores the chosen font family and size in the typography preferences.",
           failureOutcome: "The previous font stays active.",
+          failureRecovery: "retry",
+          surface: "main",
           acceptanceSignals: ["The new font applies immediately"],
           usesPlatformNeeds: ["local-storage"],
           usesData: ["Typography Preferences"],
@@ -291,10 +322,10 @@ describe("compiler contract consistency", () => {
         },
       ],
       dataObjects: [
-        { name: "Note File", purpose: "Plain-text content of one note file.", sensitivity: "personal", retentionIntent: "Kept on the local filesystem until the user deletes it.", storage: "document" },
-        { name: "Typography Preferences", purpose: "Font family and font size for the editor.", sensitivity: "internal", retentionIntent: "Kept in UserDefaults until the user resets them.", storage: "settings" },
-        { name: "Workspace Folder Reference", purpose: "Identifies the local folder available to search.", sensitivity: "internal", retentionIntent: "Retained only for the current session or until the user selects a different folder.", storage: "session" },
-        { name: "Temporary Write File", purpose: "Holds note contents during a write before being renamed over the destination file.", sensitivity: "personal", retentionIntent: "Removed immediately after a successful rename or cleaned up after a failed write.", storage: "temporary" },
+        { name: "Note File", purpose: "Plain-text content of one note file.", sensitivity: "personal", retentionIntent: "Kept on the local filesystem until the user deletes it.", storage: "document", writeMode: "atomic-replace" },
+        { name: "Typography Preferences", purpose: "Font family and font size for the editor.", sensitivity: "internal", retentionIntent: "Kept in UserDefaults until the user resets them.", storage: "settings", writeMode: "direct" },
+        { name: "Workspace Folder Reference", purpose: "Identifies the local folder available to search.", sensitivity: "internal", retentionIntent: "Retained only for the current session or until the user selects a different folder.", storage: "session", writeMode: "direct" },
+        { name: "Temporary Write File", purpose: "Holds note contents during a write before being renamed over the destination file.", sensitivity: "personal", retentionIntent: "Removed immediately after a successful rename or cleaned up after a failed write.", storage: "temporary", writeMode: "atomic-replace" },
       ],
       externalServices: [],
       platformNeeds: ["filesystem", "local-storage"],
@@ -305,8 +336,7 @@ describe("compiler contract consistency", () => {
     expect(packet.exportable).toBe(true)
     const text = Object.values(packet.documents).join("\n")
 
-    const save = packet.graph.features.find(feature => feature.id === "FEAT-EXPLICIT-SAVE")!
-    expect(save.behavior).toMatch(/renaming a temporary file/)
+    expect(contract(packet, "CON-PERSISTENCE-NOTE-FILE").details).toContainEqual(expect.stringMatching(/renaming a temporary file/))
     const scratch = contract(packet, "CON-PERSISTENCE-TEMPORARY-WRITE-FILE")
     expect(scratch.featureIds).toEqual(expect.arrayContaining(["FEAT-EXPLICIT-SAVE", "FEAT-BACKGROUND-WRITE"]))
     expect(contract(packet, "CON-DATA-TEMPORARY-WRITE-FILE").featureIds).toContain("FEAT-EXPLICIT-SAVE")
@@ -345,6 +375,8 @@ describe("compiler contract consistency", () => {
           trigger: "The user presses Cmd+S.",
           behavior: "The app writes the current note to its file by renaming a temporary file in the same directory.",
           failureOutcome: "The note stays marked unsaved.",
+          failureRecovery: "retry",
+          surface: "main",
           acceptanceSignals: ["The file bytes equal the editor text"],
           usesPlatformNeeds: ["filesystem"],
           usesData: ["Note File", "Temporary Save File"],
@@ -356,6 +388,8 @@ describe("compiler contract consistency", () => {
           trigger: "The user types a query.",
           behavior: "The app ranks note names in the open workspace folder with a fuzzy query.",
           failureOutcome: "The app reports that search cannot run.",
+          failureRecovery: "retry",
+          surface: "main",
           acceptanceSignals: ["A matching note appears in the results"],
           usesPlatformNeeds: ["filesystem"],
           usesData: ["Workspace Search Index"],
@@ -363,9 +397,9 @@ describe("compiler contract consistency", () => {
         },
       ],
       dataObjects: [
-        { name: "Note File", purpose: "Stores the plain-text contents of one note as a .txt file.", sensitivity: "personal", retentionIntent: "Retained until the user deletes or moves the file.", storage: "document" },
-        { name: "Temporary Save File", purpose: "Holds note contents during a background write before being renamed over the destination file.", sensitivity: "personal", retentionIntent: "Removed immediately after a successful rename or on the next save attempt after a failure.", storage: "temporary" },
-        { name: "Workspace Search Index", purpose: "Holds in-memory searchable representations of note file names and contents for fuzzy search.", sensitivity: "personal", retentionIntent: "Held only in memory for the duration of the app session and discarded on quit.", storage: "session" },
+        { name: "Note File", purpose: "Stores the plain-text contents of one note as a .txt file.", sensitivity: "personal", retentionIntent: "Retained until the user deletes or moves the file.", storage: "document", writeMode: "atomic-replace" },
+        { name: "Temporary Save File", purpose: "Holds note contents during a background write before being renamed over the destination file.", sensitivity: "personal", retentionIntent: "Removed immediately after a successful rename or on the next save attempt after a failure.", storage: "temporary", writeMode: "atomic-replace" },
+        { name: "Workspace Search Index", purpose: "Holds in-memory searchable representations of note file names and contents for fuzzy search.", sensitivity: "personal", retentionIntent: "Held only in memory for the duration of the app session and discarded on quit.", storage: "session", writeMode: "direct" },
       ],
       externalServices: [],
       platformNeeds: ["filesystem", "local-storage"],

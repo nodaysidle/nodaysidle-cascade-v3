@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { compileProjectGraph, NormalizationError, normalizeBlueprint } from "../src/compiler"
 import { auditSemanticIntake, type SemanticBlueprint } from "../src/schema"
-import { fileOrganizerBlueprint, forecastGlanceBlueprint } from "./fixtures/blueprints"
+import { docsPortalBlueprint, fileOrganizerBlueprint, forecastGlanceBlueprint } from "./fixtures/blueprints"
 
 const PRESET = "native-macos-swiftui-desktop" as const
 
@@ -72,5 +72,45 @@ describe("explicit feature references", () => {
     expect(featureIds("CON-DATA-SAVED-PLACES")).toEqual(["FEAT-CURRENT-CONDITIONS", "FEAT-SAVED-PLACES"])
     expect(featureIds("CON-INTEGRATION-WEATHER-SERVICE")).toEqual(["FEAT-WEATHER-SERVICE-CONNECTION", "FEAT-CURRENT-CONDITIONS"])
     expect(featureIds("CON-PERMISSION-NETWORK")).toEqual(["FEAT-WEATHER-SERVICE-CONNECTION", "FEAT-CURRENT-CONDITIONS"])
+  })
+
+  it("takes recovery from the declared failureRecovery, never from failure wording", () => {
+    const blueprint = structuredClone(fileOrganizerBlueprint)
+    blueprint.features[0]!.failureOutcome = "The app quits and falls back to the default folder."
+    const recovery = (value: "retry" | "fallback" | "exit") => {
+      blueprint.features[0]!.failureRecovery = value
+      return normalizeBlueprint(blueprint, PRESET).features[0]!.recoveryExpectations[0]
+    }
+
+    expect(recovery("retry")).toMatch(/allow an explicit retry/)
+    expect(recovery("fallback")).toMatch(/Apply the stated fallback/)
+    expect(recovery("exit")).toMatch(/Release partial resources before exiting/)
+  })
+
+  it("adds the atomic write rule only for a declared atomic-replace data object", () => {
+    const blueprint = structuredClone(fileOrganizerBlueprint)
+    blueprint.summary = `${blueprint.summary} Every journal save is written atomically by renaming a temporary file.`
+    const writeMode = () => compileProjectGraph(normalizeBlueprint(blueprint, PRESET), PRESET)
+      .contracts.find(contract => contract.id === "CON-PERSISTENCE-MOVE-JOURNAL")!.details
+      .filter(detail => detail.startsWith("Write mode:"))
+
+    expect(writeMode()).toEqual([])
+    blueprint.dataObjects[1]!.writeMode = "atomic-replace"
+    expect(writeMode()).toEqual([expect.stringMatching(/renaming a temporary file in the same directory/)])
+  })
+
+  it("places Astro routes only from the declared surface, never from page wording", () => {
+    const blueprint = structuredClone(docsPortalBlueprint)
+    blueprint.features[0]!.surface = "main"
+    blueprint.features[1]!.behavior = "Show results on a dedicated detail page with a permalink, plus an about page and a 404 page."
+    const plan = () => compileProjectGraph(normalizeBlueprint(blueprint, "astro-web"), "astro-web").astroPlan!
+    const pages = () => Object.values(plan().featurePlacements).flatMap(placement => placement.kind === "page" ? [placement.pageFile] : [])
+
+    expect(pages()).toEqual([])
+    blueprint.features[1]!.surface = "item-page"
+    blueprint.features[2]!.surface = "about-page"
+    blueprint.features[3]!.surface = "not-found-page"
+    expect(pages()).toEqual(["src/pages/guides/[slug].astro", "src/pages/about.astro", "src/pages/404.astro"])
+    expect(plan().contentCollection).toBe("guides")
   })
 })

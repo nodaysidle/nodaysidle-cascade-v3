@@ -15,17 +15,22 @@ use tokio::sync::oneshot;
 
 const KEY_SENTINEL: &str = "ts-key-SENTINEL-MUST-NOT-LEAK";
 
+// Mock servers wait this long for the first connection so a busy machine or CI runner can't
+// make the client arrive after the server has already stopped listening.
+const FIRST_CONNECTION_WAIT: Duration = Duration::from_secs(3);
+
 fn test_client(timeout: Duration) -> reqwest::Client {
     reqwest::Client::builder()
         .no_proxy()
-        .connect_timeout(Duration::from_millis(500))
+        .connect_timeout(FIRST_CONNECTION_WAIT)
         .timeout(timeout)
         .build()
         .expect("build test client")
 }
 
 /// Accepts connections while holding them open without responding, mirroring
-/// the delayed-server pattern used by the provider boundary tests.
+/// the delayed-server pattern used by the provider boundary tests. The hold
+/// window starts at the first accepted connection.
 fn delayed_server(hold_for: Duration) -> (String, mpsc::Receiver<()>, thread::JoinHandle<usize>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind delayed server");
     listener
@@ -34,11 +39,14 @@ fn delayed_server(hold_for: Duration) -> (String, mpsc::Receiver<()>, thread::Jo
     let address = format!("http://{}/decisions", listener.local_addr().unwrap());
     let (accepted_sender, accepted_receiver) = mpsc::channel();
     let server = thread::spawn(move || {
-        let deadline = Instant::now() + hold_for;
+        let mut deadline = Instant::now() + FIRST_CONNECTION_WAIT;
         let mut connections = Vec::new();
         while Instant::now() < deadline {
             match listener.accept() {
                 Ok((stream, _)) => {
+                    if connections.is_empty() {
+                        deadline = Instant::now() + hold_for;
+                    }
                     connections.push(stream);
                     accepted_sender.send(()).ok();
                 }
@@ -55,6 +63,7 @@ fn delayed_server(hold_for: Duration) -> (String, mpsc::Receiver<()>, thread::Jo
 
 /// Serves one canned HTTP response per accepted connection and reports how
 /// many connections were accepted so tests can prove single-send behavior.
+/// After the first response it stops once no retry arrives within 250 ms.
 fn responding_server(status: u16, body: Vec<u8>) -> (String, thread::JoinHandle<usize>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind responding server");
     listener
@@ -62,7 +71,7 @@ fn responding_server(status: u16, body: Vec<u8>) -> (String, thread::JoinHandle<
         .expect("make responding server nonblocking");
     let address = format!("http://{}/decisions", listener.local_addr().unwrap());
     let server = thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_millis(700);
+        let deadline = Instant::now() + FIRST_CONNECTION_WAIT;
         let mut connections = 0usize;
         let mut idle_since: Option<Instant> = None;
         while Instant::now() < deadline {
@@ -73,8 +82,9 @@ fn responding_server(status: u16, body: Vec<u8>) -> (String, thread::JoinHandle<
                     respond(&mut stream, status, &body);
                 }
                 Err(error) if error.kind() == ErrorKind::WouldBlock => {
-                    if idle_since.get_or_insert_with(Instant::now).elapsed()
-                        > Duration::from_millis(250)
+                    if connections > 0
+                        && idle_since.get_or_insert_with(Instant::now).elapsed()
+                            > Duration::from_millis(250)
                     {
                         break;
                     }
@@ -89,11 +99,14 @@ fn responding_server(status: u16, body: Vec<u8>) -> (String, thread::JoinHandle<
 }
 
 fn respond(stream: &mut TcpStream, status: u16, body: &[u8]) {
+    // Accepted sockets inherit the listener's nonblocking mode on macOS; without this, a read
+    // before the request arrives returns WouldBlock and the mock answers too early.
     stream
-        .set_read_timeout(Some(Duration::from_millis(500)))
-        .ok();
+        .set_nonblocking(false)
+        .expect("make accepted stream blocking");
+    stream.set_read_timeout(Some(FIRST_CONNECTION_WAIT)).ok();
     let mut scratch = [0u8; 8192];
-    let _ = stream.read(&mut scratch);
+    read_full_request(stream, &mut scratch);
     let head = format!(
         "HTTP/1.1 {status} STATUS\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
         body.len()
@@ -106,6 +119,33 @@ fn respond(stream: &mut TcpStream, status: u16, body: &[u8]) {
         match stream.read(&mut scratch) {
             Ok(0) | Err(_) => break,
             Ok(_) => continue,
+        }
+    }
+}
+
+/// Reads the request headers and its content-length body before the mock
+/// answers, so the response never races an unsent request body.
+fn read_full_request(stream: &mut TcpStream, scratch: &mut [u8]) {
+    let mut request = Vec::new();
+    loop {
+        let expected = request
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .map(|end| {
+                let head = String::from_utf8_lossy(&request[..end]).to_ascii_lowercase();
+                let length = head
+                    .lines()
+                    .find_map(|line| line.strip_prefix("content-length:"))
+                    .and_then(|value| value.trim().parse::<usize>().ok())
+                    .unwrap_or(0);
+                end + 4 + length
+            });
+        if expected.is_some_and(|total| request.len() >= total) {
+            return;
+        }
+        match stream.read(scratch) {
+            Ok(0) | Err(_) => return,
+            Ok(read) => request.extend_from_slice(&scratch[..read]),
         }
     }
 }
@@ -400,7 +440,7 @@ async fn returns_validated_answers_and_closed_failures_from_the_wire() {
     let (address, server) = responding_server(200, valid.to_string().into_bytes());
     let (_cancel_sender, cancellation) = oneshot::channel();
     let value = execute_jev_outbound(
-        test_client(Duration::from_secs(2)).post(address),
+        test_client(Duration::from_secs(5)).post(address),
         cancellation,
     )
     .await
@@ -411,7 +451,7 @@ async fn returns_validated_answers_and_closed_failures_from_the_wire() {
     let (address, server) = responding_server(200, b"RAW_MALFORMED_SENTINEL{".to_vec());
     let (_cancel_sender, cancellation) = oneshot::channel();
     let failure = execute_jev_outbound(
-        test_client(Duration::from_secs(2)).post(address),
+        test_client(Duration::from_secs(5)).post(address),
         cancellation,
     )
     .await
@@ -424,7 +464,7 @@ async fn returns_validated_answers_and_closed_failures_from_the_wire() {
     let (address, server) = responding_server(200, b"[]".repeat(200_000));
     let (_cancel_sender, cancellation) = oneshot::channel();
     let failure = execute_jev_outbound(
-        test_client(Duration::from_secs(2)).post(address),
+        test_client(Duration::from_secs(5)).post(address),
         cancellation,
     )
     .await
@@ -439,7 +479,7 @@ async fn surfaces_only_the_status_for_http_failures() {
     let (address, server) = responding_server(418, b"RAW_HTTP_BODY_SENTINEL".to_vec());
     let (_cancel_sender, cancellation) = oneshot::channel();
     let failure = execute_jev_outbound(
-        test_client(Duration::from_secs(2)).post(address),
+        test_client(Duration::from_secs(5)).post(address),
         cancellation,
     )
     .await
@@ -474,10 +514,10 @@ async fn cancellation_wins_while_the_jev_request_is_in_flight() {
     let (address, accepted, _server) = delayed_server(Duration::from_secs(1));
     let (cancel_sender, cancellation) = oneshot::channel();
     let request = tokio::spawn(execute_jev_outbound(
-        test_client(Duration::from_secs(2)).post(address),
+        test_client(Duration::from_secs(5)).post(address),
         cancellation,
     ));
-    tokio::task::spawn_blocking(move || accepted.recv_timeout(Duration::from_millis(500)))
+    tokio::task::spawn_blocking(move || accepted.recv_timeout(FIRST_CONNECTION_WAIT))
         .await
         .unwrap()
         .expect("request reached delayed server");

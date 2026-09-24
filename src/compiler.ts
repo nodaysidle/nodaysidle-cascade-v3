@@ -2,7 +2,7 @@ import { auditAgentReadinessGraph, auditMechanicalGraph, auditPacket, auditProje
 import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS, planAstroWeb, type AstroRoutePlan } from "./astroWeb"
 import { PRESETS, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
 import { renderPacket } from "./renderers"
-import { featureReferenceIssues, referenceKey, type DataStorage, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
+import { featureReferenceIssues, referenceKey, type DataStorage, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
 
@@ -34,6 +34,7 @@ export interface NormalizedBlueprint {
     readonly providedCapabilities: readonly string[]
     readonly requiredCapabilities: readonly string[]
     readonly resourceIds: readonly string[]
+    readonly surface: FeatureSurface
   }[]
   readonly externalServices: readonly {
     readonly name: string
@@ -49,6 +50,7 @@ export interface NormalizedBlueprint {
     readonly retention: string
     readonly sensitivity: "public" | "internal" | "personal" | "sensitive"
     readonly storage: DataStorage
+    readonly writeMode: DataWriteMode
   }[]
   readonly privacySecurityRequirements: readonly string[]
   readonly permissionNeeds: readonly {
@@ -63,6 +65,7 @@ export interface NormalizedBlueprint {
     readonly deletionBehavior: string
     readonly sensitivity: "public" | "internal" | "personal" | "sensitive"
     readonly storage: Exclude<DataStorage, "secret">
+    readonly writeMode: DataWriteMode
     readonly temporary: boolean
   }[]
   readonly lifecycleRequirements: readonly {
@@ -104,6 +107,7 @@ export interface GraphFeature {
   readonly requiredCapabilities: readonly string[]
   readonly resourceIds: readonly string[]
   readonly requiredOwnerIds: readonly string[]
+  readonly surface: FeatureSurface
 }
 
 export interface GraphAcceptance {
@@ -362,14 +366,15 @@ function permissionResourceId(capability: PermissionCapability): string {
   return `permission:${capability}`
 }
 
-function featureRecovery(name: string, failure: string): string {
-  if (/\b(?:exits?|quits?|terminates?)\b/i.test(failure)) return `Release partial resources before exiting so a relaunch of ${name} starts from a clean state.`
-  if (/\b(?:substitutes?|falls? back|uses the default)\b/i.test(failure)) return `Apply the stated fallback automatically, keep ${name} usable, and require no user retry.`
-  return `Preserve the last valid state, explain the failure, and allow an explicit retry of ${name}.`
-}
-
-function atomicRenameScratch(text: string): boolean {
-  return /\btemporary\b/i.test(text) && /\brenam/i.test(text)
+function featureRecovery(name: string, recovery: FeatureRecovery): string {
+  switch (recovery) {
+    case "exit":
+      return `Release partial resources before exiting so a relaunch of ${name} starts from a clean state.`
+    case "fallback":
+      return `Apply the stated fallback automatically, keep ${name} usable, and require no user retry.`
+    case "retry":
+      return `Preserve the last valid state, explain the failure, and allow an explicit retry of ${name}.`
+  }
 }
 
 function dataResourceIds(name: string): string[] {
@@ -404,8 +409,7 @@ function astroContentSiteSemantics(source: SemanticBlueprint, presetId: PresetId
   const runtimeWouldBeStatic = !source.externalServices.some(service => service.credentialRequired)
   if (!runtimeWouldBeStatic) return false
   if (source.dataObjects.some(item => item.sensitivity === "public" || item.sensitivity === "internal")) return true
-  return source.features.some(feature => /\b(?:detail|project page|guide page|catalog|portfolio|versioned guide|direct url|permalink)\b/i.test(`${feature.name} ${feature.behavior}`))
-    || /\b(?:catalog|catalogue|portfolio|documentation portal|project listing)\b/i.test(source.summary)
+  return source.features.some(feature => feature.surface === "item-page")
 }
 
 function normalizationIssue(path: string): never {
@@ -430,7 +434,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
 
   const baseFeatures = uniqueByName(source.features.map((feature, index) => {
     const name = cleanMeaning(feature.name)
-    const behavior = alignAtomicWrite(cleanMeaning(feature.behavior), `${source.summary} ${source.productConstraints.join(" ")} ${source.features.map(item => item.behavior).join(" ")}`)
+    const behavior = cleanMeaning(feature.behavior)
     const userOutcome = cleanMeaning(feature.userOutcome)
     if (!name) normalizationIssue(`features[${index}].name`)
     if (!behavior) normalizationIssue(`features[${index}].behavior`)
@@ -445,13 +449,14 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       outputs: [userOutcome],
       acceptanceOutcomes: acceptance.length ? acceptance : [`${name} produces the documented user outcome.`],
       failureBehavior: failure,
-      recoveryExpectations: [featureRecovery(name, failure)],
+      recoveryExpectations: [featureRecovery(name, feature.failureRecovery)],
       providedCapabilities: [],
       requiredCapabilities: [],
       resourceIds: [],
       usesPlatformNeeds: unique(feature.usesPlatformNeeds),
       usesData: unique(feature.usesData.map(name => dataNameByKey.get(referenceKey(name))!)),
       usesServices: unique(feature.usesServices.map(name => serviceNameByKey.get(referenceKey(name))!)),
+      surface: feature.surface,
     }
   }))
   if (!baseFeatures.length) normalizationIssue("features")
@@ -465,6 +470,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       sensitivity: item.sensitivity,
       retentionIntent: cleanMeaning(item.retentionIntent),
       storage: item.storage,
+      writeMode: item.writeMode,
     }
   }).filter(item => item.name && item.purpose && item.retentionIntent))
   const externalServices = uniqueByName(source.externalServices.map(item => {
@@ -507,6 +513,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
           : `Delete ${item.name} only through an explicit user action or the stated retention boundary, and report deletion failure honestly.`,
       sensitivity: item.sensitivity,
       storage: item.storage,
+      writeMode: item.writeMode,
       temporary: item.storage === "temporary",
     }))
   const privacySecurityRequirements = uniqueStrings([
@@ -557,7 +564,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
     })),
     features,
     externalServices,
-    domainData: dataObjects.map(item => ({ name: item.name, meaning: item.purpose, retention: item.retentionIntent, sensitivity: item.sensitivity, storage: item.storage })),
+    domainData: dataObjects.map(item => ({ name: item.name, meaning: item.purpose, retention: item.retentionIntent, sensitivity: item.sensitivity, storage: item.storage, writeMode: item.writeMode })),
     privacySecurityRequirements,
     permissionNeeds,
     persistenceNeeds,
@@ -772,13 +779,7 @@ function credentialEntryDetail(presetId: PresetId, serviceName: string): string 
   return `Credential entry: the user pastes the ${serviceName} API key into a masked settings field; the key goes straight to the placement above, the UI shows only configured or missing state, and ${blocked}`
 }
 
-function alignAtomicWrite(behavior: string, blueprintText: string): string {
-  const stated = /\b(?:write|writes|written|save|saves|saved|replace|replaces|replaced)\b[^.]{0,80}\batomically\b|\batomically\b[^.]{0,80}\b(?:write|writes|written|save|saves|saved|replace|replaces|replaced)\b|\brenam(?:e|ing) a temporary file\b|\breplaces? the destination(?: file)? by (?:writing a temporary file and )?renaming\b|\btemporary file\b[^.]{0,80}\brenam|\brenam\w*\b[^.]{0,80}\btemporary file\b/i
-  if (!stated.test(blueprintText)) return behavior
-  if (!/\b(?:save|write|writes|writing)\b/i.test(behavior) || !/\bfiles?\b/i.test(behavior)) return behavior
-  if (/\brenam/i.test(behavior)) return behavior
-  return `${behavior} The write replaces the destination by renaming a temporary file in the same directory.`
-}
+const ATOMIC_WRITE_SENTENCE = "Every write replaces the destination by renaming a temporary file in the same directory; a failed write leaves the previous file intact."
 
 const SESSION_MEMORY_PLACEMENT = "Held in memory for the session and not written to disk."
 const USER_SELECTED_FILE_PLACEMENT = "Local filesystem at user-selected paths via native open/save panels."
@@ -802,7 +803,7 @@ function persistencePlacement(
   if (!isNativeMacPreset(preset.id)) return item.temporary ? preset.persistence.temporaryPlacement : preset.persistence.recordsPlacement
   switch (item.storage) {
     case "temporary":
-      return atomicRenameScratch(`${item.data} ${item.purpose} ${item.retention}`)
+      return item.writeMode === "atomic-replace"
         ? ATOMIC_RENAME_SCRATCH_PLACEMENT
         : `FileManager.default.temporaryDirectory/${identity.bundleId}/ for ephemeral runtime scratch files.`
     case "document":
@@ -1025,8 +1026,6 @@ function buildOwnersAndContracts(
                   ? "Persistence: local filesystem at user-selected paths via native open and save panels."
                   : placement === ATOMIC_RENAME_SCRATCH_PLACEMENT
                     ? "Persistence: temporary same-directory write file for atomic replacement."
-                    : placement === ATOMIC_RENAME_SCRATCH_PLACEMENT
-                    ? "Persistence: temporary same-directory write file for atomic replacement."
                     : item.temporary ? "Temporary recovery storage is enabled." : preset.persistence.enabledDecision
       contracts.push(contract(
         `CON-PERSISTENCE-${slug(item.data).toUpperCase()}`,
@@ -1035,7 +1034,13 @@ function buildOwnersAndContracts(
         dataFeatureIds(item.data, features),
         "OWN-DATA-STORE",
         `${persistenceDecision} ${item.purpose}`,
-        [`Placement: ${placement}`, `Retention: ${item.retention}`, `Deletion: ${item.deletionBehavior}`, `Sensitivity: ${item.sensitivity}`],
+        [
+          `Placement: ${placement}`,
+          ...(item.writeMode === "atomic-replace" && !item.temporary && !memoryResident ? [`Write mode: ${ATOMIC_WRITE_SENTENCE}`] : []),
+          `Retention: ${item.retention}`,
+          `Deletion: ${item.deletionBehavior}`,
+          `Sensitivity: ${item.sensitivity}`,
+        ],
         memoryResident ? "A failed update leaves the last in-memory state valid." : "A failed write leaves the prior durable state valid and the new state visibly unsaved.",
         memoryResident
           ? ["Keep the last in-memory value and allow an explicit retry.", item.deletionBehavior]
@@ -1350,6 +1355,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
       requiredCapabilities: feature.requiredCapabilities,
       resourceIds: feature.resourceIds,
       requiredOwnerIds: [],
+      surface: feature.surface,
     }
   }))
   const { features, acceptance, requirements } = lowerAcceptanceOwnership(resolvedFeatures)

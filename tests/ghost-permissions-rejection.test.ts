@@ -65,7 +65,7 @@ describe("Ghost Permissions Rejection & Orphan Contract Audit Gate (H2 & M1)", (
           purpose: "User-entered private token stored securely for custom plugins.",
           sensitivity: "sensitive",
           retentionIntent: "Retain securely until removed by user.",
-          storage: "secret",
+          storage: "secret", writeMode: "direct",
         },
       ],
       externalServices: [], // No external services declared!

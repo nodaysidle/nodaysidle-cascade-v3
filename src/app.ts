@@ -15,6 +15,7 @@ import {
   type ProgressStage,
 } from "./pipeline"
 import { PRESET_IDS, PRESETS } from "./presets"
+import type { SemanticIssue } from "./schema"
 import {
   canExport,
   canGenerate,
@@ -54,8 +55,20 @@ const statusCopy: Readonly<Record<AppState["status"], { label: string; detail: s
   "export-success": { label: "Export complete", detail: "Exactly five verified files were written to a new folder.", tone: "success" },
   cancelled: { label: "Cancelled", detail: "No packet was accepted and export remains locked.", tone: "neutral" },
   "intake-rejected": { label: "Intake rejected", detail: "Jev did not confirm this idea as viable, so no provider request was made.", tone: "error" },
-  "blueprint-integrity-failed": { label: "Integrity blocked", detail: "Jev found a technology-stack conflict in the completed blueprint. Export remains locked.", tone: "error" },
+  "blueprint-integrity-failed": { label: "Integrity blocked", detail: "Jev found an integrity problem in the completed blueprint. Export remains locked.", tone: "error" },
   "jev-failure": { label: "Jev failure", detail: "The Jev decision request failed closed without a retry. Review safe details and retry.", tone: "error" },
+}
+
+export function statusDetailText(status: AppState["status"], issues: readonly SemanticIssue[]): string {
+  if (status === "blueprint-integrity-failed") {
+    if (issues.some(issue => issue.rule === "jev.foreign-stack-leakage")) {
+      return "Jev found a technology-stack conflict in the completed blueprint. Export remains locked."
+    }
+    if (issues.some(issue => issue.rule === "jev.feature-unverifiable-acceptance" || issue.rule === "jev.unverifiable-acceptance")) {
+      return "Jev found feature acceptance signals that automated tests cannot check. Retry, or describe those features as checkable outcomes. Export remains locked."
+    }
+  }
+  return statusCopy[status].detail
 }
 
 function escapeHtml(value: string): string {
@@ -372,7 +385,7 @@ export function mountApp(
     shell.dataset.state = state.status
     statusBadge.dataset.tone = copy.tone
     statusLabel.textContent = copy.label
-    statusDetail.textContent = copy.detail
+    statusDetail.textContent = statusDetailText(state.status, state.issues)
     generateButton.textContent = statusActionLabel(state)
     generateButton.disabled = !canGenerate(state)
     cancelButton.disabled = state.status !== "generating"

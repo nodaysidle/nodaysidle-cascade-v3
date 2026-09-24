@@ -52,7 +52,7 @@ Most idea-to-spec tools either dump vague prose or ask the model to invent file 
 
 | Layer | Who owns it |
 | --- | --- |
-| **Boundary decisions** | Jev viability, preset-fit, platform-needs, and stack-leakage judgments |
+| **Boundary decisions** | Jev viability, preset-fit, platform-needs, stack-leakage, and acceptance-verifiability judgments |
 | **Product meaning** | One DeepSeek request (Pro or Flash) after intake passes |
 | **IDs, graph, files, phases, contracts** | Deterministic local TypeScript compiler |
 | **Five markdown documents** | Locked renderers — preview bytes equal export bytes |
@@ -71,7 +71,7 @@ You describe the product once. Cascade returns exactly **`PRD.md`**, **`ARD.md`*
 | **Astro web quality** | Content collections, routes, design tokens, seed guidance for static portfolios |
 | **Exact-five export** | Atomic write of five canonical files; SHA-256 hash equality with preview |
 | **Safe provider boundary** | Rust HTTPS client; memory-only API key; no retry, no repair pass, no persisted secrets |
-| **Jev guardrails** | Rejects non-product intake before DeepSeek, warns on preset conflict, heals missing platform needs, and blocks foreign-stack leakage |
+| **Jev guardrails** | Rejects non-product intake before DeepSeek, warns on preset conflict, heals missing platform needs, and blocks foreign-stack leakage and untestable acceptance signals |
 | **Validation ledger** | Local proof of compiler gates, graph audits, and export eligibility in the UI |
 
 ## Privacy
@@ -133,11 +133,17 @@ Hand the exported folder to your coding agent. Read **`AGENTS.md` first**, then 
 
 ### Live provider probe (optional)
 
-```bash
-DEEPSEEK_API_KEY=your_key npm run probe:live
+Type the key at a hidden prompt so it never lands in shell history:
+
+```sh
+# fish
+read -s -x -P 'DeepSeek key: ' DEEPSEEK_API_KEY; npm run probe:live; set -e DEEPSEEK_API_KEY
+
+# zsh; in bash replace the first command with: read -rsp 'DeepSeek key: ' DEEPSEEK_API_KEY
+read -rs 'DEEPSEEK_API_KEY?DeepSeek key: '; export DEEPSEEK_API_KEY; npm run probe:live; unset DEEPSEEK_API_KEY
 ```
 
-Runs one authenticated DeepSeek request through the TypeScript pipeline (no Rust provider, no Jev) and reports whether local compilation reached Gate Clean. Set `CASCADE_MODEL=deepseek-flash` or `deepseek-v4-pro` to choose the model (default `deepseek-v4-pro`).
+Without `DEEPSEEK_API_KEY` the probe is skipped. It runs one authenticated DeepSeek request through the TypeScript pipeline (no Rust provider, no Jev) and reports whether local compilation reached Gate Clean. Set `CASCADE_MODEL=deepseek-flash` or `deepseek-v4-pro` to choose the model (default `deepseek-flash`).
 
 ## Output
 
@@ -172,7 +178,7 @@ idea + locked preset + model + two memory-only keys
   → Jev viability + preset-fit preflight
   → one Rust DeepSeek Responses request when viable
   → strict JSON schema validation
-  → Jev platform-needs healing + stack-leakage integrity gate
+  → Jev platform-needs healing + integrity gate (stack leakage, untestable acceptance)
   → deterministic local normalization
   → preset compiler (graph, phases, tasks)
   → mechanical graph audit

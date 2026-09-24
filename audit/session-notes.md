@@ -1,74 +1,72 @@
-# Phase 3 — Session notes
+# Phase 3 — Session notes (round 2)
 
-Sources (abbreviations used below):
+Round-1 notes (C1, C2, C3, CL1, CL2, AG, sessions 08-31 → 09-24 07:43) are in `audit/round-1/session-notes.md`. This round reads what came after, then re-checks the round-1 recurring items against today's state.
 
-- **C1** Cursor `aaaa67af…` — 2026-08-31 (initial root-cause audit, Copper Kite Astro test, first GitHub publish)
-- **C2** Cursor `6487f034…` — 2026-09-22 04:14 (short audit start)
-- **C3** Cursor `aec35f84…` — 2026-09-22 23:00 → 09-23 11:08 (7/10 audit, compiler fixes, Local Notes / Monospace Notes tests, v3.0.1 release)
-- **CL1** Claude Code `3ed1892e…` — 2026-09-24 03:08–04:05 (review of global instruction files, skills, git hook)
-- **CL2** Claude Code six small sessions — 2026-09-23 10:09–10:27 (`/login`, `/model`, `/effort`, `/skills` only; no project work)
-- **AG** Antigravity CLI `~/.gemini/antigravity-cli/history.jsonl` — 2026-09-19 → 09-23 (user prompts only; no assistant text stored)
-- OpenCode: log only, no transcript. Codex: no sessions for this repo.
+Sources:
 
-Secrets: C1 contains a pasted DeepSeek API key (the agent advised rotation). It is not reproduced here.
+- **R2** Cursor `9c514138…`, lines 244–279, 2026-09-24 09:25 → 13:27: push, live probe, the Jev integrity block, the headline and prompt fix, reinstall, and the preset question.
+- **AG** Antigravity `history.jsonl`: nothing for this repo after 2026-09-22.
+- **OC** OpenCode `opencode.db`: two sessions on 09-23 (model and connector config); no project work.
+- **CL** Claude Code `b5f47ec4` (this session) and `9f12771f` (`/reload-skills`): no earlier project work.
 
-## 1. Instructions the user keeps repeating
+Secrets: R2 line 253 contains a pasted live DeepSeek key. It is not reproduced here.
 
-| # | Instruction | Evidence |
-| --- | --- | --- |
-| R1 | "Rebuild the app, put it in /Applications, remove the old one." | C1 08-31 03:41, 04:08; C3 09-23 00:29, 01:21, 01:37, 06:06, 10:18; AG 09-19 03:45, 09-21 07:11, 09-22 14:14, 19:59. At least 11 times across three tools. |
-| R2 | "Remove the leftovers / don't want a dirty repo." | C3 09-23 00:00, 01:21, 05:55; AG 09-19 05:18, 09-21 07:11, 13:30. |
-| R3 | "We are fixing the COMPILER, not the markdown outputs." | C3 09-23 00:43 ("dont give the fix prompt for the idea"), 00:44 ("i told you 4 times…"), 00:53 ("remove deepgram, remove openrouter from the COMPILER ITSELF"), 01:35; AG 09-22 21:05 ("i told you that the point is the compiler, not the output projects"). |
-| R4 | Re-explaining what the app is and how it works at session start. | C1 08-31 03:21 (long description); C2 09-22 04:21 and 04:23 ("go read the GitHub repo and you will understand how it works"); C3 09-22 22:59 (multi-paragraph background in the prompt); AG 09-19 03:28, 09-22 20:57 (asks for a prompt that includes "a short explanation of what the app is"). |
-| R5 | "Write me a prompt for hermes --profile eldio --tui / Codex to build from the five docs." | C1 08-31 04:21; C3 09-23 06:06; AG 09-19 03:38, 06:02, 09-21 07:31, 07:33 (correction: remind it of skills/delegation), 07:36 (correction: wrong subagent names). |
-| R6 | "Audit the five markdowns at <path>." (manual generate → export → agent audit loop) | C1 08-31 03:54, 04:18; C3 09-23 00:36, 01:12, 01:29, 05:29; AG 09-19 05:46, 09-21 07:26, 09-22 20:30. Output folders: `projekti/cascadev3/copper-kite`, `projekti/localnotes`, `projekti/local-notes-editor`, `projekti/monospace-notes`, `projekti/monospace`, `projekti/cursorpad`, `/Volumes/omarchyuser/whisper-bar`. |
+## 1. New events since round 1 (R2)
 
-## 2. Corrections the user had to make
+| Time | Event |
+| --- | --- |
+| 09:25 | Push approved after the agent explained two observations: the timing-sensitive `jev_boundary.rs` mock server, and `minLength` in strict mode. `af6d430` pushed; CI run 35969552551 passed. |
+| 09:38 | The user ran the live probe with the key inline and pasted the whole command, key included, into chat. It passed on `deepseek-flash` in 12 s. The agent advised rotation and said to clear `~/.zsh_history`. |
+| 09:38 | The agent said "The app's default is `deepseek-v4-pro`". Wrong: `src/state.ts:43` sets `deepseek-flash`. `deepseek-v4-pro` is only the probe's default. |
+| 09:38 | The agent proposed a Tauri test idea (subscription tracker: notifications, tray, CSV, rates API with key). |
+| 12:51 | The GUI run was blocked at Jev Integrity. The headline said "technology-stack conflict"; the real cause was two features (`Renewal Notifications`, `Tray Icon and Background Operation`) scoring below 0.65 on acceptance verifiability. The user asked "why", and what the right-hand window was (Technical details). |
+| 12:5x | The agent offered three fixes. Option 3 ("send just that feature back to DeepSeek once to reword it") conflicts with `AGENTS.md:46` "no provider retry or repair", and the agent didn't flag that. The user chose options 1 and 2. |
+| 13:17 | Uncommitted edits: `statusDetailText` in `src/app.ts`, a provider rule at `src/schema.ts:297`, and `tests/status-detail.test.ts`. 219 tests passed. Reinstalled with `npm run install:app -- --clean`. |
+| 13:23 | The app recommended the Native macOS SwiftUI preset for a Tauri idea. The user asked which to pick; the agent said Tauri, since the recommendation is advisory only (`src/pipeline.ts:258-277`). |
+| 13:27 | The session ends before the user reports the rerun. The outcome is unknown. |
 
-- **Test ideas are not product scope.** Agent kept Deepgram/OpenRouter voice logic in the compiler because the voice test idea used them; user corrected four times before the vendor wiring was removed (C3 09-23 00:00–00:53). The voice-domain heuristics that remain (see §6) are the same class of problem.
-- **Model name.** User had to tell the agent twice that `deepseek-flash` is the current model and `deepseek-v4-flash` is a retired alias (AG 09-19 03:41, 03:44, citing DeepSeek news 2026-09-10).
-- **Stale install.** User noticed the `/Applications` bundle still showed an old timestamp (C1 08-31 04:08). Agent found a half-updated install: the binary was overwritten by a sandboxed build but the bundle was not replaced.
-- **Hermes context.** Agent invented subagent names that belong to a different Hermes profile (AG 09-21 07:36).
-- **Default URL.** User had to supply the default endpoint `https://api.deepseek.com/responses` (AG 09-19 05:24).
+## 2. Findings
 
-## 3. Tasks done by hand repeatedly
+### N1. The pasted API key is still on disk (R2 09:38) — verified now
 
-- **Build + install + verify** (R1): `npm run tauri:build`, `rm -rf` the installed bundle, `cp -R`, `codesign --verify --deep --strict`, launch, check timestamp/version. No script exists; each agent rediscovers the steps (C1 lines ~240–660 of assistant text; C3 09-23 multiple).
-- **Release**: bump version in `package.json`, `package-lock.json`, `tauri.conf.json`, `Cargo.toml`, `Cargo.lock`; update two README DMG links and the "Existing Latest release" line in the release README; build DMG; mount and verify signature/version; tag; wait for CI; attach DMG; hand-edit release notes because generated notes omit direct commits (C3 09-23 ~10:55–11:08).
-- **Packet audit loop** (R6): user generates in the GUI, exports, pastes a path, agent audits, agent writes a synthetic fixture to reproduce each defect, fixes the compiler, rebuilds, user regenerates.
-- **Backups before risky agent runs**: AG 09-19 03:47 ("make a snapshot/backup … in case he fucks up"). Sibling folders now hold ~2.1 GB: `../nodaysidle-cascade-v3.zip` (1.6 GB), `../nodaysidle-cascade-v3-rollbacks` (319 MB), `../backups` (200 MB), `../rollback-backups` (21 MB).
+- The literal key appears once in `~/.local/share/fish/fish_history` and once in the Cursor transcript `9c514138…jsonl`. I counted matches only and printed nothing.
+- The agent's cleanup advice (`fc -W`, `~/.zsh_history`) was for zsh, but the user's shell is fish. `~/.zsh_history` has 0 matches, so that advice cleaned nothing.
+- I can't verify whether the key was rotated.
+- The root cause in the repo: `README.md:137` documents the inline `DEEPSEEK_API_KEY=… npm run probe:live` form (prompt-audit Q5).
 
-## 4. Missing context that caused mistakes
+### N2. The integrity headline and docs blamed the wrong cause (R2 12:51)
 
-- No project instruction file describes what the app is, the authority boundaries, or the commands (R4). `CLAUDE.md` in the repo is a generic copy of the parent files.
-- No written rule that the compiler must stay generic and that per-idea fixtures must not add domain logic (R3).
-- No note that generated packets in `/Volumes/omarchyuser/projekti/*` are disposable test outputs (C3 09-23 01:35: "the monospace-notes etc are all tests of the app itself").
-- Live probe gave false confidence: it uses its own fetch path in the test, a short idea, and no Jev, so it passed while the GUI failed on JSON wrapping (C1 08-31 ~03:50: "The earlier live probe used a short Harbor Sort idea and a test-side fetch path — so it didn't catch this in the GUI").
+- The UI headline is fixed in the uncommitted `src/app.ts`. `USERGUIDE.md:18` and README still describe only stack conflicts (prompt-audit Q2).
 
-## 5. Failed approaches / recurring defect class
+### N3. A Jev block has no in-app recovery (R2 12:5x) — design decision, open
 
-- **Regex word-matching heuristics** in the compiler repeatedly mis-linked features and data:
-  - `\bpage\b` matched "home page" → create-before-modify failure (C1 08-31 ~04:15).
-  - "note file names" matched the document-role regex (C3 09-23 ~05:40).
-  - "request" in a negated sentence granted network permission (C3).
-  - Commit `8dfd82c` message: "Link features … only through affirmed text (negated clauses stripped)".
-  - Agent's own caveat (C3 09-23 ~01:29): "Most data linking and placement comes from matching wording. A blueprint phrased differently from what I tested can still link data to the wrong feature."
-- **Per-idea regression suites**: each GUI test idea produced a new test file named after it (`voice-v3-*`, `voice-v5-*`, `monospace-*`, `cursor-notepad-*`, `astro-markdown-*`). The C3 audit recommended "a property-style matrix of generic ideas across all 5 presets" instead (C3 09-22 23:24).
-- **Flaky Rust test**: `surfaces_only_the_status_for_http_failures` failed once under a parallel debug build and passed on rerun (C3 09-23 ~05:50).
+- One failing feature blocks the whole packet (`src/pipeline.ts:329-330`). The only remedies are a manual retry, which is another paid DeepSeek request, or rewording the idea.
+- The product rule "no provider retry or repair" (`AGENTS.md:46`, `README.md:73`) rules out automatic rewording. The agent proposed it anyway without citing the rule.
+- The user hasn't seen whether the new prompt rule (Q4) is enough; the rerun is pending.
 
-## 6. Unfinished work / decisions not recorded in project instructions
+### N4. Wrong-default statement (R2 09:38)
 
-- **Deferred redesign**: "I did not extract the Deepgram and OpenRouter wire text into separate domain packs … Moving them out is a redesign" (C3 09-22 ~23:40). Vendor wiring was later removed (C3 09-23 ~01:00), but voice-domain logic (dictation insertion, `voice.sqlite3` schema, microphone copy "record dictation", voice persistence audit) is still in `src/compiler.ts` and `src/audit.ts`.
-- **"Make this a memory or a markdown in the repo, this project is very important"** (AG 09-19 06:08). `SUMMARIZE.md`/`MILESTONE.md`/`GUIDE.md` were created then deleted as stale in C3 (09-23 ~01:25; untracked, not recoverable). No durable project context file replaced them.
-- **Rebase-before-push** decision (C3 09-23 10:55): user asked, agent recommended rebase for unpushed local commits; not recorded.
-- **Push on request** preference: recorded only in Claude Code memory (CL1 09-24 04:01), not visible to Cursor/Codex/Antigravity.
-- **Blocked on me / Changed / Found** reporting rule: approved in CL1 (09-24 03:14) and added only to `~/.claude/CLAUDE.md:290`; other tools don't get it.
-- **Hybrid release flow** (PR #1): documented in `scripts/README-hybrid-release.md` but not linked from README's Development section.
+- Caused by the probe default (`deepseek-v4-pro`) differing from the app default (`deepseek-flash`); see prompt-audit Q3.
 
-## 7. Historical observations already resolved (verified in Phase 4)
+### N5. The preset recommendation leans native for tray and notification ideas (R2 13:23) — observation only
 
-- Provider wrapper rejecting `reasoning` items; schema duplicated in prompt; dev port mismatch (C1) — fixed.
-- JSON fences / prose around provider JSON (C1) — tolerant parser exists (`parseBlueprintJson`).
-- C3 audit H1–H4, M1–M6 (OpenRouter leak, ghost permissions, atomic-audit index, shell injection, credential-vault crash, redirects, payload cap, export race, per-keystroke Jev calls) — fixed in `8dfd82c` with regression tests (`ghost-permissions-rejection`, `executable-injection-rejection`, `atomic-audit-placement-alignment`, etc.).
-- App model selector uses `deepseek-flash` (`src/pipeline.ts:35`).
-- `tests/cursor-notepad-quality.test.ts` no longer writes into the repo.
+- A single data point. The code treats it as advisory. It's worth watching across the idea × preset matrix, but I have no evidence it's wrong.
+
+### N6. The Obsidian project note was never updated after round 1
+
+- The note's `dynamic_state_checked: 2026-09-19` predates both 09-23 commits and `af6d430`.
+- The rule to update it (`~/.claude/CLAUDE.md:36`) loads only in Claude Code and Codex, but the work happened in Cursor and Antigravity. As a result, the one file every Claude or Codex agent must read first is the most stale (prompt-audit Q7).
+
+## 3. Round-1 recurring items: status now
+
+| Round-1 item | Status (verified 2026-09-24 13:40) |
+| --- | --- |
+| R1 rebuild + install | Scripted (`npm run install:app`); used successfully at 13:17. Resolved. |
+| R2 leftovers | `--clean` flag; `git status` after the 13:17 install showed no build output. Resolved. |
+| R3 "fix the compiler, not outputs" | In `AGENTS.md:39-44`. No repeat in R2. Resolved for Cursor and Claude. The Obsidian note still contradicts it indirectly (Q7). |
+| R4 re-explaining the app | `AGENTS.md:1-8`. No repeat in R2. Resolved. |
+| R5 handoff prompt | Template in `USERGUIDE.md:33-56`. Resolved. |
+| R6 manual packet-audit loop | Still manual (the 12:51 run). It's the product's test loop and inherent. The matrix test covers the compile side. |
+| Wording heuristics | Mostly removed; five remain (prompt-audit Q1). Open. |
+| Flaky `jev_boundary.rs` | Values unchanged (`:21,65,77,93`: 500/700/250/500 ms). Passed locally today and in CI once. Open, low. |
+| Sibling backups, parent `CLAUDE.md`, Cursor rules | Unchanged; still your decision. |

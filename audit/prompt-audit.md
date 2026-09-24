@@ -1,91 +1,127 @@
-# Phase 2 — Prompt and instruction audit
+# Phase 2 — Prompt and instruction audit (round 2)
 
-Scope: every instruction file and embedded prompt from `inventory.md`. Findings marked **[in repo]** are inside this project; **[outside repo]** are user-level files that affect agents here but are not part of the project. Every item was re-checked in Phase 4; status is noted.
+Round-1 findings P1–P11 are in `audit/round-1/prompt-audit.md`. P1, P2, P4, P5, and P6 were fixed in `af6d430`. P3, P9, P10, and P11 were deferred to you and are re-listed here only where they still apply. Every item below was re-checked against the current files (Phase 4).
 
-No security, legal, or safety rule is removed by any rewrite below. Approval rules (commits, pushes, destructive operations, test changes) are kept word-for-word in intent.
+No security, safety, or product requirement is removed by any rewrite. Rewrites fix accuracy or remove duplication.
 
 ---
 
-## P1. Three identical copies of `CLAUDE.md`, none with project facts [in repo] — verified
+## In the repo
 
-- **Files:** `CLAUDE.md` (untracked), `/Volumes/omarchyuser/COMPILER/CLAUDE.md`, `/Volumes/omarchyuser/CLAUDE.md`. `diff` shows they are byte-identical (41 lines each).
-- **Text:** the whole file, starting `# Working preferences`.
-- **Why it hurts:** Claude Code and Cursor load all three, so the same 41 lines enter context three times. None of them says what this project is, how it is built, what the checks are, or which invariants matter. Sessions show the user re-explaining the app at the start of at least five sessions (session-notes R4).
-- **Proposed rewrite:** keep the generic preferences in one place (`/Volumes/omarchyuser/CLAUDE.md`), and replace the project copy with a short project file containing only project facts (see REPORT item 1 for the draft). The COMPILER-level copy can then be removed or reduced to COMPILER-specific notes — your call, since it also covers sibling projects.
+### Q1. `AGENTS.md` says nothing is inferred from wording, but the compiler still does it — verified
 
-## P2. "Use the project's required checks" points at nothing [in repo] — verified
+- **File:** `AGENTS.md:34-35`
+- **Text:** "Nothing is inferred from wording. Don't add regexes that guess links or placement from feature prose."
+- **Reality:** `src/compiler.ts` still reads prose in several places:
+  - `:366-367` picks recovery text from failure wording ("exits", "falls back").
+  - `:372` places temporary files when the text says "temporary" and "renam…".
+  - `:407-408` detects an Astro content site from words like "catalog", "portfolio", "direct url".
+  - `:776-779` rewrites save behavior when the blueprint says "atomically".
 
-- **File:** `CLAUDE.md:25`
-- **Text:** "Use the project's required checks and preserve meaningful coverage."
-- **Why it hurts:** no instruction file defines the required checks. The only list is README "Development", and two of those commands currently fail (`cargo fmt --check`, `cargo clippy -D warnings`; see REPORT item 2). An agent cannot tell which checks are required or whether a failure is pre-existing.
-- **Proposed rewrite (project file):** "Required checks before reporting code work done: `npm run typecheck`, `npm test`, `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`, `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings`, `cargo test --manifest-path src-tauri/Cargo.toml`."
-
-## P3. Dependency-lookup rule uses boosters and a mandatory ritual [in repo] — verified
-
-- **File:** `CLAUDE.md:18-20`
-- **Text:**
-  - "**Assume outdated knowledge:** Always assume your existing understanding … is outdated."
-  - "**Mandatory lookup before editing:** … Treat "I already know this API" as a trigger to look it up, not a reason to skip. Do this before the first edit, not after a failed check."
-  - "Do not use web fetch or web search for dependency-related lookups."
-- **Why it hurts:** "Always", "Mandatory", and "Treat … as a trigger" are emphasis boosters. As written, the rule applies to every edit touching any dependency, including trivial ones (bumping a version string, a one-line TypeScript change using a stable API). It also doesn't account for external HTTP APIs that Context7 may not cover: the DeepSeek model rename (`deepseek-v4-flash` → `deepseek-flash`) was found only because the user pasted the DeepSeek news page (AG 2026-09-19). The underlying requirement (check current docs for the pinned version) is legitimate and stays.
+  Round 1's changelog already listed two of these as deferred.
+- **Why it hurts:** an agent that trusts the file will misdiagnose a packet defect caused by these heuristics, or be told a rule that the code itself breaks. The user has repeatedly traced defects to wording heuristics (round-1 session notes §5).
 - **Proposed rewrite:**
-  > Before writing or changing code or config that uses a dependency or external API, check its current docs for the version pinned in `package.json` / `src-tauri/Cargo.toml`: Context7 first; if it has no coverage, fetch the official docs with `curl`. This includes provider APIs (DeepSeek, TypeSafe Jev). Pure Git, filesystem, and repo-internal work needs no lookup.
+  > Links between features and data, services, or platform needs come only from the declared fields; they are never inferred from wording. A few older wording heuristics still exist in `src/compiler.ts` (recovery text from failure wording, temporary-file placement, atomic-write wording, Astro content-site detection). Don't add new ones; when one of them causes a defect, replace it with a declared field.
 
-## P4. Architecture spec is stale in five places, and README points to it [in repo] — verified
+### Q2. Docs describe Jev integrity as a stack-leakage gate only — verified
 
-- **File:** `docs/superpowers/specs/2026-08-29-cascade-v3-design.md`; README line 196: "Design notes live in [`docs/`](docs/)."
-- **Text and current reality:**
-  - line 5: "one selected DeepSeek model, and one memory-only key" → there are two keys (DeepSeek + TypeSafe Jev), README line 125.
-  - lines 19–33 (runtime flow) omit Jev preflight and Jev integrity; `src/pipeline.ts:41` `ProgressStage` includes `jev-preflight` and `jev-integrity`.
-  - line 36: "There is exactly one provider request for each Generate action." → still true for DeepSeek, but Generate also makes Jev requests (`pipeline.ts:265`, `:315`).
-  - line 42: "Selectable models: `deepseek-v4-pro` and `deepseek-v4-flash`" → selectable models are `deepseek-flash` and `deepseek-v4-pro` (`src/pipeline.ts:34-37`).
-  - line 108: visible stages list omits the Jev stages.
-- **Why it hurts:** an agent told to read "design notes" gets a model name that DeepSeek has retired and a flow without Jev, which is the kind of drift that led to past mistakes (session-notes §2).
-- **Proposed rewrite:** fix those five statements in place (smallest change), keeping the rest of the spec, which still matches the code (provider body, authority boundaries, export).
+- **Files and text:**
+  - `USERGUIDE.md:12` "Jev may only append missing platform needs … or block a foreign-stack conflict."
+  - `USERGUIDE.md:18` "**Integrity blocked** — the blueprint contains instructions for a stack that conflicts with the selected preset".
+  - `README.md:55` "…platform-needs, and stack-leakage judgments".
+  - `README.md:74` "…heals missing platform needs, and blocks foreign-stack leakage".
+  - `README.md:175` "Jev platform-needs healing + stack-leakage integrity gate".
+  - Spec `:26` "Jev platform-need healing and stack-leakage integrity gate".
+- **Reality:** `src/pipeline.ts:327-334` also returns `blueprint-integrity-failed` when Jev scores any feature's acceptance signals below `JEV_ACCEPTANCE_VERIFIABILITY_THRESHOLD` (0.65, `src/jev.ts:26`).
+- **Why it hurts:** this is the exact confusion from 12:51 today. The UI said "technology-stack conflict" when two features had failed verifiability. The uncommitted `src/app.ts` change fixes the UI text, but the guide still gives the wrong remedy ("revise the idea or preset").
+- **Proposed rewrite (USERGUIDE:18):**
+  > **Integrity blocked** — Jev found either a technology-stack conflict or features whose acceptance signals automated tests can't check. The headline says which; Technical details lists the fields. Retry, or describe those features as checkable outcomes.
 
-## P5. Release README has a stale-by-design line and the wrong folder case [in repo] — verified
+  Make matching one-phrase additions ("…and untestable acceptance signals") to `USERGUIDE:12`, `README:55,74,175`, and spec `:26`.
 
-- **File:** `scripts/README-hybrid-release.md` (tracked as `Scripts/README-hybrid-release.md`)
-- **Text:** line 14 "Existing Latest release is **v3.0.1**. This automation does not republish or replace it…"; lines 9–11 "`Scripts/attach-release-asset.sh`".
-- **Why it hurts:** line 14 must be hand-edited on every release (it was, in C3 09-23). Git tracks `Scripts/` and `scripts/` as two folders; on Linux and in CI they are separate, on macOS they merge (REPORT item 4).
-- **Proposed rewrite:** drop the version sentence; keep "This automation does not republish or replace an existing release; a new `v*` tag is required." Reference `scripts/attach-release-asset.sh` once the folder case is fixed.
+### Q3. The live probe defaults to a different model than the app — verified
 
-## P6. README describes the live probe as end-to-end; it isn't [in repo] — verified
+- **Files:** `tests/live-provider-probe.test.ts:6` (`?? "deepseek-v4-pro"`), `README.md:140` "(default `deepseek-v4-pro`)", and `src/state.ts:43` (app default `deepseek-flash`). `AGENTS.md:47` says `deepseek-flash (default)`.
+- **Why it hurts:** at 09:38 the agent told you "The app's default is `deepseek-v4-pro`", which is wrong; it mixed up the two defaults. The probe also costs more by default than the app's own default.
+- **Proposed change:** make the probe default `deepseek-flash` and update README:140. This is a one-token change to an existing test file, so it needs your approval.
 
-- **File:** `README.md:140`
-- **Text:** "Runs an authenticated end-to-end generate against the DeepSeek API and reports whether the packet reached Gate Clean."
-- **Why it hurts:** `tests/live-provider-probe.test.ts` builds its own request with `fetch` (lines 10–91) instead of the Rust provider, never passes a Jev provider (so Jev stages are skipped), and can only select `deepseek-v4-flash` or `deepseek-v4-pro` (line 105), not the current `deepseek-flash`. In C1 (2026-08-31) this probe passed while the GUI failed.
-- **Proposed rewrite:** "Runs one authenticated DeepSeek request through the TypeScript pipeline (no Rust provider, no Jev) and reports whether local compilation reached Gate Clean. Set `CASCADE_MODEL=deepseek-flash` or `deepseek-v4-pro`." Plus the code fix in REPORT item 5.
+### Q4. The new provider rule's examples come from today's test idea — verified (uncommitted, your change)
 
-## P7. Embedded provider prompt: user idea is in the system channel; minor boosters [in repo] — verified, low priority
+- **File:** `src/schema.ts:297` (uncommitted).
+- **Text:** "…'a notification request containing the item name is scheduled for the due date minus 3 days', 'after the main window closes the process keeps running and the tray menu lists Open and Quit'…"
+- **Why it may hurt:** both examples are the subscription-tracker idea from 12:51 ("3 days before each renewal", "tray icon"). `AGENTS.md:42-43` forbids logic that exists because one test idea needed it. This is example wording, not logic, but a model at `temperature 0` tends to copy concrete numbers from examples. The rule itself is sound and generic.
+- **Proposed rewrite of the examples:**
+  > 'a notification request with the item's title is scheduled at the configured time', 'after the main window closes the process keeps running and the tray menu lists its actions', or 'when microphone permission is denied the record control is disabled and the denial message is shown'.
 
-- **File:** `src/schema.ts:269-281` (`buildBlueprintInstructions`); `src/pipeline.ts:206`.
-- **Text:** instructions end with `` `Software idea: ${input.idea.trim()}` ``; `input` is the fixed string "Return the compact semantic JSON value for the supplied software idea."; line 276 "Never use subjective or hyperbolic phrases…"; line 277 "Never write 'documented defaults'…"; line 275 "Define features strictly as…".
-- **Why it hurts:** the idea (up to 32,000 chars, can be pasted text) is given system-level authority; injected text in the idea could compete with the rules above it. Impact is limited by the strict JSON schema and local audits (shell-injection gate exists: `src/audit.ts:63`). The "Never" lines are concrete and testable, so they are not harmful boosters.
-- **Proposed change:** none now. Moving the idea into `input` is a model-behavior change that needs live A/B probing, and `src/smoke.ts:38` depends on the current layout. Listed in REPORT as deferred.
+  `tests/status-detail.test.ts` asserts only the phrase "request the app makes or the app state a test can read", so it keeps passing.
 
-## P8. No few-shot examples, no scratchpad rituals in project prompts — verified
+### Q5. README tells you to put the key on the command line — verified
 
-Nothing to fix. Jev noul questions (`src/jev.ts:267-330`) are single-sentence and specific.
+- **File:** `README.md:137` `DEEPSEEK_API_KEY=your_key npm run probe:live`
+- **Why it hurts:** this form writes the key into shell history. It happened today: 09:38, and the key is still in `~/.local/share/fish/fish_history`; see session notes N1. It conflicts with the product's own rule that keys are never persisted (`AGENTS.md:46`).
+- **Proposed rewrite (fish syntax, the user's shell, plus a zsh/bash line):**
+  ```sh
+  # fish
+  read -s -P 'DeepSeek key: ' -x DEEPSEEK_API_KEY; npm run probe:live; set -e DEEPSEEK_API_KEY
+  # zsh / bash
+  read -rs 'DEEPSEEK_API_KEY?DeepSeek key: '; export DEEPSEEK_API_KEY; npm run probe:live; unset DEEPSEEK_API_KEY
+  ```
+  I'll check `read` flags in fish and zsh docs before editing (bash uses `read -rsp`, so the README will list the zsh form and note the bash difference).
+
+### Q6. No findings in the other embedded prompts
+
+`src/jev.ts` noul questions are single, specific sentences. There are no few-shot examples and no scratchpad rituals. Round-1 P7 (the idea sits in the system `instructions`) stays deferred because it needs paid A/B probing.
 
 ---
 
-## Outside-repo instruction files (reported, not proposed for this project's changes)
+## Outside the repo (these load for agents here; changing them needs your approval)
 
-### P9. User-level Cursor rules carry the boosters that were removed from Claude's copy [outside repo] — verified in files; loading unconfirmed
+### Q7. The Obsidian project note that agents must read first is wrong in seven places — verified
 
-- **Files:** `~/.cursor/rules/front-end-cursor-rules.mdc:5,8,9` ("…are a genius at reasoning", "First think step-by-step - describe your plan … in pseudocode, written out in great detail.", "Confirm, then write code!"), all `alwaysApply: true`. CL1 (2026-09-24) removed exactly these lines from `~/.claude/CLAUDE.md` but not from this Cursor copy.
-- `~/.cursor/rules/graphify.mdc:6` "This project has a graphify knowledge graph at graphify-out/." — `alwaysApply: true`; this repo has no `graphify-out/`.
-- Three of the five always-apply rules are Next.js/React personas; this project uses neither.
-- These rules did not appear in this session's injected context, so Cursor may not load this folder. If it does, "Confirm, then write code!" contradicts the project `CLAUDE.md:31` ("Proceed with reversible local work within the requested scope").
+- **Rule that forces the read:** `~/.claude/CLAUDE.md:32-34`: "For tasks involving … the `nodaysidle` GitHub account: First read … `Unified-Index.md`, the matching note under `20-Projects/`…"
+- **Note:** `~/Documents/codex-obsidian/20-Projects/nodaysidle-cascade.md`:
+  1. "DeepSeek-only live generation uses `deepseek-v4-flash`" → retired alias; the default is `deepseek-flash`.
+  2. "one-repair compilation", "at most one same-schema repair" → `AGENTS.md:46`: "no provider retry or repair".
+  3. "Known Deepgram Nova-3 … OpenRouter … provider IDs expand only from a local immutable registry" → removed in `8dfd82c` and `af6d430`.
+  4. "DeepSeek Flash + OpenRouter Jev" → Jev calls `https://api.typesafe.ai/v1/systemone` (`src-tauri/src/jev.rs:9`).
+  5. `github_repos: []` → the repo is `nodaysidle/nodaysidle-cascade-v3`. `Unified-Index.md:53` maps the note to the V1 path `/Volumes/omarchyuser/nodaysidle-cascade` with "active GitHub mapping not confirmed".
+  6. "Remaining gap: None … fully proven and closed. Status promoted to `complete`" → you doubted the 10/10 claim (Antigravity, 09-21), and a run was blocked today at 12:51.
+  7. "Export can overwrite only the five canonical filenames after an explicit collision warning" → current export writes to a new folder with `RENAME_EXCL`, so it never overwrites.
+- **Why it hurts:** this note re-seeds the facts you had to correct by hand ("fix the compiler", the model name, removing the vendors). It is the one context file an agent must read before anything else. The note drifts because most work here happens in Cursor and Antigravity, and those tools don't load the rule that says to update it.
+- **Proposed rewrite:** replace the "Fixed constraints", "Remaining gap", and frontmatter with a short note that points to `AGENTS.md` as the source of truth. Set `github_repos: [nodaysidle/nodaysidle-cascade-v3]`, `status: active`, and fix `Unified-Index.md:53`. Keep the milestone history but mark it "historical (V1 and pre-3.0.1)".
 
-### P10. Superpowers session hook uses heavy emphasis [outside repo]
+### Q8. Two identical parent `CLAUDE.md` files load in every session (round-1 P1 remainder) — verified
 
-- Hook text injected into Cursor sessions: "EXTREMELY_IMPORTANT", "If you think there is even a 1% chance a skill might apply … YOU DO NOT HAVE A CHOICE. YOU MUST USE IT."
-- Conflicts in spirit with `CLAUDE.md:27` ("Keep small tasks local") and the Cursor user rule ("Be concise…"). The hook's own text says user instructions take precedence, so behavior is recoverable, but it adds noise to every session.
+- `/Volumes/omarchyuser/CLAUDE.md` and `/Volumes/omarchyuser/COMPILER/CLAUDE.md` are byte-identical (36 lines, `cmp` clean), and both appear in this session's context.
+- **Proposed change:** delete the COMPILER copy, since the parent one already covers it. This affects sibling projects under `COMPILER/`, which still get the same text from the parent.
 
-### P11. Cross-tool preferences live in tool-specific places [outside repo]
+### Q9. Delegation rules contradict each other — verified
 
-- "Push when I say git push" exists only in Claude Code project memory (`~/.claude/projects/…/memory/git-push-on-request.md`).
-- "Blocked on me / Changed / Found" long-run report format exists only in `~/.claude/CLAUDE.md:290`.
-- The user works on this repo in Cursor, Claude Code, Antigravity, and OpenCode (inventory §4). Preferences recorded in one tool don't reach the others. No contradiction found: the push memory is consistent with `CLAUDE.md:31` ("existing explicit approval for that action is sufficient").
+- `~/.claude/CLAUDE.md:207` "Use subagents only when the user explicitly requests subagents, delegation, or parallel agent work."
+- `/Volumes/omarchyuser/CLAUDE.md:27` "Delegate when substantial, independent work justifies the overhead. Keep small tasks local; create review subagents only when the user requests them."
+- **Why it hurts:** an agent can't tell whether it may delegate without being asked, and both files load together.
+- **Proposed rewrite:** pick one. The project-level one is the more recent choice: "Delegate when substantial, independent work justifies it; keep small tasks local; create review subagents only on request." Remove `:207` from the global file, or make it say the same.
+
+### Q10. Dependency-lookup ritual (round-1 P3) — still present, verified
+
+- `/Volumes/omarchyuser/CLAUDE.md:18-20` "**Assume outdated knowledge:** Always assume…", "**Mandatory lookup before editing:** … Treat "I already know this API" as a trigger…"
+- Round-1 rewrite still applies. It keeps the lookup requirement, drops the boosters, and names DeepSeek and TypeSafe Jev as APIs to check.
+
+### Q11. The global front-end persona contradicts this repo's code style — verified
+
+- `~/.claude/CLAUDE.md:452` "Always use Tailwind classes for styling HTML elements; avoid using CSS or tags." → this repo has no Tailwind; it uses `src/style.css`.
+- `:456` "Use consts instead of functions" → the repo uses `function` declarations throughout (`src/app.ts:62,74,78,82,232`). Today's uncommitted `statusDetailText` correctly followed the repo, not this rule.
+- `:453,455` "Use “class:” …", "on:click" → Svelte syntax; no Svelte in the workspace atlas.
+- `:307-425` (≈120 lines) "Repository Atlas: 70+ projects" loads into every session in every repo.
+- **Why it hurts:** agents in this repo have to ignore about 160 lines of global instruction on every turn. A less careful agent will follow "Use consts instead of functions" and add style churn.
+- **Proposed change:** move the persona (`:427-469`) into the React/Next projects' own `CLAUDE.md` files, or scope it with a first line: "Applies only to React/Next.js/Tailwind projects." Move the atlas to a file that is referenced but not imported (for example `/Volumes/omarchyuser/WORKSPACE_OVERVIEW.md`, which the atlas already names).
+
+### Q12. Obsidian "state three headings" ritual — verified
+
+- `~/.claude/CLAUDE.md:35` "Before execution, state `Static context reused`, `Dynamic information newly read`, and `Content not reread`."
+- This is a fixed preamble ritual on every task that touches `nodaysidle` GitHub, including one-line fixes. It adds output without changing behavior.
+- **Proposed rewrite:** "Reuse the project note's static context; re-read current branch, status, and changed files when they can affect the task. Mention stale note facts you found." This keeps the requirement and drops the ritual.
+
+### Q13. Cursor user rules (round-1 P9) — unchanged, still deferred to you
+
+`~/.cursor/rules/front-end-cursor-rules.mdc:9` "Confirm, then write code!" (`alwaysApply: true`), `graphify.mdc:6` claims a `graphify-out/` that this repo lacks. No new evidence; listed so the next audit doesn't lose it.

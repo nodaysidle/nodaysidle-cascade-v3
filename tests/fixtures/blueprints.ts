@@ -1,4 +1,4 @@
-import type { PlatformNeed, SemanticBlueprint } from "../../src/schema"
+import type { FeatureRecovery, FeatureSurface, PlatformNeed, SemanticBlueprint } from "../../src/schema"
 
 export type FixturePresetId =
   | "native-macos-swiftui-desktop"
@@ -13,6 +13,8 @@ interface FeatureUses {
   readonly platform?: readonly PlatformNeed[]
   readonly data?: readonly string[]
   readonly services?: readonly string[]
+  readonly recovery?: FeatureRecovery
+  readonly surface?: FeatureSurface
 }
 
 function feature(name: string, userOutcome: string, behavior: string, acceptance: string, uses: FeatureUses = {}): Feature {
@@ -22,6 +24,8 @@ function feature(name: string, userOutcome: string, behavior: string, acceptance
     trigger: `The user starts ${name.toLowerCase()}.`,
     behavior,
     failureOutcome: "The operation stops without replacing the last valid state and explains what can be retried.",
+    failureRecovery: uses.recovery ?? "retry",
+    surface: uses.surface ?? "main",
     acceptanceSignals: [acceptance],
     usesPlatformNeeds: [...(uses.platform ?? [])],
     usesData: [...(uses.data ?? [])],
@@ -71,8 +75,8 @@ export const fileOrganizerBlueprint = blueprint({
     feature("Reversible batch", "Restore every successfully moved file", "Apply the approved plan, stop safely on partial failure, and record the completed subset for exact undo.", "Undo restores the completed subset to original locations.", { platform: ["filesystem", "local-storage"], data: ["Move journal"] }),
   ],
   dataObjects: [
-    { name: "Organization rules", purpose: "Map file metadata to reviewed destination folders.", sensitivity: "personal", retentionIntent: "Keep locally until edited or reset.", storage: "records" },
-    { name: "Move journal", purpose: "Record completed source and destination pairs for undo.", sensitivity: "personal", retentionIntent: "Keep through the configured undo window.", storage: "records" },
+    { name: "Organization rules", purpose: "Map file metadata to reviewed destination folders.", sensitivity: "personal", retentionIntent: "Keep locally until edited or reset.", storage: "records", writeMode: "direct" },
+    { name: "Move journal", purpose: "Record completed source and destination pairs for undo.", sensitivity: "personal", retentionIntent: "Keep through the configured undo window.", storage: "records", writeMode: "direct" },
   ],
   platformNeeds: ["filesystem", "local-storage"],
   productConstraints: ["Never upload filenames, paths, metadata, or contents.", "Never follow links outside the selected folder."],
@@ -89,7 +93,7 @@ export const photoCleanerBlueprint = blueprint({
     feature("Cleaning policy", "Choose exactly which metadata categories to remove", "Maintain a reviewed category policy without altering an image.", "The export summary matches the selected policy.", { platform: ["local-storage"], data: ["Cleaning policy"] }),
     feature("Verified copy export", "Receive cleaned copies with unchanged originals", "Write new files, reread metadata, and discard incomplete outputs when verification fails.", "Every output passes the selected policy and source hashes remain unchanged.", { platform: ["filesystem"], data: ["Cleaning policy"] }),
   ],
-  dataObjects: [{ name: "Cleaning policy", purpose: "Remember the last reviewed metadata categories.", sensitivity: "personal", retentionIntent: "Keep locally until reset.", storage: "settings" }],
+  dataObjects: [{ name: "Cleaning policy", purpose: "Remember the last reviewed metadata categories.", sensitivity: "personal", retentionIntent: "Keep locally until reset.", storage: "settings", writeMode: "direct" }],
   platformNeeds: ["filesystem", "local-storage"],
   productConstraints: ["Never transmit selected photographs or metadata.", "Never overwrite a source image or existing destination."],
 })
@@ -105,7 +109,7 @@ export const networkMonitorBlueprint = blueprint({
     feature("Transition timeline", "Review when connectivity changed", "Store deduplicated state transitions and representative latency without traffic content.", "Repeated samples do not flood the timeline.", { platform: ["local-storage"], data: ["Incident timeline"] }),
     feature("Meaningful alerts", "Receive one outage and one recovery alert", "Notify only after a stable state crosses the configured threshold.", "Denied notifications never block monitoring.", { platform: ["notifications"] }),
   ],
-  dataObjects: [{ name: "Incident timeline", purpose: "Keep timestamped reachability states and aggregate latency.", sensitivity: "personal", retentionIntent: "Keep locally for fourteen days.", storage: "records" }],
+  dataObjects: [{ name: "Incident timeline", purpose: "Keep timestamped reachability states and aggregate latency.", sensitivity: "personal", retentionIntent: "Keep locally for fourteen days.", storage: "records", writeMode: "direct" }],
   platformNeeds: ["network", "notifications", "local-storage", "background-execution"],
   productConstraints: ["Never capture payloads, visited domains, or application traffic.", "Run no more than one probe per endpoint."],
 })
@@ -123,8 +127,8 @@ export const knowledgeManagerBlueprint = blueprint({
     feature("Portable export", "Reconstruct notes and links from a selected folder", "Export notes, relationships, and a manifest through an atomic destination boundary.", "A fresh import preserves note and link counts.", { platform: ["filesystem"], data: ["Notes and links"] }),
   ],
   dataObjects: [
-    { name: "Notes and links", purpose: "Store user-authored text and directional relationships.", sensitivity: "personal", retentionIntent: "Keep locally until explicit deletion.", storage: "records" },
-    { name: "Search index", purpose: "Provide derived offline search data.", sensitivity: "personal", retentionIntent: "Keep until rebuilt or application data is cleared.", storage: "records" },
+    { name: "Notes and links", purpose: "Store user-authored text and directional relationships.", sensitivity: "personal", retentionIntent: "Keep locally until explicit deletion.", storage: "records", writeMode: "direct" },
+    { name: "Search index", purpose: "Provide derived offline search data.", sensitivity: "personal", retentionIntent: "Keep until rebuilt or application data is cleared.", storage: "records", writeMode: "direct" },
   ],
   platformNeeds: ["filesystem", "local-storage"],
   productConstraints: ["All core note operations work offline.", "Exports never modify the local collection."],
@@ -142,7 +146,7 @@ export const invoiceArchiveBlueprint = blueprint({
     feature("Duplicate review", "Resolve likely duplicates without losing originals", "Compare stable document evidence and require an explicit keep, merge, or reject choice.", "A duplicate decision remains reversible until export.", { data: ["Invoice archive"] }),
     feature("Reconciliation export", "Receive a stable local summary", "Export reviewed records in deterministic order without modifying the archive.", "Repeated export from unchanged records is byte-identical.", { platform: ["filesystem"], data: ["Invoice archive"] }),
   ],
-  dataObjects: [{ name: "Invoice archive", purpose: "Store document references, verified fields, and duplicate decisions.", sensitivity: "sensitive", retentionIntent: "Keep until explicit record deletion.", storage: "records" }],
+  dataObjects: [{ name: "Invoice archive", purpose: "Store document references, verified fields, and duplicate decisions.", sensitivity: "sensitive", retentionIntent: "Keep until explicit record deletion.", storage: "records", writeMode: "direct" }],
   platformNeeds: ["filesystem", "local-storage"],
   productConstraints: ["Never upload financial documents.", "Never overwrite an imported source document."],
 })
@@ -170,11 +174,12 @@ export const docsPortalBlueprint = blueprint({
   goals: ["Find procedures quickly", "Keep version scope visible", "Support offline reference downloads"],
   nonGoals: ["Device control", "Customer support ticketing"],
   features: [
-    feature("Versioned guides", "Read instructions for the correct hardware revision", "Group procedures by released revision and show scope on every page.", "A guide never silently mixes revisions."),
+    feature("Versioned guides", "Read instructions for the correct hardware revision", "Group procedures by released revision and show scope on every page.", "A guide never silently mixes revisions.", { data: ["Guides"], surface: "item-page" }),
     feature("Documentation search", "Find relevant procedures and terms", "Search public guide titles and text with clear empty and no-result states.", "Results identify guide revision and section."),
     feature("Troubleshooting paths", "Follow safe diagnosis from symptom to action", "Present ordered checks with stop conditions and escalation guidance.", "Dangerous steps include explicit prerequisites."),
     feature("Reference downloads", "Save complete printable reference sheets", "Offer versioned files with visible checksums and release dates.", "A missing download never masquerades as current."),
   ],
+  dataObjects: [{ name: "Guides", purpose: "Published procedures grouped by released hardware revision.", sensitivity: "public", retentionIntent: "Published until a revision is withdrawn.", storage: "records", writeMode: "direct" }],
   platformNeeds: [],
   qualityRequirements: ["Keyboard and assistive-technology navigation.", "Fast static production output with validated links."],
   productConstraints: ["Do not collect reader behavior.", "Only released hardware revisions may be published."],
@@ -192,7 +197,7 @@ export const habitTrackerBlueprint = blueprint({
     feature("Deterministic streaks", "Understand current and longest streaks", "Calculate streaks from saved schedules and completions using the current local day.", "Displayed counts match documented weekday rules.", { data: ["Habits and completions"] }),
     feature("Optional reminders", "Receive enabled local reminders", "Schedule alerts only after explicit opt-in and cancel them when habits are disabled or deleted.", "Denied notifications leave tracking fully usable.", { platform: ["notifications", "background-execution"], data: ["Habits and completions"] }),
   ],
-  dataObjects: [{ name: "Habits and completions", purpose: "Store schedules, daily outcomes, and archive state.", sensitivity: "personal", retentionIntent: "Keep until explicit habit deletion or data reset.", storage: "records" }],
+  dataObjects: [{ name: "Habits and completions", purpose: "Store schedules, daily outcomes, and archive state.", sensitivity: "personal", retentionIntent: "Keep until explicit habit deletion or data reset.", storage: "records", writeMode: "direct" }],
   platformNeeds: ["local-storage", "notifications", "background-execution"],
   productConstraints: ["All core behavior works in airplane mode.", "Use the current local calendar day consistently."],
 })
@@ -210,8 +215,8 @@ export const trailChecklistBlueprint = blueprint({
     feature("Packing progress", "See checked and remaining counts", "Calculate progress from stored item state by category and whole trip.", "Counts always equal the visible stored item states.", { data: ["Trip checklists"] }),
   ],
   dataObjects: [
-    { name: "Gear templates", purpose: "Store reusable ordered gear categories and items.", sensitivity: "personal", retentionIntent: "Keep until explicit deletion.", storage: "records" },
-    { name: "Trip checklists", purpose: "Store dated snapshots, checked state, and optional trailhead.", sensitivity: "personal", retentionIntent: "Keep until the trip is deleted.", storage: "records" },
+    { name: "Gear templates", purpose: "Store reusable ordered gear categories and items.", sensitivity: "personal", retentionIntent: "Keep until explicit deletion.", storage: "records", writeMode: "direct" },
+    { name: "Trip checklists", purpose: "Store dated snapshots, checked state, and optional trailhead.", sensitivity: "personal", retentionIntent: "Keep until the trip is deleted.", storage: "records", writeMode: "direct" },
   ],
   platformNeeds: ["local-storage", "location"],
   productConstraints: ["All checklist actions work offline.", "Never request continuous or background location."],
@@ -229,8 +234,8 @@ export const forecastGlanceBlueprint = blueprint({
     feature("Saved places", "Switch between a few saved places", "Add, rename, reorder, and delete saved places stored on the device.", "Deleting a place removes it from the list and from local storage.", { platform: ["local-storage"], data: ["Saved places"] }),
   ],
   dataObjects: [
-    { name: "Saved places", purpose: "Store place names and coordinates chosen by the user.", sensitivity: "personal", retentionIntent: "Keep locally until the user deletes the place.", storage: "records" },
-    { name: "Weather API key", purpose: "Authenticate requests to the weather service.", sensitivity: "sensitive", retentionIntent: "Keep until the user replaces or removes the key.", storage: "secret" },
+    { name: "Saved places", purpose: "Store place names and coordinates chosen by the user.", sensitivity: "personal", retentionIntent: "Keep locally until the user deletes the place.", storage: "records", writeMode: "direct" },
+    { name: "Weather API key", purpose: "Authenticate requests to the weather service.", sensitivity: "sensitive", retentionIntent: "Keep until the user replaces or removes the key.", storage: "secret", writeMode: "direct" },
   ],
   externalServices: [
     { name: "Weather service", purpose: "Provide current conditions and hourly forecasts for coordinates.", dataSent: ["Coordinates of the selected saved place"], credentialRequired: true },

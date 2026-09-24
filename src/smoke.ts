@@ -116,7 +116,7 @@ export async function runFixtureSmoke(app: CascadeApp): Promise<void> {
   try {
     for (const [index, testCase] of smokeCases.entries()) {
       app.setFormField("presetId", testCase.presetId)
-      app.setFormField("model", index % 2 === 0 ? "deepseek-v4-pro" : "deepseek-v4-flash")
+      app.setFormField("model", index % 2 === 0 ? "deepseek-flash" : "deepseek-v4-pro")
       app.setFormField("apiUrl", DEFAULT_API_URL)
       app.setFormField("apiKey", "fixture-smoke-memory-only-key")
       app.setFormField("jevApiKey", "fixture-smoke-memory-only-jev-key")

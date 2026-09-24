@@ -3,7 +3,7 @@ import { DEFAULT_API_URL, generatePacket, type BlueprintProvider, type ProviderM
 import { buildBlueprintInstructions, providerJsonSchema } from "../src/schema"
 
 const probeModels: readonly ProviderModel[] = ["deepseek-flash", "deepseek-v4-pro", "deepseek-v4-flash"]
-const probeModel = probeModels.find(model => model === process.env.CASCADE_MODEL?.trim()) ?? "deepseek-v4-pro"
+const probeModel = probeModels.find(model => model === process.env.CASCADE_MODEL?.trim()) ?? "deepseek-flash"
 const apiKey = process.env.DEEPSEEK_API_KEY?.trim()
 const describeLive = apiKey ? describe : describe.skip
 

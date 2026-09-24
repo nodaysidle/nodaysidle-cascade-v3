@@ -16,6 +16,8 @@ export const noteSummarizerAstroBlueprint: SemanticBlueprint = {
       trigger: "User navigates to the notes dashboard.",
       behavior: "Render markdown notes from local collections with fast filtering.",
       failureOutcome: "Display empty state if no notes exist.",
+      failureRecovery: "retry",
+      surface: "main",
       acceptanceSignals: ["Notes catalog renders without error"],
       usesPlatformNeeds: [],
       usesData: ["Note documents"],
@@ -27,6 +29,8 @@ export const noteSummarizerAstroBlueprint: SemanticBlueprint = {
       trigger: "User clicks the Summarize Note button.",
       behavior: "Send note text to OpenRouter and display generated executive summary.",
       failureOutcome: "Display error notice and keep original note untouched if API fails.",
+      failureRecovery: "retry",
+      surface: "main",
       acceptanceSignals: ["Summary appears in callout block", "Original note content remains unmodified"],
       usesPlatformNeeds: ["network"],
       usesData: ["Note documents"],
@@ -34,7 +38,7 @@ export const noteSummarizerAstroBlueprint: SemanticBlueprint = {
     },
   ],
   dataObjects: [
-    { name: "Note documents", purpose: "Store markdown note files.", sensitivity: "personal", retentionIntent: "Retain locally in content collection.", storage: "document" },
+    { name: "Note documents", purpose: "Store markdown note files.", sensitivity: "personal", retentionIntent: "Retain locally in content collection.", storage: "document", writeMode: "direct" },
   ],
   externalServices: [
     {

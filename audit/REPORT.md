@@ -1,164 +1,121 @@
-# Cascade V3 — Friction audit report
+# Cascade V3 — Friction audit report (round 2)
 
 **Executive summary**
 
-1. The biggest slowdown is missing project context: the repo's `CLAUDE.md` is a generic copy loaded three times, so you re-explained the app in at least five sessions and had to say "fix the compiler, not the outputs" five times.
-2. The most repeated manual task is "rebuild, replace the app in /Applications, remove leftovers" (11+ requests across Cursor and Antigravity). There's no script for it, and one past install ended up half-updated.
-3. Two of the five documented checks fail today (`cargo fmt --check` and `cargo clippy -D warnings`), and no CI runs them. TypeScript, Vitest (183 passed), the Vite build, and Cargo tests (36 passed) all pass.
-4. Docs have drifted: the design spec still lists the retired `deepseek-v4-flash` model and leaves Jev out of the flow, the live probe can't pick `deepseek-flash`, and git tracks both `Scripts/` and `scripts/`.
-5. The recurring compiler defect class is regex wording heuristics plus one test file per idea. Voice-app logic from a test idea is still hardcoded in the compiler, which is the larger follow-up.
+1. Round 1 worked. Every one of its ten applied items still holds, all five checks pass, and none of round 1's recurring requests (install, leftovers, "fix the compiler", re-explaining the app) came up again in today's later sessions.
+2. The most urgent item is security. The live DeepSeek key pasted at 09:38 is still in your fish history and a Cursor transcript. The cleanup advice targeted zsh, and the README teaches the inline-key form that caused it.
+3. The biggest context problem left is outside the repo. The Obsidian note that Claude and Codex must read first still says `deepseek-v4-flash`, "one repair", OpenRouter Jev, Deepgram, and "complete, no gaps".
+4. The repo's own docs say Jev integrity only blocks stack conflicts. That caused today's 12:51 confusion, and `AGENTS.md` wrongly says the compiler no longer reads wording, while five heuristics remain.
+5. Global instructions still contradict each other and this repo: delegation rules, "use consts instead of functions", Tailwind, a 120-line workspace atlas, and a duplicate parent `CLAUDE.md`. Cleaning them up helps every repo, but it's your call.
 
-Supporting files: `inventory.md` (Phase 1), `prompt-audit.md` (Phase 2), `session-notes.md` (Phase 3).
+Supporting files: `inventory.md`, `prompt-audit.md` (Q1–Q13), and `session-notes.md` (N1–N6). Round 1 is preserved in `audit/round-1/`.
 
-## Checks run (Phase 4, 2026-09-24)
+## Checks run (Phase 4, 2026-09-24 13:37, on the current tree including your uncommitted changes)
 
 | Check | Result |
 | --- | --- |
 | `npm run typecheck` | pass |
-| `npm test` | 22 files passed, 1 skipped (live probe); 183 tests passed, 1 skipped |
-| `vite build` (output redirected to `/tmp`) | pass |
-| `cargo test` (target dir in `/tmp`) | 36 passed, 0 failed |
-| `cargo fmt -- --check` | **fail**: `src-tauri/src/export.rs:146`, `src-tauri/tests/export_boundary.rs:84` |
-| `cargo clippy --all-targets --all-features -- -D warnings` | **fail**: `clippy::needless_return` at `src-tauri/src/export.rs:133` (rustc/clippy 1.98.1) |
+| `npm test` | 20 files passed, 1 skipped (live probe); 219 tests passed, 1 skipped |
+| `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` | pass |
+| `cargo clippy … --all-targets --all-features -- -D warnings` | pass (target dir in `/private/tmp`) |
+| `cargo test --manifest-path src-tauri/Cargo.toml` | 36 passed, 0 failed |
 
-No files outside `audit/` were modified. Build output went to `/tmp/cascade-audit-target` and `/tmp/cascade-audit-dist`.
+Outside `audit/`, nothing was modified. The only new directory is `audit/round-1/`, a copy of round 1. Your uncommitted `src/app.ts`, `src/schema.ts`, and `tests/status-detail.test.ts` are untouched.
 
 ---
 
 ## Ranked findings (quick wins first)
 
-### 1. Add a project instruction file with real project facts — high impact, low effort
+### 1. Remove the leaked DeepSeek key and stop the README from teaching the leak — high impact, very low effort
 
-- **Problem and evidence:** `CLAUDE.md` in the repo is byte-identical to `/Volumes/omarchyuser/CLAUDE.md` and `/Volumes/omarchyuser/COMPILER/CLAUDE.md`, and all three are loaded. None of them describes the app, commands, or invariants. You re-explained the app in C1 (08-31), C2 (09-22 ×2), C3 (09-22), and AG (09-19, 09-22). "Fix the compiler, not the outputs" was repeated in C3 09-23 00:43, 00:44 ("i told you 4 times"), 00:53, 01:35 and in AG 09-22 21:05. `CLAUDE.md:25` says "Use the project's required checks", but none are defined anywhere.
-- **Proposed change:** create a tracked `AGENTS.md`, which Cursor, Codex, and Antigravity read. Replace the untracked repo `CLAUDE.md` with a one-line import of `AGENTS.md`, so Claude Code reads the same file. I'll confirm the current import syntax for each tool in its docs before editing. Leave the two parent `CLAUDE.md` files alone unless you say otherwise. Draft content:
+- **Problem and evidence:** session-notes N1. The key appears once in `~/.local/share/fish/fish_history` and once in `~/.cursor/projects/…/9c514138…jsonl`. I counted matches and printed nothing. The 09:38 advice said to clear `~/.zsh_history`, which has 0 matches, because your shell is fish. `README.md:137` shows `DEEPSEEK_API_KEY=your_key npm run probe:live`, which writes the key to history.
+- **Proposed change:**
+  - (a) **You:** revoke the key in the DeepSeek console if you haven't yet. Only you can do that.
+  - (b) **Me:** delete that one entry with fish's own `history delete --exact --case-sensitive` (the entry is matched in a script and never printed), then replace the key in the Cursor transcript line with `sk-***` using an in-place `sed`, keeping a `.bak` copy in the scratchpad that I delete after checking.
+  - (c) **Me:** rewrite `README.md:137-140` to read the key with a hidden prompt (fish and zsh forms, prompt-audit Q5). I'll check `read` flags in the fish and zsh docs first.
+- **Affects:** two files outside the repo (history, transcript) and `README.md`.
+- **Test:** both `grep -c 'DEEPSEEK_API_KEY=sk-[A-Za-z0-9]'` counts return 0. Run the new README fish line with a dummy key and confirm the key is not in `fish_history` afterwards, and the probe skips or fails cleanly.
 
-  ```markdown
-  # NODAYSIDLE Cascade V3
+### 2. Make the docs say what Jev integrity actually blocks — high impact, very low effort
 
-  macOS Tauri 2 app that turns one software idea + one locked stack preset into exactly five
-  Markdown files (PRD, ARD, TRD, TASKS, AGENTS) for downstream coding agents.
-  One DeepSeek request supplies product meaning; TypeSafe Jev gates intake and integrity;
-  everything else (IDs, graph, files, phases, Markdown bytes) is local deterministic code.
+- **Problem and evidence:** prompt-audit Q2. `USERGUIDE.md:12,18`, `README.md:55,74,175`, and spec `:26` all describe a stack-conflict-only gate, but `src/pipeline.ts:327-334` also blocks on per-feature acceptance verifiability. That is the 12:51 incident, and `USERGUIDE:18` still gives the wrong remedy.
+- **Proposed change:** the USERGUIDE:18 rewrite in Q2, plus one-phrase additions in the other five places. Docs only.
+- **Affects:** `USERGUIDE.md`, `README.md`, and the spec.
+- **Test:** `rg -n 'stack-leakage integrity gate|blocks foreign-stack leakage\b' README.md USERGUIDE.md docs` should show only the updated phrases, and I'll check each sentence against `src/pipeline.ts:327-334`.
 
-  ## Where things live
-  - `src/schema.ts` provider schema and prompt · `src/pipeline.ts` generate flow
-  - `src/compiler.ts`, `src/presets.ts`, `src/astroWeb.ts` graph and preset policy
-  - `src/renderers.ts` Markdown bytes · `src/audit.ts` gates · `src/jev.ts` Jev decisions
-  - `src-tauri/src/provider.rs`, `jev.rs` HTTPS boundaries · `export.rs` atomic export
+### 3. Make `AGENTS.md` accurate about the remaining wording heuristics — medium-high impact, very low effort
 
-  ## Rules for work here
-  - The target is the compiler. Packets under `/Volumes/omarchyuser/projekti/*` are disposable
-    test outputs: reproduce a packet defect as a synthetic fixture in `tests/`, fix the compiler,
-    don't hand-edit the packet unless asked.
-  - Keep the compiler generic. Don't add vendor, domain, or product logic that exists only
-    because one test idea needed it.
-  - Keep these product requirements: exactly five exported files; preview bytes equal export
-    bytes; API keys memory-only, never logged/persisted/exported; no provider retry or repair.
-  - DeepSeek models: `deepseek-flash` (current) and `deepseek-v4-pro`; `deepseek-v4-flash` is a
-    retired alias kept only for compatibility.
+- **Problem and evidence:** prompt-audit Q1. `AGENTS.md:34-35` says "Nothing is inferred from wording". `src/compiler.ts:366-367, 372, 407-408, 776-779` still read prose.
+- **Proposed change:** the Q1 rewrite. It names the heuristics, forbids new ones, and says to replace one with a declared field when it causes a defect.
+- **Affects:** `AGENTS.md`, and so every agent session here.
+- **Test:** every heuristic named in the new text still matches its line (`rg -n` each pattern). In a fresh agent session, ask "does the compiler infer anything from feature wording?"; it should name those areas without reading source.
 
-  ## Checks (all must pass before reporting code work done)
-  npm run typecheck && npm test
-  cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-  cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
-  cargo test --manifest-path src-tauri/Cargo.toml
+### 4. Rewrite the Obsidian project note — high impact, low effort (outside repo)
 
-  ## Build, install, release
-  - Install to /Applications: `npm run install:app` (item 3); remove build leftovers afterwards.
-  - Release: `scripts/README-hybrid-release.md`.
-  - If local commits are unpushed and `origin/main` moved, rebase onto it before pushing.
-  ```
+- **Problem and evidence:** prompt-audit Q7 lists seven wrong facts, and session-notes N6 explains why it drifts. `~/.claude/CLAUDE.md:32-34` makes it the first file an agent reads for any `nodaysidle` GitHub task.
+- **Proposed change:** in `20-Projects/nodaysidle-cascade.md`:
+  - Set the frontmatter to `status: active`, `github_repos: [nodaysidle/nodaysidle-cascade-v3]`, and `local_paths` with the V3 path first.
+  - Replace "Fixed constraints" with 5 lines that match `AGENTS.md` and point to it as the source of truth.
+  - Replace "Remaining gap: None" with the open items from this report.
+  - Label the milestones "historical (V1 and pre-3.0.1)" and leave them otherwise untouched.
+  - Fix `Unified-Index.md:53` to the V3 path and repo.
+- **Affects:** two vault files. No secrets go in.
+- **Test:** `rg -n 'deepseek-v4-flash|one-repair|OpenRouter Jev|Remaining gap' 20-Projects/nodaysidle-cascade.md` returns only lines marked historical. Also check the frontmatter parses (`python3 -c 'import yaml'` if available, otherwise a visual check).
 
-- **Affects:** every agent session in this repo; no code.
-- **Test:** check that the file loads, then start a fresh agent session and ask "What does this project do, which checks must pass, and where would you fix a TASKS.md defect?". It should answer from the file without reading source. Also confirm every command listed runs (they're the same commands as item 2).
+### 5. Neutralize the test-idea examples in your new provider rule — medium impact, very low effort (your uncommitted change)
 
-### 2. Make the documented Rust checks pass — high impact, very low effort
+- **Problem and evidence:** prompt-audit Q4. `src/schema.ts:297` uses "due date minus 3 days" and "tray menu lists Open and Quit", both from the 12:51 subscription idea. `AGENTS.md:42-43` warns against exactly this kind of carry-over.
+- **Proposed change:** replace the two examples with the neutral wording in Q4 and keep the rule itself.
+- **Affects:** the DeepSeek instructions for every preset.
+- **Test:** `npm run typecheck && npm test`. `tests/status-detail.test.ts:30` asserts only the generic phrase, so it still passes. `rg -n '3 days|Open and Quit' src` returns nothing.
 
-- **Problem and evidence:** see the checks table. Two formatting diffs and one clippy error. README "Development" tells agents to run both, so every agent hits a pre-existing failure and has to work out whether it caused it.
-- **Proposed change:** run `cargo fmt` on the two files. At `src-tauri/src/export.rs:133`, replace `return if rc == 0 { … } else { … };` with a tail expression. No behavior change.
-- **Affects:** `src-tauri/src/export.rs`, `src-tauri/tests/export_boundary.rs`.
-- **Test:** `cargo fmt --check`, `cargo clippy … -D warnings`, and `cargo test` all pass, with the target dir in `/tmp`.
+### 6. Align the live probe's default model with the app — low-medium impact, very low effort (edits an existing test)
 
-### 3. Script the build → install → verify loop — high impact, low-medium effort
+- **Problem and evidence:** prompt-audit Q3 and session-notes N4. The probe defaults to `deepseek-v4-pro` while the app defaults to `deepseek-flash`, and the agent confused the two at 09:38.
+- **Proposed change:** `tests/live-provider-probe.test.ts:6` default becomes `"deepseek-flash"`, and `README.md:140` says "(default `deepseek-flash`)". No assertion changes.
+- **Test:** `npm test` still skips the probe without a key. A paid run is optional, in your terminal, using the item-1 README form.
 
-- **Problem and evidence:** requested 11+ times (session-notes R1). Each agent rediscovers the steps. In C1 (08-31 04:08) a sandboxed build overwrote only the binary inside the old bundle, so the installed app was half-updated. Leftover cleanup was requested 6+ times (R2), and `src-tauri/target` regrows to about 4.7 GB (C3).
-- **Proposed change:** add `scripts/install-app.sh` and `npm run install:app`. The script quits the running app, runs `npm run tauri:build`, removes the old `/Applications/NODAYSIDLE Cascade V3.app`, copies the new bundle with `ditto`, runs `codesign --verify --deep --strict`, and prints the bundle version and binary timestamp. An optional `--clean` flag removes `src-tauri/target` and `dist` afterwards. The script removes the installed app, so agents run it only when you ask for an install.
-- **Affects:** new script and a `package.json` script entry; `/Applications` when run.
-- **Test:** run it once. The installed `CFBundleShortVersionString` should equal `package.json`, the binary mtime should be fresh, codesign should pass, and the app should launch. Run it with `--clean` and confirm `src-tauri/target` is gone and `git status` is clean.
+### 7. Give the Jev mock server realistic time limits — low-medium impact, low effort (edits an existing test)
 
-### 4. Fix the `Scripts/` vs `scripts/` case collision — medium impact, very low effort
+- **Problem and evidence:** round-1 observation. It's still present at `src-tauri/tests/jev_boundary.rs:21,65,77,93` (500/700/250/500 ms). Two tests failed once locally after a heavy compile. CI has passed once on shared runners, where a flake would block PRs.
+- **Proposed change:** raise the mock server's total and idle deadlines and the test client's timeouts to 3000 ms. Leave the assertions on the real Jev timeouts (5 s / 15 s) and the cancellation assertion at `:491` unchanged.
+- **Test:** `cargo test --manifest-path src-tauri/Cargo.toml` passes 5 times in a row, including once while a parallel `cargo build --release` runs (target dir in `/private/tmp`). Suite time should grow by under 2 s.
 
-- **Problem and evidence:** `git ls-files` lists `Scripts/README-hybrid-release.md`, `Scripts/attach-release-asset.sh` and `scripts/live-provider-probe.mjs`. On macOS they merge into one folder; on Linux and in CI they're two folders.
-- **Proposed change:** move the two `Scripts/` files to `scripts/` with a two-step `git mv`, which is needed on a case-insensitive disk. Update the references in `.github/workflows/release-on-tag.yml` (comment), `scripts/README-hybrid-release.md`, and the usage line in `attach-release-asset.sh`. Drop the stale "Existing Latest release is v3.0.1" sentence (prompt-audit P5).
-- **Affects:** the three files above. The release workflow itself doesn't call the script.
-- **Test:** `git ls-files | rg -i '^scripts/'` shows one casing, `bash -n scripts/attach-release-asset.sh` passes, and `rg 'Scripts/'` finds nothing.
+### 8. Clean up global instruction conflicts — high impact across all repos, medium effort (outside repo, your decision per sub-item)
 
-### 5. Correct stale docs: spec, README probe claim — medium impact, low effort
+- **Problem and evidence:** prompt-audit Q8–Q12.
+- **Proposed change,** pick any:
+  - (a) Delete `/Volumes/omarchyuser/COMPILER/CLAUDE.md`. It's byte-identical to the parent file, so sibling projects keep the same rules.
+  - (b) Resolve the delegation contradiction (`~/.claude/CLAUDE.md:207` vs `/Volumes/omarchyuser/CLAUDE.md:27`) in favor of the project-level wording.
+  - (c) Apply the round-1 P3 rewrite of the Context7 rule. It keeps the lookup requirement and drops the boosters.
+  - (d) Scope the React/Tailwind persona (`~/.claude/CLAUDE.md:427-469`) to web projects, and move the 120-line atlas (`:307-425`) into a referenced file.
+  - (e) Replace the "state three headings" ritual (`:35`) with the Q12 wording.
+- I'll back up each file to a timestamped folder outside the repo before editing.
+- **Affects:** every Claude Code session on this machine.
+- **Test:** `cmp` and `rg` checks that the removed text is gone and the kept rules (git safety, secrets, approvals, checks) are still present word for word. Then open a fresh session in this repo and in one React project, and confirm each gets the rules meant for it (ask "which style rules apply here?").
 
-- **Problem and evidence:** prompt-audit P4 (spec lines 5, 19–33, 36, 42, 108) and P6 (README line 140). The spec still names `deepseek-v4-flash`, which you corrected twice in AG 09-19.
-- **Proposed change:** edit only those statements. List two keys and the Jev stages in the flow and stage list, say "one DeepSeek request plus Jev decision requests", and list the current models. Reword the README probe line as in P6.
-- **Affects:** `docs/superpowers/specs/2026-08-29-cascade-v3-design.md`, `README.md`.
-- **Test:** `rg -n 'deepseek-v4-flash|one memory-only key' docs README.md` returns nothing. Also check each changed statement against `src/pipeline.ts`.
+### 9. Replace the remaining wording heuristics with declared fields — high impact, high effort (behavior change; needs your decision)
 
-### 6. Let the live probe use the current model — medium impact, low effort (touches an existing test)
-
-- **Problem and evidence:** `tests/live-provider-probe.test.ts:105` only chooses between `deepseek-v4-flash` and `deepseek-v4-pro`, so the app's default model `deepseek-flash` (`src/state.ts:43`) can't be probed. The probe also skips Jev and the Rust provider (P6). That's why it passed in C1 while the GUI failed.
-- **Proposed change:** accept `CASCADE_MODEL` values `deepseek-flash`, `deepseek-v4-pro`, or `deepseek-v4-flash`, and keep `deepseek-v4-pro` as the default so current behavior holds. No assertion changes. Covering Jev in the probe would need a Jev fetch adapter; I'd treat that as a separate item.
-- **Affects:** `tests/live-provider-probe.test.ts`. It edits an existing test, and your approval of this item counts as permission for that.
-- **Test:** `npm test` still skips the probe when no key is set. A real run with `CASCADE_MODEL=deepseek-flash` costs one paid request, so it runs only if you supply the key in your own terminal.
-
-### 7. Add a CI check workflow — medium impact, medium effort (changes a shared system)
-
-- **Problem and evidence:** the only workflow is `release-on-tag.yml`, which creates releases only. The fmt and clippy failures (item 2) landed unnoticed in `8dfd82c` and `345c028`.
-- **Proposed change:** add `.github/workflows/checks.yml`, triggered on push and PR, running on a macOS runner (Tauri needs it). It runs `npm ci`, typecheck, tests, cargo fmt, clippy, and cargo test.
-- **Affects:** GitHub Actions minutes; nothing locally.
-- **Test:** it needs a push to a branch, which requires your approval. Watch the run: it should pass after item 2 and fail if I introduce a deliberate formatting error on a throwaway branch.
-
-### 8. Add a generic cross-preset idea matrix test — high impact, medium effort
-
-- **Problem and evidence:** wording heuristics caused repeated mis-links: `\bpage\b` in C1, "note file names" and a negated "request" in C3, and the negated-clause fix in `8dfd82c`. `src/compiler.ts` has 67 `/\b…` regex literals, `src/audit.ts` 35, and `src/astroWeb.ts` 15. Tests grew one file per idea (`voice-v3`, `voice-v5`, `monospace-*`, `cursor-notepad-*`), and `tests/cross-preset-quality.test.ts` has a single fixture. The C3 audit recommended a matrix, and it was never done.
-- **Proposed change:** add one new test file. It compiles about 8 short, generic, deliberately varied blueprints (web catalog, notes editor, menu-bar timer, Android list, Tauri file tool, and phrasing variants with negations) across all 5 presets. It asserts invariants rather than text: gate clean, no orphan permission contracts, no voice/dictation/SQLite tokens unless the blueprint states them, and each feature linked only to data it names.
-- **Affects:** new test file only. It may expose real compiler bugs. If so, I'll report them rather than fix them in this item.
-- **Test:** `npm test`. Record which invariants fail on the current compiler as findings.
-
-### 9. Remove voice-app logic that is still hardcoded in the compiler — high impact, high effort (needs your decision)
-
-- **Problem and evidence:** in C3 09-23 00:53 you asked to "remove deepgram, remove openrouter from the COMPILER ITSELF". The vendor wiring is gone, but voice-domain logic from the same test idea remains: `hasVoicePersistence` and the `voice.sqlite3` schema (`src/compiler.ts:962-975`, `1036-1055`, `1328-1336`, `1606`, `1661`), dictation insertion behavior (`334-341`, `1070-1089`), the fixed microphone copy "record dictation" (`1095`), the voice persistence audit (`src/audit.ts:434-443`), `TranscriptionRoutingSchema` (`src/schema.ts:66`), and a voice fixture that `src/smoke.ts` imports from `tests/`.
-- **Proposed change:** do this after item 8 exists. Replace the voice-specific branches with generic persistence and permission rules, and move voice expectations into fixtures. The voice test suites (`voice-v3-remaining-defects`, `voice-v5-acceptance`) assert this behavior, so this item changes existing tests and needs your explicit approval and scope.
-- **Affects:** compiler output for native macOS audio apps. Behavior changes by design.
-- **Test:** full `npm test`, the item 8 matrix, and one real GUI generate for a voice idea and one for a non-voice idea, then audit the packets.
-
-### 10. Release version bump helper — low-medium impact, low effort
-
-- **Problem and evidence:** the v3.0.1 release (C3 09-23 ~11:00) needed hand edits to `package.json`, `package-lock.json`, `tauri.conf.json`, `Cargo.toml`, `Cargo.lock`, two README DMG links, and the release README. Generated release notes also left out the direct-commit changes, so they were rewritten by hand.
-- **Proposed change:** add `scripts/bump-version.sh X.Y.Z`. It uses `npm version --no-git-tag-version`, a `jq` edit of `tauri.conf.json`, a `Cargo.toml` edit followed by `cargo update -p nodaysidle-cascade-v3 --offline`, and a README link rewrite, then prints the diff. It doesn't commit or tag.
-- **Affects:** new script only.
-- **Test:** run it in a temporary copy of the repo (not the working tree). The diff should touch exactly those files, and typecheck and tests should pass in the copy.
+- **Problem and evidence:** prompt-audit Q1. There are five heuristics in `src/compiler.ts`, plus the Astro content-site check at `:407-408`. This is the recurring defect class from round 1 §5.
+- **Proposed change:** add explicit blueprint fields: a failure `recovery` kind, a data object `writeMode: atomic | direct`, and a site `kind: content | app`. Map them per preset, then delete the regexes. It changes the provider schema, so it's one more schema-strict-mode risk to verify with one live probe.
+- **Affects:** `src/schema.ts`, `src/compiler.ts`, fixtures, and the provider schema.
+- **Test:** full checks, new matrix cases in `tests/idea-preset-matrix.test.ts` where different wording must produce identical output, and one paid probe on `deepseek-flash`.
 
 ---
 
-## Needs your decision (not proposed as changes to this repo)
+## Needs your decision (not proposed as changes)
 
-- **Sibling backups:** about 2.1 GB next to the repo: `../nodaysidle-cascade-v3.zip` (1.6 GB), `../nodaysidle-cascade-v3-rollbacks` (319 MB), `../backups` (200 MB), `../rollback-backups` (21 MB). Deleting them is destructive, so I'll only do it on your say-so.
-- **Parent `CLAUDE.md` copies:** whether to keep the generic preferences only in `/Volumes/omarchyuser/CLAUDE.md` and remove the COMPILER-level duplicate. That affects sibling projects.
-- **User-level Cursor rules** (`~/.cursor/rules`, prompt-audit P9): these still contain "Confirm, then write code!" and a graphify rule for a folder that doesn't exist here. It isn't confirmed that Cursor loads them.
-- **Cross-tool preferences** (P11): "git push when asked" and the "Blocked on me / Changed / Found" format exist only in Claude Code. The item 1 file could carry them for all tools if you want.
-- **Downstream handoff prompt** (session-notes R5): you asked for a Hermes or Codex build prompt 7+ times. Per your Cursor rule I haven't assumed Hermes details. If you want it, a generic template in `USERGUIDE.md` would cover it: read `AGENTS.md` first, follow `TASKS.md` in phase order, report DONE/PARTIAL/BLOCKED.
-- **Deferred:** moving the user idea from the provider `instructions` into `input` (P7). It needs paid live A/B probes and changes model behavior.
+- **Jev block recovery (session-notes N3):** keep "no provider retry or repair" as is (recommended; it's a stated product requirement) and rely on manual Retry plus item 5's prompt rule. Or relax the rule to allow one targeted reword, which is a product change. Your rerun result will show whether the prompt rule is enough.
+- **Committing your uncommitted fix:** after items 2 and 5, the headline fix, prompt rule, and new test form one coherent commit. I'll commit or push only when you say so.
+- **Carried over from round 1:** the sibling backups (~2.1 GB), the Cursor user rules (Q13), and moving the idea into the provider `input`.
 
-## Historical observations already resolved (dropped)
+## Historical observations resolved or dropped
 
-All of these were fixed in `8dfd82c` or earlier, and the regression tests pass:
-
-- The provider rejected responses containing `reasoning` items.
-- The schema was duplicated in the prompt.
-- The dev port was mismatched.
-- JSON wrapped in fences was rejected.
-- The C3 audit issues: OpenRouter template leak, ghost permissions, atomic-audit index bug, shell-injection passthrough, credential-vault crash, reqwest redirects (now `Policy::none()` + `https_only`), missing outbound size cap, export rename race (now `renamex_np(RENAME_EXCL)`), per-keystroke Jev calls, and cancel-status regression.
-- The app model selector used the retired name (now `deepseek-flash`).
-- `cursor-notepad-quality.test.ts` wrote into the repo.
-- The flaky Rust test `surfaces_only_the_status_for_http_failures` passed in this run. There isn't enough evidence to call it an open problem.
+- All round-1 items applied in `af6d430`: `AGENTS.md`, Rust checks, install script, `Scripts/` casing, stale spec, probe model list, CI, idea matrix, voice logic removal, and the bump script. Verified by the checks table and `rg` (no voice, dictation, or Deepgram logic left in `src/`).
+- The misleading integrity headline is fixed in your uncommitted `src/app.ts`, with tests.
+- `minLength` in strict mode: the live probe passed on `deepseek-flash` at 09:38. Dropped.
+- The preset recommendation leaning native (N5) is one data point, advisory only. Dropped until there's more evidence.
 
 ---
 
-**Stopping here.** Tell me which items to apply, by number. I won't modify anything outside `audit/` until you do.
+**Stopping here.** Tell me which items to apply, by number (and sub-letter for items 1 and 8). I won't modify anything outside `audit/` until you do.

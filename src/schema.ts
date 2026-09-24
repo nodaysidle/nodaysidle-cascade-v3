@@ -21,12 +21,17 @@ export const PlatformNeedSchema = z.enum([
   "location",
 ])
 
+export const FeatureRecoverySchema = z.enum(["retry", "fallback", "exit"])
+export const FeatureSurfaceSchema = z.enum(["main", "item-page", "about-page", "not-found-page"])
+
 const FeatureSchema = z.strictObject({
   name: shortMeaning,
   userOutcome: compactMeaning,
   trigger: compactMeaning,
   behavior: meaning,
   failureOutcome: compactMeaning,
+  failureRecovery: FeatureRecoverySchema,
+  surface: FeatureSurfaceSchema,
   acceptanceSignals: requiredMeaningList,
   usesPlatformNeeds: z.array(PlatformNeedSchema).max(12),
   usesData: z.array(shortMeaning).max(8),
@@ -34,6 +39,7 @@ const FeatureSchema = z.strictObject({
 })
 
 export const DataStorageSchema = z.enum(["settings", "records", "document", "secret", "temporary", "session"])
+export const DataWriteModeSchema = z.enum(["direct", "atomic-replace"])
 
 const DataObjectSchema = z.strictObject({
   name: shortMeaning,
@@ -41,6 +47,7 @@ const DataObjectSchema = z.strictObject({
   sensitivity: z.enum(["public", "internal", "personal", "sensitive"]),
   retentionIntent: compactMeaning,
   storage: DataStorageSchema,
+  writeMode: DataWriteModeSchema,
 })
 
 const ExternalServiceSchema = z.strictObject({
@@ -67,6 +74,9 @@ export const SemanticBlueprintSchema = z.strictObject({
 export type SemanticBlueprint = z.infer<typeof SemanticBlueprintSchema>
 export type PlatformNeed = z.infer<typeof PlatformNeedSchema>
 export type DataStorage = z.infer<typeof DataStorageSchema>
+export type DataWriteMode = z.infer<typeof DataWriteModeSchema>
+export type FeatureRecovery = z.infer<typeof FeatureRecoverySchema>
+export type FeatureSurface = z.infer<typeof FeatureSurfaceSchema>
 
 interface ClosedJsonSchema {
   readonly type?: string
@@ -266,6 +276,11 @@ export function featureReferenceIssues(blueprint: SemanticBlueprint): SemanticIs
   return issues
 }
 
+// Declared enums and references are not product meaning, so only prose decides whether a feature is usable.
+function featureProse(feature: SemanticBlueprint["features"][number]): string[] {
+  return [feature.name, feature.userOutcome, feature.trigger, feature.behavior, feature.failureOutcome, ...feature.acceptanceSignals]
+}
+
 export function auditSemanticIntake(blueprint: SemanticBlueprint): SemanticIssue[] {
   const issues: SemanticIssue[] = [...featureReferenceIssues(blueprint)]
   if (unusableMeaning.test(blueprint.productName)) {
@@ -274,7 +289,7 @@ export function auditSemanticIntake(blueprint: SemanticBlueprint): SemanticIssue
   if (unusableMeaning.test(blueprint.summary)) {
     issues.push({ path: "summary", rule: "semantic.unusable-summary", message: "The product summary does not contain usable product meaning." })
   }
-  if (!blueprint.features.some(feature => semanticStrings(feature).some(field => !unusableMeaning.test(field.value)))) {
+  if (!blueprint.features.some(feature => featureProse(feature).some(value => !unusableMeaning.test(value)))) {
     issues.push({ path: "features", rule: "semantic.no-meaningful-features", message: "At least one feature must contain usable product behavior." })
   }
 
@@ -294,10 +309,13 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "Do not choose or recommend a technology stack. The selected local preset is authoritative.",
     "Define features strictly as functional capabilities and system interactions (e.g. text editing, file persistence, search, settings). Do not create features for pure visual themes, branding, or aesthetic styling; place visual styling requirements under qualityRequirements or productConstraints.",
     "Every feature acceptance signal must describe a concrete, mechanically verifiable condition (such as state transitions, UI element visibility, disk persistence, error code handling, or measured response under an explicit numerical threshold) that automated unit or integration tests can assert without human subjective impression. Never use subjective or hyperbolic phrases such as 'feels smooth', 'zero latency', 'instantaneous', or 'aesthetic appeal'.",
+    "For features that depend on the operating system or device (notifications, reminders, tray or menu bar presence, background operation, permissions, hardware access, launch at login), write acceptance signals as the request the app makes or the app state a test can read, never as what the user sees or notices. For example: 'a notification request with the item's title is scheduled at the configured time', 'after the main window closes the process keeps running and the tray menu lists its actions', or 'when microphone permission is denied the record control is disabled and the denial message is shown'.",
     "When a behavior, failure outcome, or acceptance signal depends on a default, interval, or limit, state its concrete value (for example a font family and point size, or a duration in milliseconds). Never write 'documented defaults' or an interval without its value.",
     "Use no more than twelve features and no more than eight values in each prose list. Include every applicable platform need from the closed enum.",
     "For every feature, list in usesPlatformNeeds each platform need that feature itself exercises, in usesData the exact names of the dataObjects it reads or writes, and in usesServices the exact names of the externalServices it calls. Use empty arrays when a feature uses none. Every name must match a declared dataObject or externalService exactly.",
     "For every dataObject, set storage to settings for small user preferences, records for structured app-owned records or history, document for files the user opens or saves, secret for API keys, tokens, or other credentials, temporary for short-lived files removed automatically, and session for values held in memory and never written to disk.",
+    "For every feature, set failureRecovery to exit when its failure outcome ends the app or process, fallback when the failure outcome switches automatically to a stated default or alternative, and retry otherwise. Set surface to item-page when the feature is shown on its own page per item with a direct link, about-page when it is the product's about or background page, not-found-page when it handles unknown links, and main otherwise.",
+    "For every dataObject, set writeMode to atomic-replace when a save must never leave a partially written copy (it is written to a temporary copy and swapped in whole), and direct otherwise. A temporary dataObject that is that in-progress copy also uses atomic-replace.",
     `Software idea: ${input.idea.trim()}`,
   ].join("\n\n")
 }

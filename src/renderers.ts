@@ -43,11 +43,12 @@ function featureTrace(graph: ProjectGraph, detail: TraceDetailLevel): string {
 
 function astroDesignSystemSection(graph: ProjectGraph): string[] {
   if (graph.presetId !== "astro-web") return []
-  const darkFirst = [...graph.blueprint.uxRequirements, ...graph.blueprint.operationalConstraints]
-    .some(item => /\bdark[- ]first\b/i.test(item))
-  const tokens = darkFirst
-    ? ASTRO_DESIGN_TOKENS
-    : ASTRO_DESIGN_TOKENS.map(token => token.replace("dark-first palette", "accessible light-first palette"))
+  // Dark-first with Void Black is the default; only an explicit light palette request switches it.
+  const lightRequested = [graph.blueprint.productDefinition, ...graph.blueprint.uxRequirements, ...graph.blueprint.operationalConstraints]
+    .some(item => /\blight(?:[- ]first|[- ]colou?r(?: palette| scheme)?| palette| theme| mode)\b/i.test(item))
+  const tokens = lightRequested
+    ? ASTRO_DESIGN_TOKENS.map(token => token.replace("dark-first palette with --bg: #0B0F14 (Void Black)", "accessible light-first palette with --bg"))
+    : ASTRO_DESIGN_TOKENS
   return [section("Design System", bullets(tokens))]
 }
 

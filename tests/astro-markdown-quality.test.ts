@@ -18,6 +18,8 @@ const portfolioBlueprint: SemanticBlueprint = {
       trigger: "A visitor opens the home page.",
       behavior: "Render a filterable and sortable grid of project cards sourced from build-time content.",
       failureOutcome: "An empty or invalid collection shows an honest empty state.",
+      failureRecovery: "retry",
+      surface: "main",
       acceptanceSignals: ["Every published project appears once", "Filters and sort controls update the visible cards"],
       usesPlatformNeeds: [],
       usesData: ["Project catalog entry"],
@@ -29,6 +31,8 @@ const portfolioBlueprint: SemanticBlueprint = {
       trigger: "A visitor opens a project card or direct project URL.",
       behavior: "Render a project detail page from the matching content collection entry with canonical metadata and outbound repo links.",
       failureOutcome: "Unknown slugs render the documented not-found route.",
+      failureRecovery: "retry",
+      surface: "item-page",
       acceptanceSignals: ["Each project has a stable direct URL", "Detail pages expose repo and summary metadata"],
       usesPlatformNeeds: [],
       usesData: ["Project catalog entry"],
@@ -40,6 +44,8 @@ const portfolioBlueprint: SemanticBlueprint = {
       trigger: "A visitor opens the about page.",
       behavior: "Publish maintainer context, selection criteria, and contact guidance on a dedicated about page.",
       failureOutcome: "Missing about content blocks deployment with a visible validation failure.",
+      failureRecovery: "retry",
+      surface: "about-page",
       acceptanceSignals: ["About page is reachable from primary navigation"],
       usesPlatformNeeds: [],
       usesData: [],
@@ -47,7 +53,7 @@ const portfolioBlueprint: SemanticBlueprint = {
     },
   ],
   dataObjects: [
-    { name: "Project catalog entry", purpose: "Describe one public repository with summary, tags, status, and outbound links.", sensitivity: "public", retentionIntent: "Published in the repository as markdown until removed.", storage: "records" },
+    { name: "Project catalog entry", purpose: "Describe one public repository with summary, tags, status, and outbound links.", sensitivity: "public", retentionIntent: "Published in the repository as markdown until removed.", storage: "records", writeMode: "direct" },
   ],
   externalServices: [
     { name: "GitHub", purpose: "Link to public nodaysidle repositories.", dataSent: [], credentialRequired: false },
@@ -79,8 +85,8 @@ describe("astro markdown quality improvements", () => {
 
     expect(packet.graph.astroPlan?.usesContentCollections).toBe(true)
     expect(text).toContain("src/content/config.ts")
-    expect(text).toContain("src/content/projects/")
-    expect(text).toContain("src/pages/projects/[slug].astro")
+    expect(text).toContain("src/content/project-catalog-entry/")
+    expect(text).toContain("src/pages/project-catalog-entry/[slug].astro")
     expect(text).toContain("src/pages/about.astro")
     expect(text).toContain("Content Seed Requirements")
     expect(text).toContain("Design System")
@@ -94,7 +100,19 @@ describe("astro markdown quality improvements", () => {
     expect(packet.exportable).toBe(true)
   })
 
-  it("does not assign home-page catalog grids to the shared dynamic route", () => {
+  it("defaults the Astro palette to dark-first Void Black unless a light palette is explicitly requested", async () => {
+    const designSystem = (packet: Awaited<ReturnType<typeof compilePacket>>) => Object.values(packet.documents).join("\n")
+
+    const unstated = designSystem(await compilePacket(landingPageBlueprint, "astro-web"))
+    expect(unstated).toContain("dark-first palette with --bg: #0B0F14 (Void Black)")
+    expect(unstated).not.toContain("light-first")
+
+    const light = designSystem(await compilePacket({ ...landingPageBlueprint, qualityRequirements: ["Use a light colour palette with high contrast."] }, "astro-web"))
+    expect(light).toContain("accessible light-first palette with --bg")
+    expect(light).not.toContain("#0B0F14")
+  })
+
+  it("places features only by their declared surface", () => {
     const gridPlacement = astroFeaturePlacement({
       id: "FEAT-GRID",
       name: "Project catalog grid",
@@ -109,6 +127,7 @@ describe("astro markdown quality improvements", () => {
       requiredCapabilities: [],
       resourceIds: [],
       requiredOwnerIds: [],
+      surface: "main",
     }, "projects")
     expect(gridPlacement).toEqual({ kind: "component", registrationFile: "src/pages/index.astro" })
   })

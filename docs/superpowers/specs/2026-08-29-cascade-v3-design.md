@@ -23,7 +23,7 @@ idea + locked preset + model + URL + two memory-only keys
   -> completed-response classification
   -> strict JSON parse and compact schema validation
   -> hard semantic blocker audit, including feature reference checks
-  -> Jev platform-need healing and stack-leakage integrity gate
+  -> Jev platform-need healing and integrity gate (stack leakage, untestable acceptance)
   -> deterministic local normalization
   -> deterministic preset compiler
   -> mechanical graph audit
@@ -65,7 +65,7 @@ The provider fields are exactly:
 - `qualityRequirements`
 - `productConstraints`
 
-A feature supplies name, outcome, trigger, behavior, failure outcome, acceptance signals, and explicit references: the platform needs it uses, the data object names it reads or writes, and the external service names it calls. Data objects supply name, purpose, sensitivity, retention intent, and a storage kind (settings, records, document, secret, temporary, or session) that the preset maps to a concrete store. External services supply name, purpose, data sent, and whether a credential is required. Platform needs use the closed local enum. Features are capped at 12 and secondary lists at 8.
+A feature supplies name, outcome, trigger, behavior, failure outcome, a failure recovery kind (retry, fallback, or exit), a surface (main, item-page, about-page, or not-found-page), acceptance signals, and explicit references: the platform needs it uses, the data object names it reads or writes, and the external service names it calls. Data objects supply name, purpose, sensitivity, retention intent, a storage kind (settings, records, document, secret, temporary, or session) that the preset maps to a concrete store, and a write mode (direct or atomic-replace). External services supply name, purpose, data sent, and whether a credential is required. Platform needs use the closed local enum. Features are capped at 12 and secondary lists at 8.
 
 The provider cannot add fields for IDs, files, tests, commands, APIs, packages, modules, owners, phases, architecture, credential mechanics, build/signing instructions, Markdown, or final documents.
 

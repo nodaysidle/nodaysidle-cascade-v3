@@ -174,6 +174,8 @@ describe("hard semantic blockers", () => {
       trigger: "N/A",
       behavior: "TODO",
       failureOutcome: "Unknown",
+      failureRecovery: "retry",
+      surface: "main",
       acceptanceSignals: ["TBD"],
       usesPlatformNeeds: [],
       usesData: [],

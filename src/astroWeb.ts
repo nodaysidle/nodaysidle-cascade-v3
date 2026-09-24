@@ -1,5 +1,6 @@
 import type { GraphFeature, NormalizedBlueprint } from "./compiler"
 import type { PresetRuntimeMode } from "./presets"
+import type { FeatureSurface } from "./schema"
 
 export type AstroFeaturePlacement =
   | { readonly kind: "component"; readonly registrationFile: string }
@@ -17,48 +18,21 @@ export interface AstroRoutePlan {
   readonly sharedDynamicRouteOwnerFeatureId?: string
 }
 
-const CATALOG_PATTERN = /\b(?:project|catalog|catalogue|portfolio|guide|documentation|article|entry|listing)\b/i
-const DETAIL_PATTERN = /\b(?:detail|dedicated page|direct url|permalink|versioned guides?|project page|guide page|item page)\b/i
-const ABOUT_PATTERN = /\babout\b/i
-const NOT_FOUND_PATTERN = /\b(?:404|not[- ]found|unknown route)\b/i
+type SurfaceFeature = { readonly surface: FeatureSurface }
 
-type FeatureLike = { readonly name: string; readonly behavior: string; readonly outputs?: readonly string[] }
-
-function featureLikeText(feature: FeatureLike): string {
-  return `${feature.name} ${feature.behavior} ${(feature.outputs ?? []).join(" ")}`
+function hasSurface(features: readonly SurfaceFeature[], surface: FeatureSurface): boolean {
+  return features.some(feature => feature.surface === surface)
 }
 
-function inferContentCollection(blueprint: NormalizedBlueprint): string {
-  for (const item of blueprint.domainData) {
-    const subject = `${item.name} ${item.meaning}`.toLowerCase()
-    if (/\bproject/.test(subject)) return "projects"
-    if (/\bguide/.test(subject)) return "guides"
-    if (/\barticle/.test(subject)) return "articles"
-    if (/\bdocument/.test(subject)) return "docs"
-  }
-  for (const feature of blueprint.features) {
-    const subject = `${feature.name} ${feature.behavior}`.toLowerCase()
-    if (/\bguide/.test(subject)) return "guides"
-    if (/\bproject/.test(subject)) return "projects"
-  }
-  if (/\b(?:documentation|manual|portal)\b/i.test(blueprint.productDefinition)) return "guides"
-  if (/\b(?:catalog|catalogue|portfolio)\b/i.test(blueprint.productDefinition)) return "projects"
-  return "entries"
+// The collection is named after the declared content data, never guessed from feature prose.
+function contentCollectionName(blueprint: NormalizedBlueprint): string {
+  const source = blueprint.domainData.find(item => item.sensitivity === "public" || item.sensitivity === "internal") ?? blueprint.domainData[0]
+  const name = source?.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+  return name || "entries"
 }
 
-function wantsDetailRoutes(blueprint: NormalizedBlueprint, features: readonly GraphFeature[]): boolean {
-  if (blueprint.domainData.length > 0) return true
-  return features.some(feature => DETAIL_PATTERN.test(featureLikeText(feature)) || CATALOG_PATTERN.test(featureLikeText(feature)))
-}
-
-function wantsDetailRoutesFromBlueprint(blueprint: NormalizedBlueprint): boolean {
-  if (blueprint.domainData.length > 0) return true
-  return blueprint.features.some(feature => DETAIL_PATTERN.test(featureLikeText(feature)) || CATALOG_PATTERN.test(featureLikeText(feature)))
-}
-
-function wantsAboutPage(blueprint: NormalizedBlueprint, features: readonly GraphFeature[]): boolean {
-  if (features.some(feature => ABOUT_PATTERN.test(featureLikeText(feature)))) return true
-  return wantsDetailRoutes(blueprint, features) && /\b(?:studio|company|maintainer|developer|portfolio)\b/i.test(blueprint.productDefinition)
+function wantsDetailRoutes(blueprint: NormalizedBlueprint): boolean {
+  return blueprint.domainData.length > 0 || hasSurface(blueprint.features, "item-page")
 }
 
 export function astroUsesContentCollections(
@@ -67,7 +41,7 @@ export function astroUsesContentCollections(
 ): boolean {
   if (runtimeMode !== "static") return false
   if (blueprint.domainData.some(item => item.sensitivity === "public" || item.sensitivity === "internal")) return true
-  return wantsDetailRoutesFromBlueprint(blueprint)
+  return wantsDetailRoutes(blueprint)
 }
 
 export function astroBrowserPersistence(
@@ -79,29 +53,22 @@ export function astroBrowserPersistence(
     && !astroUsesContentCollections(blueprint, runtimeMode)
 }
 
-function wantsDetailPageRoute(text: string): boolean {
-  if (DETAIL_PATTERN.test(text)) return true
-  return CATALOG_PATTERN.test(text) && /\b(?:detail page|dedicated page|direct url|permalink|project page|guide page|item page|detail route|versioned guides?)\b/i.test(text)
-}
-
 export function astroFeaturePlacement(
   feature: GraphFeature,
   collection: string,
 ): AstroFeaturePlacement {
-  const text = featureLikeText(feature)
-  if (NOT_FOUND_PATTERN.test(text)) {
-    const pageFile = "src/pages/404.astro"
-    return { kind: "page", pageFile, registrationFile: pageFile }
+  switch (feature.surface) {
+    case "not-found-page":
+      return { kind: "page", pageFile: "src/pages/404.astro", registrationFile: "src/pages/404.astro" }
+    case "about-page":
+      return { kind: "page", pageFile: "src/pages/about.astro", registrationFile: "src/pages/about.astro" }
+    case "item-page": {
+      const pageFile = `src/pages/${collection}/[slug].astro`
+      return { kind: "page", pageFile, registrationFile: pageFile }
+    }
+    case "main":
+      return { kind: "component", registrationFile: "src/pages/index.astro" }
   }
-  if (ABOUT_PATTERN.test(text) && /\b(?:about page|dedicated about|about route)\b/i.test(text)) {
-    const pageFile = "src/pages/about.astro"
-    return { kind: "page", pageFile, registrationFile: pageFile }
-  }
-  if (wantsDetailPageRoute(text)) {
-    const pageFile = `src/pages/${collection}/[slug].astro`
-    return { kind: "page", pageFile, registrationFile: pageFile }
-  }
-  return { kind: "component", registrationFile: "src/pages/index.astro" }
 }
 
 export function planAstroWeb(
@@ -111,7 +78,7 @@ export function planAstroWeb(
 ): AstroRoutePlan {
   const browserPersistence = astroBrowserPersistence(blueprint, runtimeMode)
   const usesContentCollections = astroUsesContentCollections(blueprint, runtimeMode)
-  const contentCollection = inferContentCollection(blueprint)
+  const contentCollection = contentCollectionName(blueprint)
   const featurePlacements: Record<string, AstroFeaturePlacement> = {}
   let dynamicRouteFile: string | undefined
   let dynamicRouteOwnerFeatureId: string | undefined
@@ -160,14 +127,6 @@ export function planAstroWeb(
     seedContentPaths.push(`src/content/${contentCollection}/_seed.example.md`)
     if (dynamicRouteFile) routeSummary.push(`/${contentCollection}/[slug] — ${dynamicRouteFile} (build-time content collection)`)
   }
-  if (wantsAboutPage(blueprint, features) && !aboutRouteAssigned) {
-    foundationExtras.push("src/pages/about.astro")
-    routeSummary.push("/about — src/pages/about.astro")
-  }
-  if (features.some(feature => NOT_FOUND_PATTERN.test(featureLikeText(feature))) && !notFoundRouteAssigned) {
-    foundationExtras.push("src/pages/404.astro")
-    routeSummary.push("/404 — src/pages/404.astro")
-  }
   for (const placement of Object.values(featurePlacements)) {
     if (placement.kind === "page" && !routeSummary.some(line => line.includes(placement.pageFile))) {
       routeSummary.push(`${placement.pageFile.replace("src/pages", "").replace(/\.astro$/, "").replace("/index", "/") || "/"} — ${placement.pageFile}`)
@@ -208,7 +167,7 @@ export const ASTRO_CONTENT_COLLECTION_PERSISTENCE = {
 } as const
 
 export const ASTRO_DESIGN_TOKENS = [
-  "Color: dark-first palette with --bg, --surface, --text, --muted, --accent, and --border CSS custom properties in src/styles/global.css unless product semantics require light-first.",
+  "Color: dark-first palette with --bg: #0B0F14 (Void Black), --surface, --text, --muted, --accent, and --border CSS custom properties in src/styles/global.css.",
   "Typography: fluid heading scale, 16px base body, 1.5 line-height, and system-ui stack with one optional display face documented in global.css.",
   "Spacing: 4px base grid (--space-1 through --space-8) for layout rhythm and component padding.",
   "Focus: visible :focus-visible rings on every interactive control; never remove outline without a replacement.",

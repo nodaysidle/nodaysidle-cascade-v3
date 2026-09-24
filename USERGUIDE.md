@@ -9,13 +9,13 @@
 5. Describe a coherent software product: users, outcome, core features, data, integrations, privacy, and recovery constraints.
 6. Select **Generate**.
 
-Jev first rejects non-product input before a paid DeepSeek request. A preset mismatch is advisory: the selected preset remains authoritative. After DeepSeek returns a semantic blueprint, Jev may only append missing platform needs from the locked capability set or block a foreign-stack conflict. Local TypeScript code still owns every ID, graph edge, task, and Markdown byte.
+Jev first rejects non-product input before a paid DeepSeek request. A preset mismatch is advisory: the selected preset remains authoritative. After DeepSeek returns a semantic blueprint, Jev may only append missing platform needs from the locked capability set, block a foreign-stack conflict, or block features whose acceptance signals automated tests can't check. Local TypeScript code still owns every ID, graph edge, task, and Markdown byte.
 
 ## Interpret outcomes
 
 - **Intake rejected** — rewrite the input as one implementable software product.
 - **Jev failure** — the fast decision request failed closed; retry without changing keys unless the provider rejected them.
-- **Integrity blocked** — the blueprint contains instructions for a stack that conflicts with the selected preset; revise the idea or preset and retry.
+- **Integrity blocked** — Jev found either a technology-stack conflict or features whose acceptance signals automated tests can't check. The headline says which; Technical details lists the fields. Retry, or describe those features as checkable outcomes.
 - **Gate Clean** — inspect all five previews, then export.
 
 ## Export contract

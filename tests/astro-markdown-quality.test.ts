@@ -19,6 +19,9 @@ const portfolioBlueprint: SemanticBlueprint = {
       behavior: "Render a filterable and sortable grid of project cards sourced from build-time content.",
       failureOutcome: "An empty or invalid collection shows an honest empty state.",
       acceptanceSignals: ["Every published project appears once", "Filters and sort controls update the visible cards"],
+      usesPlatformNeeds: [],
+      usesData: ["Project catalog entry"],
+      usesServices: [],
     },
     {
       name: "Project detail page",
@@ -27,6 +30,9 @@ const portfolioBlueprint: SemanticBlueprint = {
       behavior: "Render a project detail page from the matching content collection entry with canonical metadata and outbound repo links.",
       failureOutcome: "Unknown slugs render the documented not-found route.",
       acceptanceSignals: ["Each project has a stable direct URL", "Detail pages expose repo and summary metadata"],
+      usesPlatformNeeds: [],
+      usesData: ["Project catalog entry"],
+      usesServices: ["GitHub"],
     },
     {
       name: "About page",
@@ -35,10 +41,13 @@ const portfolioBlueprint: SemanticBlueprint = {
       behavior: "Publish maintainer context, selection criteria, and contact guidance on a dedicated about page.",
       failureOutcome: "Missing about content blocks deployment with a visible validation failure.",
       acceptanceSignals: ["About page is reachable from primary navigation"],
+      usesPlatformNeeds: [],
+      usesData: [],
+      usesServices: [],
     },
   ],
   dataObjects: [
-    { name: "Project catalog entry", purpose: "Describe one public repository with summary, tags, status, and outbound links.", sensitivity: "public", retentionIntent: "Published in the repository as markdown until removed." },
+    { name: "Project catalog entry", purpose: "Describe one public repository with summary, tags, status, and outbound links.", sensitivity: "public", retentionIntent: "Published in the repository as markdown until removed.", storage: "records" },
   ],
   externalServices: [
     { name: "GitHub", purpose: "Link to public nodaysidle repositories.", dataSent: [], credentialRequired: false },

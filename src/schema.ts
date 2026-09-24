@@ -6,29 +6,6 @@ const meaning = z.string().trim().min(4).max(1_200)
 const meaningList = z.array(compactMeaning).max(8)
 const requiredMeaningList = meaningList.min(1)
 
-const FeatureSchema = z.strictObject({
-  name: shortMeaning,
-  userOutcome: compactMeaning,
-  trigger: compactMeaning,
-  behavior: meaning,
-  failureOutcome: compactMeaning,
-  acceptanceSignals: requiredMeaningList,
-})
-
-const DataObjectSchema = z.strictObject({
-  name: shortMeaning,
-  purpose: compactMeaning,
-  sensitivity: z.enum(["public", "internal", "personal", "sensitive"]),
-  retentionIntent: compactMeaning,
-})
-
-const ExternalServiceSchema = z.strictObject({
-  name: shortMeaning,
-  purpose: compactMeaning,
-  dataSent: meaningList,
-  credentialRequired: z.boolean(),
-})
-
 export const PlatformNeedSchema = z.enum([
   "audio-input",
   "camera",
@@ -43,6 +20,35 @@ export const PlatformNeedSchema = z.enum([
   "launch-at-login",
   "location",
 ])
+
+const FeatureSchema = z.strictObject({
+  name: shortMeaning,
+  userOutcome: compactMeaning,
+  trigger: compactMeaning,
+  behavior: meaning,
+  failureOutcome: compactMeaning,
+  acceptanceSignals: requiredMeaningList,
+  usesPlatformNeeds: z.array(PlatformNeedSchema).max(12),
+  usesData: z.array(shortMeaning).max(8),
+  usesServices: z.array(shortMeaning).max(8),
+})
+
+export const DataStorageSchema = z.enum(["settings", "records", "document", "secret", "temporary", "session"])
+
+const DataObjectSchema = z.strictObject({
+  name: shortMeaning,
+  purpose: compactMeaning,
+  sensitivity: z.enum(["public", "internal", "personal", "sensitive"]),
+  retentionIntent: compactMeaning,
+  storage: DataStorageSchema,
+})
+
+const ExternalServiceSchema = z.strictObject({
+  name: shortMeaning,
+  purpose: compactMeaning,
+  dataSent: meaningList,
+  credentialRequired: z.boolean(),
+})
 
 export const SemanticBlueprintSchema = z.strictObject({
   productName: z.string().trim().min(1).max(80),
@@ -60,22 +66,7 @@ export const SemanticBlueprintSchema = z.strictObject({
 
 export type SemanticBlueprint = z.infer<typeof SemanticBlueprintSchema>
 export type PlatformNeed = z.infer<typeof PlatformNeedSchema>
-
-export const SUPPORTED_IMPORTED_AUDIO_FORMATS = ["wav", "mp3", "flac", "m4a", "ogg", "webm", "aac"] as const
-
-export const TranscriptionRoutingSchema = z.strictObject({
-  liveFeatureNames: z.array(shortMeaning).min(1),
-  importedFeatureNames: z.array(shortMeaning).min(1),
-  liveProviderName: shortMeaning,
-  importedProviderName: shortMeaning,
-  supportedImportedFormats: z.tuple(SUPPORTED_IMPORTED_AUDIO_FORMATS.map(format => z.literal(format)) as [z.ZodLiteral<"wav">, z.ZodLiteral<"mp3">, z.ZodLiteral<"flac">, z.ZodLiteral<"m4a">, z.ZodLiteral<"ogg">, z.ZodLiteral<"webm">, z.ZodLiteral<"aac">]),
-  maxImportedDurationSeconds: z.literal(60),
-  maxImportedPayloadBytes: z.literal(25_000_000),
-  overLimitBehavior: z.literal("reject-before-paid-upload"),
-  audioRewriteBehavior: z.literal("forbidden"),
-})
-
-export type TranscriptionRouting = z.infer<typeof TranscriptionRoutingSchema>
+export type DataStorage = z.infer<typeof DataStorageSchema>
 
 interface ClosedJsonSchema {
   readonly type?: string
@@ -246,8 +237,37 @@ const secretPatterns = [
   /\b(?:api[_ -]?key|access[_ -]?token|client[_ -]?secret|password)\s*[:=]\s*["']?[A-Za-z0-9._~-]{16,}/i,
 ]
 
-export function auditSemanticIntake(blueprint: SemanticBlueprint): SemanticIssue[] {
+export function referenceKey(name: string): string {
+  return name.normalize("NFKC").trim().replace(/\s+/g, " ").replace(/[.]+$/, "").toLocaleLowerCase("en-US")
+}
+
+export function featureReferenceIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
   const issues: SemanticIssue[] = []
+  const dataKeys = new Set(blueprint.dataObjects.map(item => referenceKey(item.name)))
+  const serviceKeys = new Set(blueprint.externalServices.map(item => referenceKey(item.name)))
+  const usedData = new Set<string>()
+  const usedServices = new Set<string>()
+  blueprint.features.forEach((feature, featureIndex) => {
+    feature.usesData.forEach((name, index) => {
+      if (dataKeys.has(referenceKey(name))) usedData.add(referenceKey(name))
+      else issues.push({ path: `features[${featureIndex}].usesData[${index}]`, rule: "semantic.unknown-data-reference", message: `Feature '${feature.name}' references data '${name}', which is not a declared dataObject.` })
+    })
+    feature.usesServices.forEach((name, index) => {
+      if (serviceKeys.has(referenceKey(name))) usedServices.add(referenceKey(name))
+      else issues.push({ path: `features[${featureIndex}].usesServices[${index}]`, rule: "semantic.unknown-service-reference", message: `Feature '${feature.name}' references service '${name}', which is not a declared externalService.` })
+    })
+  })
+  blueprint.dataObjects.forEach((item, index) => {
+    if (!usedData.has(referenceKey(item.name))) issues.push({ path: `dataObjects[${index}]`, rule: "semantic.unused-data-object", message: `No feature lists '${item.name}' in usesData, so no feature owns it.` })
+  })
+  blueprint.externalServices.forEach((item, index) => {
+    if (!usedServices.has(referenceKey(item.name))) issues.push({ path: `externalServices[${index}]`, rule: "semantic.unused-external-service", message: `No feature lists '${item.name}' in usesServices, so no feature calls it.` })
+  })
+  return issues
+}
+
+export function auditSemanticIntake(blueprint: SemanticBlueprint): SemanticIssue[] {
+  const issues: SemanticIssue[] = [...featureReferenceIssues(blueprint)]
   if (unusableMeaning.test(blueprint.productName)) {
     issues.push({ path: "productName", rule: "semantic.unusable-product", message: "The product name does not contain usable product meaning." })
   }
@@ -276,6 +296,8 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "Every feature acceptance signal must describe a concrete, mechanically verifiable condition (such as state transitions, UI element visibility, disk persistence, error code handling, or measured response under an explicit numerical threshold) that automated unit or integration tests can assert without human subjective impression. Never use subjective or hyperbolic phrases such as 'feels smooth', 'zero latency', 'instantaneous', or 'aesthetic appeal'.",
     "When a behavior, failure outcome, or acceptance signal depends on a default, interval, or limit, state its concrete value (for example a font family and point size, or a duration in milliseconds). Never write 'documented defaults' or an interval without its value.",
     "Use no more than twelve features and no more than eight values in each prose list. Include every applicable platform need from the closed enum.",
+    "For every feature, list in usesPlatformNeeds each platform need that feature itself exercises, in usesData the exact names of the dataObjects it reads or writes, and in usesServices the exact names of the externalServices it calls. Use empty arrays when a feature uses none. Every name must match a declared dataObject or externalService exactly.",
+    "For every dataObject, set storage to settings for small user preferences, records for structured app-owned records or history, document for files the user opens or saves, secret for API keys, tokens, or other credentials, temporary for short-lived files removed automatically, and session for values held in memory and never written to disk.",
     `Software idea: ${input.idea.trim()}`,
   ].join("\n\n")
 }

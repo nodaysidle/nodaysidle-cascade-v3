@@ -84,7 +84,10 @@ fn rejects_missing_extra_empty_reordered_and_hash_mismatch_packets() {
 fn atomically_writes_exactly_five_byte_identical_files() {
     let root = tempfile::tempdir().unwrap();
     let destination = write_packet_atomic(root.path(), "harbor-sort", &files()).unwrap();
-    assert_eq!(destination, root.path().canonicalize().unwrap().join("harbor-sort"));
+    assert_eq!(
+        destination,
+        root.path().canonicalize().unwrap().join("harbor-sort")
+    );
 
     let mut names: Vec<_> = fs::read_dir(&destination)
         .unwrap()

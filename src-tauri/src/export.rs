@@ -130,11 +130,11 @@ fn rename_exclusive(from: &Path, to: &Path) -> io::Result<()> {
         let to_c = CString::new(to.as_os_str().as_bytes())
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "export path"))?;
         let rc = unsafe { renamex_np(from_c.as_ptr(), to_c.as_ptr(), RENAME_EXCL) };
-        return if rc == 0 {
+        if rc == 0 {
             Ok(())
         } else {
             Err(io::Error::last_os_error())
-        };
+        }
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -146,7 +146,10 @@ fn verify_written_packet(destination: &Path, files: &[ExportFile]) -> io::Result
     for file in files {
         let bytes = fs::read(destination.join(&file.name))?;
         if sha256_hex(&bytes) != file.sha256 {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "export hash mismatch"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "export hash mismatch",
+            ));
         }
     }
     Ok(())

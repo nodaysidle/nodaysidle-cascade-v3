@@ -32,6 +32,9 @@ const messyProviderBlueprint = {
       behavior: "FEAT-001 groups files and explains collisions without moving them.",
       failureOutcome: "Unreadable files stay in place and remain visible.",
       acceptanceSignals: ["Every eligible file appears once", "every eligible file appears once."],
+      usesPlatformNeeds: ["filesystem"],
+      usesData: [],
+      usesServices: [],
     },
     {
       name: "Reversible Batch",
@@ -40,6 +43,9 @@ const messyProviderBlueprint = {
       behavior: "Apply only reviewed moves and retain enough meaning for undo.",
       failureOutcome: "Stop at the first failed move and retain the completed subset.",
       acceptanceSignals: ["Undo restores every completed move"],
+      usesPlatformNeeds: ["filesystem", "local-storage"],
+      usesData: ["Move journal"],
+      usesServices: [],
     },
   ],
   dataObjects: [
@@ -48,6 +54,7 @@ const messyProviderBlueprint = {
       purpose: "Remember completed source and destination pairs for undo.",
       sensitivity: "personal",
       retentionIntent: "Keep until the configured undo window expires.",
+      storage: "records",
     },
   ],
   externalServices: [],

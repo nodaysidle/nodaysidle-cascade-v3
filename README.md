@@ -137,7 +137,7 @@ Hand the exported folder to your coding agent. Read **`AGENTS.md` first**, then 
 DEEPSEEK_API_KEY=your_key npm run probe:live
 ```
 
-Runs an authenticated end-to-end generate against the DeepSeek API and reports whether the packet reached Gate Clean.
+Runs one authenticated DeepSeek request through the TypeScript pipeline (no Rust provider, no Jev) and reports whether local compilation reached Gate Clean. Set `CASCADE_MODEL=deepseek-flash` or `deepseek-v4-pro` to choose the model (default `deepseek-v4-pro`).
 
 ## Output
 
@@ -225,8 +225,9 @@ cargo test --manifest-path src-tauri/Cargo.toml
 | `npm run build` | Production frontend bundle |
 | `npm run typecheck` | TypeScript strict check |
 | `npm test` | Vitest — compiler, graph, audit, preset regressions |
-| `npm run probe:live` | Authenticated DeepSeek end-to-end probe |
+| `npm run probe:live` | One authenticated DeepSeek request through the TypeScript pipeline |
 | `npm run tauri:build` | Release `.app` and `.dmg` |
+| `npm run install:app` | Build and replace `/Applications/NODAYSIDLE Cascade V3.app`; add `-- --clean` to remove build output |
 
 ## Status
 

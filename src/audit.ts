@@ -1,10 +1,7 @@
 import {
   DOCUMENT_NAMES,
-  TEMPORARY_AUDIO_LIFECYCLE,
-  temporaryAudioLifecycleContractValues,
   type ContractKind,
   type DocumentName,
-  type GraphContract,
   type ProjectGraph,
 } from "./compiler"
 import { PRESET_IDS, PRESETS, type PresetContract } from "./presets"
@@ -47,7 +44,6 @@ const ledgerRules = [
   ["contract.persistence", "Persistence placement and recovery are concrete"],
   ["contract.persistence-ownership", "Credential and data ownership is consistent"],
   ["contract.persistence-placement", "Each data contract has one valid placement"],
-  ["contract.paste", "Paste workflow and branch tests are complete"],
   ["contract.packaging", "Packaging has one dependency-safe authority"],
   ["validation.commands", "Validation and completion commands are present"],
   ["preset.contracts", "Preset lifecycle and accessibility rules are rendered"],
@@ -107,26 +103,16 @@ function missingMarkers(text: string, markers: readonly string[]): string[] {
   return markers.filter(marker => !normalized.includes(marker.toLowerCase()))
 }
 
-function sameContractValues(
-  actual: GraphContract | undefined,
-  expected: Pick<GraphContract, "decision" | "details" | "failureBehavior" | "recovery">,
-): boolean {
-  return actual?.decision === expected.decision
-    && actual.failureBehavior === expected.failureBehavior
-    && JSON.stringify(actual.details) === JSON.stringify(expected.details)
-    && JSON.stringify(actual.recovery) === JSON.stringify(expected.recovery)
-}
-
 function sameStructure(actual: unknown, expected: unknown): boolean {
   return JSON.stringify(actual) === JSON.stringify(expected)
 }
 
-function credentialLike(value: string): boolean {
-  return /\b(?:api[- ]?keys?|credentials?|secrets?|access tokens?)\b/i.test(value.replace(/\bnon[- ]secret\b/gi, ""))
+function persistenceStorage(graph: ProjectGraph, contractName: string) {
+  return graph.blueprint.persistenceNeeds.find(item => `${item.data} persistence` === contractName)?.storage
 }
 
-function pasteFeatureLike(value: string): boolean {
-  return /\b(?:paste-back|auto-paste|flexible insertion|insertion options?|clipboard handling)\b/i.test(value)
+function credentialLike(value: string): boolean {
+  return /\b(?:api[- ]?keys?|credentials?|secrets?|access tokens?)\b/i.test(value.replace(/\bnon[- ]secret\b/gi, ""))
 }
 
 const unresolvedDecisionPattern = /\breject\s+or\s+(?:explicitly\s+)?split\b|\beither\b[^.\n]{0,120}\bor\b|\bchoose (?:one|between)\b|\bdecide whether\b/i
@@ -225,6 +211,9 @@ function collectGraphFailures(graph: ProjectGraph): AuditFailure[] {
     if (!ownerIds.has(contract.ownerId)) failures.push(failure("graph.references", contract.id, `Contract references unknown owner ${contract.ownerId}.`))
     if (contract.kind === "permission" && contract.featureIds.length === 0) {
       failures.push(failure("graph.coverage", contract.id, `Permission contract ${contract.id} has no linked features.`))
+    }
+    if ((["data", "persistence", "integration"] as const).includes(contract.kind as "data" | "persistence" | "integration") && contract.featureIds.length === 0) {
+      failures.push(failure("graph.coverage", contract.id, `${contract.id} has no linked features, so no feature owns it.`))
     }
     for (const featureId of contract.featureIds) {
       if (!featureIds.has(featureId)) failures.push(failure("graph.references", contract.id, `Contract references unknown feature ${featureId}.`))
@@ -403,13 +392,12 @@ function collectGraphFailures(graph: ProjectGraph): AuditFailure[] {
 
   for (const item of nativeMac ? graph.contracts.filter(contract => contract.kind === "persistence") : []) {
     const placement = item.details.find(detail => detail.startsWith("Placement:")) ?? ""
-    const settings = /\b(?:settings?|preferences?|provider|hotkeys?|shortcuts?)\b/i.test(item.name)
-    const records = /\b(?:history|modes?|vocabulary)\b/i.test(item.name)
-    if (settings && !records && (!/\bUserDefaults\b/.test(placement) || /\bSQLite\b/.test(placement))) {
+    const storage = persistenceStorage(graph, item.name)
+    if (storage === "settings" && (!/\bUserDefaults\b/.test(placement) || /\bSQLite\b/.test(placement))) {
       failures.push(failure("contract.persistence-placement", item.id, `${item.id} must place lightweight settings only in UserDefaults.`))
     }
-    if (records && !settings && (!/\bSQLite\b/.test(placement) || /\bUserDefaults\b/.test(placement))) {
-      failures.push(failure("contract.persistence-placement", item.id, `${item.id} must place history, modes, and vocabulary only in SQLite.`))
+    if (storage === "records" && (!/\bSQLite\b/.test(placement) || /\bUserDefaults\b/.test(placement))) {
+      failures.push(failure("contract.persistence-placement", item.id, `${item.id} must place records only in SQLite.`))
     }
     if (!item.details.some(detail => detail.startsWith("Placement:"))) continue
     const decision = item.decision
@@ -422,27 +410,6 @@ function collectGraphFailures(graph: ProjectGraph): AuditFailure[] {
     }
   }
 
-
-  if (nativeMac && graph.blueprint.temporaryAudioLifecycle) {
-    const audio = graph.blueprint.temporaryAudioLifecycle
-    const lifecycle = graph.contracts.find(contract => contract.id === "CON-LIFECYCLE-AUDIO-CAPTURE-TERMINATION")
-    if (!sameStructure(audio, TEMPORARY_AUDIO_LIFECYCLE) || !sameContractValues(lifecycle, temporaryAudioLifecycleContractValues(audio))) {
-      failures.push(failure("contract.persistence", "Temporary audio lifecycle", "The canonical temporary-audio lifecycle is incomplete."))
-    }
-  }
-
-  const voiceData = graph.blueprint.domainData.map(item => item.name).join(" ")
-  if (/history/i.test(voiceData) && /mode/i.test(voiceData) && /vocab/i.test(voiceData) && /(?:temporary|recording|audio)/i.test(voiceData) && graph.presetId.startsWith("native-macos")) {
-    const persistence = contractText(graph, "CON-PERSISTENCE-VOICE-LOCAL-STORAGE")
-    const missing = missingMarkers(persistence, ["macOS Keychain only", "UserDefaults", "SQLite", "PRAGMA user_version", "CREATE TABLE history", "CREATE TABLE modes", "CREATE TABLE vocabulary", "transactional migration", "FileManager.default.temporaryDirectory", "Saved recordings"])
-    if (missing.length) failures.push(failure("contract.persistence", "CON-PERSISTENCE-VOICE-LOCAL-STORAGE", `Voice persistence contract is incomplete: ${missing.join(", ")}.`))
-  }
-
-  if (nativeMac && graph.features.some(feature => pasteFeatureLike(`${feature.name} ${feature.behavior}`))) {
-    const paste = contractText(graph, "CON-PASTE-WORKFLOW")
-    const missing = missingMarkers(paste, ["NSRunningApplication identity", "current Accessibility focused element", "exactly one insertion candidate", "never paste partial, empty, failed, cancelled, or unapproved text", "editable selected-text boundary", "every existing NSPasteboard item and representation", "original changeCount", "app-owned post-write changeCount", "became frontmost", "one Command-V through CGEvent", "750 ms", "never overwrite that newer clipboard content", "Preview mode never inserts before explicit approval", "Copy-only mode intentionally leaves the transcript on the clipboard", "direct Accessibility insertion", "captured application no longer available", "clipboard changed by another process", "insertion failure preserving the transcript"])
-    if (missing.length) failures.push(failure("contract.paste", "CON-PASTE-WORKFLOW", `Paste workflow contract is incomplete: ${missing.join(", ")}.`))
-  }
 
   if (graph.presetId.startsWith("native-macos")) {
     const packagingOwners = graph.owners.filter(owner => owner.id === "OWN-PACKAGING")
@@ -524,22 +491,6 @@ function markdownFailures(name: string, markdown: string): AuditFailure[] {
   return failures
 }
 
-function contradictsTemporaryAudioLifecycle(markdown: string): boolean {
-  return markdown.split(/[\n;]+|(?<=[.!?])\s+/).some(rawClause => {
-    const clause = rawClause.replace(/[-_]/g, " ")
-    if (!/\b(?:temporary|recoverable|raw)?\s*(?:audio|recording)\b/i.test(clause)) return false
-    if (/\b(?:delete no recoverable audio|never delete|do not delete|must not delete|without deleting|retain no|never retain|do not retain|must not retain|without retaining)\b/i.test(clause)) return false
-
-    const deletes = /\bdelet(?:e|ed|es|ing)\b/i.test(clause)
-    if (deletes && /\bdelet(?:e|ed|es|ing)\s+after completion\b|\bcloud request\b[^.]*\bunless\b|\bprovider request\b[^.]*\bunless\b/i.test(clause)) return true
-    if (/\bdelet(?:e|ed|es|ing)\b(?:\s+\S+){0,6}\s+(?:after (?:a )?recoverable provider failure|before (?:an? )?(?:explicit )?(?:retry|provider switch))\b/i.test(clause)) return true
-    if (/\b(?:after (?:a )?recoverable provider failure|before (?:an? )?(?:explicit )?(?:retry|provider switch))\b(?:\s+\S+){0,6}\s+delet(?:e|ed|es|ing)\b/i.test(clause)) return true
-    if (/\b(?:retain(?:ed|s|ing)?|preserv(?:e|ed|es|ing)|keep|kept|surviv(?:e|ed|es|ing))\b(?:\s+\S+){0,6}\s+(?:after (?:accepted )?success|after explicit discard|after cancellation|after unrecoverable malformed audio|after exhausted recovery|beyond the active request|between requests|indefinitely)\b/i.test(clause)) return true
-    if (/\b(?:after (?:accepted )?success|after explicit discard|after cancellation|after unrecoverable malformed audio|after exhausted recovery|beyond the active request|between requests)\b(?:\s+\S+){0,6}\s+(?:retain(?:ed|s|ing)?|preserv(?:e|ed|es|ing)|keep|kept|surviv(?:e|ed|es|ing))\b/i.test(clause)) return true
-    return false
-  })
-}
-
 function markdownContractText(markdown: string, contractId: string): string {
   const sectionStart = markdown.indexOf(`### ${contractId} —`)
   if (sectionStart >= 0) {
@@ -584,9 +535,6 @@ export function auditPacket(
   const placementDocuments = ["TRD.md", "TASKS.md"] as const
   for (const name of DOCUMENT_NAMES) {
     const markdown = documents[name] ?? ""
-    if (graph.presetId.startsWith("native-macos") && contradictsTemporaryAudioLifecycle(markdown)) {
-      failures.push(failure("contract.persistence", name, `${name} contradicts the temporary-audio retry and deletion boundary.`))
-    }
     for (const pattern of DANGEROUS_INSTRUCTION_PATTERNS) {
       if (pattern.test(markdown)) {
         failures.push(failure("security.executable-injection", name, `${name} contains prohibited executable instruction or prompt injection.`))
@@ -604,12 +552,11 @@ export function auditPacket(
     }
     for (const item of graph.presetId.startsWith("native-macos") ? packetPersistenceContracts : []) {
       const persistenceText = markdownContractText(markdown, item.id)
-      const settings = /\b(?:settings?|preferences?|provider|hotkeys?|shortcuts?)\b/i.test(item.name)
-      const records = /\b(?:history|modes?|vocabulary)\b/i.test(item.name)
-      if (settings && !records && (!persistenceText.includes("Placement: UserDefaults") || persistenceText.includes("Placement: SQLite"))) {
+      const storage = persistenceStorage(graph, item.name)
+      if (storage === "settings" && (!persistenceText.includes("Placement: UserDefaults") || persistenceText.includes("Placement: SQLite"))) {
         failures.push(failure("contract.persistence-placement", name, `${name} renders conflicting placement for ${item.id}.`))
       }
-      if (records && !settings && (!persistenceText.includes("Placement: SQLite") || persistenceText.includes("Placement: UserDefaults"))) {
+      if (storage === "records" && (!persistenceText.includes("Placement: SQLite") || persistenceText.includes("Placement: UserDefaults"))) {
         failures.push(failure("contract.persistence-placement", name, `${name} renders conflicting placement for ${item.id}.`))
       }
     }

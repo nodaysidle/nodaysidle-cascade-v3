@@ -2,21 +2,13 @@ import { auditAgentReadinessGraph, auditMechanicalGraph, auditPacket, auditProje
 import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS, planAstroWeb, type AstroRoutePlan } from "./astroWeb"
 import { PRESETS, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
 import { renderPacket } from "./renderers"
-import { type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
+import { featureReferenceIssues, referenceKey, type DataStorage, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
-import type { JevAtomicAuditDecision, JevStorageTier } from "./jev"
+import type { JevAtomicAuditDecision } from "./jev"
 
 export const DOCUMENT_NAMES = ["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS.md"] as const
 export type DocumentName = (typeof DOCUMENT_NAMES)[number]
 export type ContractKind = "interface" | "data" | "integration" | "lifecycle" | "persistence" | "credential" | "permission" | "recovery" | "security" | "packaging"
-
-export interface TemporaryAudioLifecycle {
-  readonly scope: "active-request-only"
-  readonly recoverableRetention: "await-explicit-retry-or-provider-switch"
-  readonly deletionTriggers: readonly string[]
-  readonly savedRecording: "explicit-user-action-only"
-  readonly completedOutput: "accepted-success-only"
-}
 
 export interface NormalizedBlueprint {
   readonly projectName: string
@@ -51,12 +43,12 @@ export interface NormalizedBlueprint {
     readonly failureBehavior: string
     readonly recovery: string
   }[]
-  readonly temporaryAudioLifecycle?: TemporaryAudioLifecycle
   readonly domainData: readonly {
     readonly name: string
     readonly meaning: string
     readonly retention: string
     readonly sensitivity: "public" | "internal" | "personal" | "sensitive"
+    readonly storage: DataStorage
   }[]
   readonly privacySecurityRequirements: readonly string[]
   readonly permissionNeeds: readonly {
@@ -70,8 +62,8 @@ export interface NormalizedBlueprint {
     readonly retention: string
     readonly deletionBehavior: string
     readonly sensitivity: "public" | "internal" | "personal" | "sensitive"
+    readonly storage: Exclude<DataStorage, "secret">
     readonly temporary: boolean
-    readonly placementTier?: JevStorageTier
   }[]
   readonly lifecycleRequirements: readonly {
     readonly event: string
@@ -316,84 +308,6 @@ function cleanList(values: readonly string[]): string[] {
   return uniqueStrings(values.map(cleanMeaning).filter(Boolean))
 }
 
-function isCredentialData(value: string): boolean {
-  return /\b(?:api[- ]?keys?|credentials?|secrets?|access tokens?)\b/i.test(value.replace(/\bnon[- ]secret\b/gi, ""))
-}
-
-const NATIVE_INSERTION_CAPABILITY = "CAP-NATIVE-INSERTION"
-
-function providesNativeInsertion(name: string, behavior: string): boolean {
-  return /\b(?:paste-back|auto-paste|insert(?:ion)? behavior|clipboard handling)\b/i.test(name)
-    || (/\b(?:insert|paste)\b/i.test(behavior) && /\b(?:target application|focused application|clipboard|preview mode)\b/i.test(behavior))
-}
-
-function requiresNativeInsertion(value: string): boolean {
-  return /\b(?:paste-back|auto-paste|target application|target text field)\b/i.test(value)
-}
-
-const nativeInsertionBehavior = "After one successful final transcription and optional successful refinement, choose exactly one complete insertion candidate and apply the configured auto-paste, copy-only, or preview mode through the deterministic native macOS insertion contract; never insert partial, empty, failed, cancelled, or unapproved text."
-
-const nativeInsertionAcceptance = [
-  "Direct Accessibility insertion writes one approved complete candidate without touching the clipboard",
-  "Command-V fallback restores the clipboard only when its app-owned changeCount is unchanged",
-  "A newer external clipboard value is never overwritten",
-  "Preview mode requires explicit approval and cancellation inserts nothing",
-  "Copy-only mode leaves the complete transcript on the clipboard without restoration",
-  "Partial, empty, failed, cancelled, and unapproved text is never inserted",
-]
-
-export const TEMPORARY_AUDIO_LIFECYCLE: TemporaryAudioLifecycle = Object.freeze({
-  scope: "active-request-only",
-  recoverableRetention: "await-explicit-retry-or-provider-switch",
-  deletionTriggers: Object.freeze(["accepted success", "explicit discard", "cancellation", "unrecoverable malformed audio", "exhausted recovery"]),
-  savedRecording: "explicit-user-action-only",
-  completedOutput: "accepted-success-only",
-})
-
-export function temporaryAudioLifecycleStatements(lifecycle: TemporaryAudioLifecycle = TEMPORARY_AUDIO_LIFECYCLE): readonly string[] {
-  const deletionTriggers = lifecycle.deletionTriggers
-    .map((trigger, index) => index === lifecycle.deletionTriggers.length - 1 ? `or ${trigger}` : trigger)
-    .join(", ")
-  return [
-    lifecycle.scope === "active-request-only" ? "Audio exists only for the active request." : "",
-    lifecycle.recoverableRetention === "await-explicit-retry-or-provider-switch" ? "After a recoverable provider failure, temporary audio may be retained only while awaiting an explicit retry or explicit provider switch." : "",
-    `${deletionTriggers[0]?.toUpperCase() ?? ""}${deletionTriggers.slice(1)} deletes temporary audio and verifies absence.`,
-    lifecycle.savedRecording === "explicit-user-action-only" ? "Saved recordings survive only after explicit user action." : "",
-    lifecycle.completedOutput === "accepted-success-only" ? "Incomplete, failed, cancelled, or partial text is never pasted or persisted as completed output." : "",
-  ]
-}
-
-function temporaryAudioLifecycleText(lifecycle: TemporaryAudioLifecycle = TEMPORARY_AUDIO_LIFECYCLE): string {
-  return temporaryAudioLifecycleStatements(lifecycle).join(" ")
-}
-
-export function temporaryAudioLifecycleContractValues(
-  audio: TemporaryAudioLifecycle = TEMPORARY_AUDIO_LIFECYCLE,
-): Pick<GraphContract, "decision" | "details" | "failureBehavior" | "recovery"> {
-  const statements = temporaryAudioLifecycleStatements(audio)
-  return {
-    decision: statements[0]!,
-    details: statements.slice(1),
-    failureBehavior: "A cleanup failure keeps the operation incomplete, exposes a privacy-safe local error, and never claims that temporary audio or incomplete text was removed or completed.",
-    recovery: ["Retry cleanup explicitly, verify absence before reporting success, and retain no audio beyond the canonical active-request lifecycle."],
-  }
-}
-
-function temporaryAudioSubject(value: string): boolean {
-  return /\b(?:audio|recording)\b/i.test(value)
-    && /\b(?:temporary|temporarily|active request|current request|recoverable|retry|provider switch|sav(?:e|es|ed|ing))\b/i.test(value)
-}
-
-function temporaryAudioLifecycleClaim(value: string): boolean {
-  return temporaryAudioSubject(value)
-    && /\b(?:retain|retained|preserv(?:e|ed)|delet(?:e|ed)|discard|cancel|completion|success|failure|recovery|save|saved)\b/i.test(value)
-}
-
-function canonicalizeTemporaryAudioMeaning(value: string, lifecycle?: TemporaryAudioLifecycle): string {
-  const cleaned = cleanMeaning(value)
-  return lifecycle && temporaryAudioLifecycleClaim(cleaned) ? temporaryAudioLifecycleText(lifecycle) : cleaned
-}
-
 function uniqueByName<T extends { readonly name: string }>(values: readonly T[]): T[] {
   const seen = new Set<string>()
   return values.filter(value => {
@@ -444,45 +358,8 @@ const deniedBehavior: Readonly<Record<PermissionCapability, string>> = {
   "background-startup": "Keep manual launch and foreground behavior available.",
 }
 
-const permissionFeaturePatterns: Readonly<Record<PermissionCapability, RegExp>> = {
-  microphone: /\b(?:microphone|audio capture|record(?:ing|ed)?|dictat(?:e|ion)|speech[- ]to[- ]text)\b/i,
-  accessibility: /\b(?:accessibility|AXUIElement|focused application|target application|auto-paste)\b/i,
-  notifications: /\b(?:notification|alert|reminder)s?\b/i,
-  filesystem: /\b(?:files?|folders?|filesystem|imports?|exports?|(?:open|save|select|read|write|load)(?:s|ing|ed)?\s+(?:a\s+|the\s+)?documents?)\b/i,
-  network: /\b(?:network|remote|cloud|provider|request|stream(?:ing)?|http[s]?|websocket|api endpoint)s?\b/i,
-  camera: /\b(?:camera|photo|video capture)s?\b/i,
-  location: /\b(?:location|position|map|geolocation)\b/i,
-  "global-input": /\b(?:global hotkey|system-wide shortcut|push-to-talk|toggle recording|input monitoring)s?\b/i,
-  clipboard: /\b(?:clipboard|pasteboard|copy(?:-only)?|paste(?:-back|d)?)\b/i,
-  "background-startup": /\b(?:launch[- ]at[- ]login|login (?:item|preference|behavior|launch)|start(?:up)? at login|start at login|run in background|background service|background execution|scheduled routine)s?\b/i,
-}
-
 function permissionResourceId(capability: PermissionCapability): string {
   return `permission:${capability}`
-}
-
-const dataResourceCategories = [
-  ["credential", /\b(?:api[- ]?keys?|credentials?|secrets?|access tokens?)\b/i],
-  ["temporary-audio", /\b(?:temporary|recoverable|active request)\b[^.\n]{0,80}\b(?:audio|recording)\b|\b(?:audio|recording)\b[^.\n]{0,80}\b(?:temporary|recoverable|active request)\b/i],
-  ["history", /\b(?:history|past transcriptions?|records?)\b/i],
-  ["settings", /\b(?:settings?|preferences?|configuration|hotkeys?|shortcuts?|launch at login)\b/i],
-  ["mode", /\b(?:dictation modes?|custom modes?|tone|formatting instructions)\b/i],
-  ["vocabulary", /\b(?:vocabulary|replacement rules?|technical terms?)\b/i],
-  ["usage", /\b(?:usage|cost|billing)\b/i],
-] as const
-
-function dataRoles(text: string): string[] {
-  const roles: string[] = []
-  if (/\b(?:buffer|cursor|in[- ]memory text|editing session)\b/i.test(text)) roles.push("buffer")
-  if (/\b(?:plain[- ]?text|note file|document content|file content)\b/i.test(text)) roles.push("document")
-  if (/\b(?:search index|searchable terms)\b/i.test(text)) roles.push("search")
-  if (/\b(?:workspace|folder path)\b/i.test(text)) roles.push("workspace")
-  if (/\b(?:font|typography|point size)\b/i.test(text)) roles.push("typography")
-  if (/\b(?:keybindings?|key bindings?|key assignments?)\b/i.test(text)) roles.push("keybinding")
-  if (/\b(?:font|typography|point size|keybindings?|key bindings?|key assignments?|preferences|settings)\b/i.test(text)) roles.push("settings")
-  if (atomicRenameScratch(text)) return ["atomic-write"]
-  if (roles.includes("search")) return roles.filter(role => role !== "document")
-  return roles
 }
 
 function featureRecovery(name: string, failure: string): string {
@@ -491,75 +368,24 @@ function featureRecovery(name: string, failure: string): string {
   return `Preserve the last valid state, explain the failure, and allow an explicit retry of ${name}.`
 }
 
-function affirmedText(text: string): string {
-  return text
-    .replace(/\b(?:no|not|never|without|cannot|nor)\b[^.,;:]*/gi, " ")
-    .replace(/\b(?:the|an?|currently) open\b/gi, "the current")
-}
-
 function atomicRenameScratch(text: string): boolean {
   return /\btemporary\b/i.test(text) && /\brenam/i.test(text)
 }
 
-function featureRoles(text: string): string[] {
-  const roles: string[] = []
-  if (/\b(?:type|typing|keystroke|cursor|edit|undo|redo)\b/i.test(text)) roles.push("buffer")
-  if (/\b(?:save|write|open|close|load)\b/i.test(text) && /\b(?:file|note|document|path)\b/i.test(text)) roles.push("document")
-  if (/\b(?:search|fuzzy|query)\b/i.test(text)) roles.push("search")
-  if (/\b(?:workspace|folder)\b/i.test(text)) roles.push("workspace")
-  if (/\b(?:font|typography|point size)\b/i.test(text)) roles.push("typography")
-  if (/\b(?:keybindings?|key bindings?|key assignments?)\b/i.test(text)) roles.push("keybinding")
-  if (/\b(?:settings|preferences)\b/i.test(text)) roles.push("settings")
-  if (/\btemporary file\b/i.test(text) && /\brenam/i.test(text)) roles.push("atomic-write")
-  return roles
-}
-
-function sharesDataRole(featureText: string, dataText: string): boolean {
-  const wanted = new Set(dataRoles(dataText))
-  return featureRoles(featureText).some(role => wanted.has(role))
-}
-
-function dataResourceIds(name: string, meaning: string): string[] {
-  const text = `${name} ${meaning}`
-  return unique([
-    `data:${slug(name)}`,
-    ...dataResourceCategories.filter(([, pattern]) => pattern.test(text)).map(([category]) => `data-category:${category}`),
-  ])
+function dataResourceIds(name: string): string[] {
+  return [`data:${slug(name)}`]
 }
 
 function serviceResourceIds(name: string): string[] {
   return [`service:${slug(name)}`]
 }
 
-function deriveFeatureResourceIds(
-  sourceMeaning: string,
-  outcomeMeaning: string,
-  dataObjects: readonly { readonly name: string; readonly purpose: string }[],
-  services: readonly NormalizedBlueprint["externalServices"][number][],
-): string[] {
-  const affirmedSource = affirmedText(sourceMeaning)
-  const affirmedOutcome = affirmedText(outcomeMeaning)
-  const resources = Object.entries(permissionFeaturePatterns)
-    .filter(([, pattern]) => pattern.test(affirmedSource))
-    .map(([capability]) => permissionResourceId(capability as PermissionCapability))
-
-  for (const item of dataObjects) {
-    const exactName = cleanMeaning(item.name).toLocaleLowerCase("en-US")
-    const categories = dataResourceIds(item.name, item.purpose).filter(id => id.startsWith("data-category:"))
-    const matchedCategories = categories.filter(id => dataResourceCategories.find(([category]) => id === `data-category:${category}`)?.[1].test(affirmedOutcome))
-    if ((exactName && affirmedSource.toLocaleLowerCase("en-US").includes(exactName))
-      || matchedCategories.length
-      || sharesDataRole(affirmedOutcome, `${item.name} ${item.purpose}`)) {
-      resources.push(`data:${slug(item.name)}`, ...matchedCategories)
-    }
-  }
-
-  for (const service of services) {
-    const exactProvider = service.name.toLocaleLowerCase("en-US")
-    if (exactProvider && sourceMeaning.toLocaleLowerCase("en-US").includes(exactProvider)) resources.push(...serviceResourceIds(service.name), permissionResourceId("network"))
-  }
-
-  return unique(resources)
+function featureResourceIds(usesPlatformNeeds: readonly PlatformNeed[], usesData: readonly string[], usesServices: readonly string[]): string[] {
+  return unique([
+    ...usesPlatformNeeds.flatMap(need => permissionByNeed[need] ? [permissionResourceId(permissionByNeed[need]!)] : []),
+    ...usesData.flatMap(dataResourceIds),
+    ...usesServices.flatMap(serviceResourceIds),
+  ])
 }
 
 function deriveProblemStatement(targetUsers: readonly string[], goals: readonly string[], nonGoals: readonly string[]): string {
@@ -590,34 +416,28 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
   if (!PRESETS[presetId]) throw new NormalizationError([{ path: "$preset", rule: "normalization.unknown-preset", message: "The selected preset is not available." }])
   const projectName = source.productName.normalize("NFKC").trim().replace(/\s+/g, " ")
   const summary = cleanMeaning(source.summary)
-  const hasTemporaryAudio = source.dataObjects.some(item => temporaryAudioSubject(`${item.name} ${item.purpose} ${item.retentionIntent}`))
-  const temporaryAudioLifecycle = isNativeMacPreset(presetId) && hasTemporaryAudio
-    ? TEMPORARY_AUDIO_LIFECYCLE
-    : undefined
   if (!projectName) normalizationIssue("productName")
   if (!summary) normalizationIssue("summary")
 
   const targetUsers = cleanList(source.targetUsers)
-  const goals = uniqueStrings(source.goals.map(goal => canonicalizeTemporaryAudioMeaning(goal, temporaryAudioLifecycle)).filter(Boolean))
+  const goals = cleanList(source.goals)
   if (!targetUsers.length) normalizationIssue("targetUsers")
   if (!goals.length) normalizationIssue("goals")
+  const referenceIssues = featureReferenceIssues(source)
+  if (referenceIssues.length) throw new NormalizationError(referenceIssues)
+  const dataNameByKey = new Map(source.dataObjects.map(item => [referenceKey(item.name), cleanMeaning(item.name)]))
+  const serviceNameByKey = new Map(source.externalServices.map(item => [referenceKey(item.name), cleanMeaning(item.name)]))
 
   const baseFeatures = uniqueByName(source.features.map((feature, index) => {
     const name = cleanMeaning(feature.name)
-    const semantic = `${feature.name} ${feature.behavior} ${feature.trigger} ${feature.userOutcome} ${feature.acceptanceSignals.join(" ")}`
-    const nativePaste = isNativeMacPreset(presetId) && providesNativeInsertion(feature.name, feature.behavior)
-    const behavior = nativePaste
-      ? nativeInsertionBehavior
-      : alignAtomicWrite(cleanMeaning(feature.behavior), `${source.summary} ${source.productConstraints.join(" ")} ${source.features.map(item => item.behavior).join(" ")}`)
+    const behavior = alignAtomicWrite(cleanMeaning(feature.behavior), `${source.summary} ${source.productConstraints.join(" ")} ${source.features.map(item => item.behavior).join(" ")}`)
     const userOutcome = cleanMeaning(feature.userOutcome)
     if (!name) normalizationIssue(`features[${index}].name`)
     if (!behavior) normalizationIssue(`features[${index}].behavior`)
     if (!userOutcome) normalizationIssue(`features[${index}].userOutcome`)
     const trigger = cleanMeaning(feature.trigger) || `The user initiates ${name}.`
-    const failure = canonicalizeTemporaryAudioMeaning(feature.failureOutcome, temporaryAudioLifecycle) || "The operation stops without losing the last valid state."
-    const acceptance = nativePaste
-      ? uniqueStrings([...nativeInsertionAcceptance, ...cleanList(feature.acceptanceSignals)])
-      : cleanList(feature.acceptanceSignals)
+    const failure = cleanMeaning(feature.failureOutcome) || "The operation stops without losing the last valid state."
+    const acceptance = cleanList(feature.acceptanceSignals)
     return {
       name,
       behavior,
@@ -626,25 +446,25 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       acceptanceOutcomes: acceptance.length ? acceptance : [`${name} produces the documented user outcome.`],
       failureBehavior: failure,
       recoveryExpectations: [featureRecovery(name, failure)],
-      providedCapabilities: nativePaste ? [NATIVE_INSERTION_CAPABILITY] : [],
-      requiredCapabilities: isNativeMacPreset(presetId) && !nativePaste && requiresNativeInsertion(semantic) ? [NATIVE_INSERTION_CAPABILITY] : [],
+      providedCapabilities: [],
+      requiredCapabilities: [],
       resourceIds: [],
-      sourceMeaning: cleanMeaning(semantic),
-      outcomeMeaning: cleanMeaning(`${feature.name} ${behavior} ${feature.userOutcome} ${feature.acceptanceSignals.join(" ")}`),
+      usesPlatformNeeds: unique(feature.usesPlatformNeeds),
+      usesData: unique(feature.usesData.map(name => dataNameByKey.get(referenceKey(name))!)),
+      usesServices: unique(feature.usesServices.map(name => serviceNameByKey.get(referenceKey(name))!)),
     }
   }))
   if (!baseFeatures.length) normalizationIssue("features")
 
-  const dataObjects = uniqueByName(source.dataObjects.map((item, sourceIndex) => {
+  const dataObjects = uniqueByName(source.dataObjects.map(item => {
     const name = cleanMeaning(item.name)
     const purpose = cleanMeaning(item.purpose)
-    const nativeTemporaryAudio = temporaryAudioLifecycle !== undefined && temporaryAudioSubject(`${name} ${purpose} ${item.retentionIntent}`)
     return {
       name,
       purpose,
       sensitivity: item.sensitivity,
-      retentionIntent: nativeTemporaryAudio ? temporaryAudioLifecycleText(temporaryAudioLifecycle) : cleanMeaning(item.retentionIntent),
-      sourceIndex,
+      retentionIntent: cleanMeaning(item.retentionIntent),
+      storage: item.storage,
     }
   }).filter(item => item.name && item.purpose && item.retentionIntent))
   const externalServices = uniqueByName(source.externalServices.map(item => {
@@ -658,12 +478,13 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       recovery: "Preserve recoverable local input and allow only an explicit retry or explicit service change.",
     }
   }).filter(item => item.name && item.purpose))
-  const features = baseFeatures.map(({ sourceMeaning, outcomeMeaning, ...feature }) => ({
+  const features = baseFeatures.map(({ usesPlatformNeeds, usesData, usesServices, ...feature }) => ({
     ...feature,
-    resourceIds: deriveFeatureResourceIds(sourceMeaning, outcomeMeaning, dataObjects, externalServices),
+    resourceIds: featureResourceIds(usesPlatformNeeds, usesData, usesServices),
   }))
   const rawPlatformNeeds = unique([
     ...source.platformNeeds,
+    ...baseFeatures.flatMap(feature => feature.usesPlatformNeeds),
     ...(atomicAudits?.addedPlatformNeeds ?? []),
   ])
   const permissionCapabilities = unique(rawPlatformNeeds.flatMap(need => permissionByNeed[need] ? [permissionByNeed[need]!] : []))
@@ -673,31 +494,21 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
   const contentSite = astroContentSiteSemantics(source, presetId)
   const persistenceRequired = platformNeeds.includes("local-storage") || contentSite
   const persistenceNeeds = dataObjects
-    .filter(item => !isCredentialData(`${item.name} ${item.purpose}`))
-    .filter(item => persistenceRequired || !/\b(?:do not retain|not retained|memory only|session only)\b/i.test(item.retentionIntent))
-    .map(item => {
-      const temporaryAudio = temporaryAudioLifecycle !== undefined && temporaryAudioSubject(`${item.name} ${item.purpose} ${item.retentionIntent}`)
-      const dataAudit = atomicAudits?.dataAudits?.find(d => d.dataIndex === item.sourceIndex)
-      const itemText = `${item.name} ${item.purpose} ${item.retentionIntent}`
-      const memoryResident = memoryResidentRetention(itemText)
-      const placementTier = dataAudit?.storageTier
-      const temporary = temporaryAudio || (!memoryResident && (placementTier === "ephemeral" || atomicRenameScratch(itemText) || /\b(?:temporary(?: \w+)? file|scratch file|temp file)\b/i.test(itemText)))
-      return {
-        data: item.name,
-        purpose: item.purpose,
-        retention: item.retentionIntent,
-        deletionBehavior: temporaryAudio
-          ? temporaryAudioLifecycleStatements(temporaryAudioLifecycle)[2]!
-          : temporary
-            ? `Delete ${item.name} automatically at its stated retention boundary without waiting for a user action, verify it is absent, and report a cleanup failure honestly.`
-            : memoryResident
-              ? `${item.name} is never written to disk and is discarded when the session ends; verify no file for it exists.`
-              : `Delete ${item.name} only through an explicit user action or the stated retention boundary, and report deletion failure honestly.`,
-        sensitivity: item.sensitivity,
-        temporary,
-        ...(placementTier ? { placementTier } : {}),
-      }
-    })
+    .flatMap(item => item.storage === "secret" ? [] : [{ ...item, storage: item.storage }])
+    .filter(item => persistenceRequired || item.storage !== "session")
+    .map(item => ({
+      data: item.name,
+      purpose: item.purpose,
+      retention: item.retentionIntent,
+      deletionBehavior: item.storage === "temporary"
+        ? `Delete ${item.name} automatically at its stated retention boundary without waiting for a user action, verify it is absent, and report a cleanup failure honestly.`
+        : item.storage === "session"
+          ? `${item.name} is never written to disk and is discarded when the session ends; verify no file for it exists.`
+          : `Delete ${item.name} only through an explicit user action or the stated retention boundary, and report deletion failure honestly.`,
+      sensitivity: item.sensitivity,
+      storage: item.storage,
+      temporary: item.storage === "temporary",
+    }))
   const privacySecurityRequirements = uniqueStrings([
     "Minimize collected data and keep it inside the preset-defined owner, storage, and integration boundaries.",
     ...dataObjects.filter(item => item.sensitivity !== "public").map(item => `Protect ${item.name} as ${item.sensitivity} data and never expose it through logs or diagnostics.`),
@@ -717,24 +528,19 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
     {
       event: "Application termination",
       behavior: "Stop new work, cancel active operations, and preserve only state covered by the persistence contracts.",
-      cleanup: features.some(feature => feature.resourceIds.includes(permissionResourceId("clipboard")) || feature.providedCapabilities.includes(NATIVE_INSERTION_CAPABILITY))
+      cleanup: features.some(feature => feature.resourceIds.includes(permissionResourceId("clipboard")))
         ? "Release permissions, listeners, handles, tasks, clipboard snapshots, and temporary resources before termination completes."
         : "Release permissions, listeners, handles, tasks, and temporary resources before termination completes.",
     },
     ...(platformNeeds.includes("audio-input") ? [{
       event: "Audio capture termination",
       behavior: "Finalize or cancel the one active capture and make its recovery state explicit.",
-      cleanup: temporaryAudioLifecycle
-        ? temporaryAudioLifecycleStatements(temporaryAudioLifecycle).join(" ")
-        : "Release microphone resources after success, explicit discard, cancellation, or exhausted recovery.",
+      cleanup: "Release microphone resources after success, explicit discard, cancellation, or exhausted recovery.",
     }] : []),
   ]
-  const nonGoals = uniqueStrings(source.nonGoals.map(item => canonicalizeTemporaryAudioMeaning(item, temporaryAudioLifecycle)).filter(Boolean))
-  const hasNativePaste = isNativeMacPreset(presetId) && features.some(feature => feature.providedCapabilities.includes(NATIVE_INSERTION_CAPABILITY))
-  const qualityRequirements = uniqueStrings(source.qualityRequirements.map(requirement => canonicalizeTemporaryAudioMeaning(requirement, temporaryAudioLifecycle)).filter(Boolean)).map(requirement => hasNativePaste
-    ? requirement.replace(/\s+where practical\b/gi, " only when the current changeCount still equals the app-owned post-write changeCount")
-    : requirement)
-  const productConstraints = uniqueStrings(source.productConstraints.map(constraint => canonicalizeTemporaryAudioMeaning(constraint, temporaryAudioLifecycle)).filter(Boolean))
+  const nonGoals = cleanList(source.nonGoals)
+  const qualityRequirements = cleanList(source.qualityRequirements)
+  const productConstraints = cleanList(source.productConstraints)
 
   return {
     projectName,
@@ -751,8 +557,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
     })),
     features,
     externalServices,
-    temporaryAudioLifecycle,
-    domainData: dataObjects.map(item => ({ name: item.name, meaning: item.purpose, retention: item.retentionIntent, sensitivity: item.sensitivity })),
+    domainData: dataObjects.map(item => ({ name: item.name, meaning: item.purpose, retention: item.retentionIntent, sensitivity: item.sensitivity, storage: item.storage })),
     privacySecurityRequirements,
     permissionNeeds,
     persistenceNeeds,
@@ -917,8 +722,8 @@ function permissionFeatureIds(
   return featureIdsForResources([permissionResourceId(item.capability)], features)
 }
 
-function dataFeatureIds(name: string, meaning: string, features: readonly GraphFeature[]): string[] {
-  return featureIdsForResources(dataResourceIds(name, meaning), features)
+function dataFeatureIds(name: string, features: readonly GraphFeature[]): string[] {
+  return featureIdsForResources(dataResourceIds(name), features)
 }
 
 function lifecycleFeatureIds(event: string, features: readonly GraphFeature[]): string[] {
@@ -959,32 +764,12 @@ function credentialDetails(presetId: PresetId, identity: ProjectIdentity, servic
   return [`Credential vault service: ${identity.bundleId}.credentials`, `Credential account: ${serviceSlug}-${kind}`, "The frontend receives only configured or missing state."]
 }
 
-function hasVoicePersistence(blueprint: NormalizedBlueprint): boolean {
-  const names = blueprint.domainData.map(item => item.name).join(" ")
-  return /history/i.test(names) && /mode/i.test(names) && /vocab/i.test(names) && /(?:temporary|recording|audio)/i.test(names)
-}
-
-function nativeVoicePersistenceDetails(identity: ProjectIdentity, audio: TemporaryAudioLifecycle): string[] {
-  const root = `Application Support/${identity.bundleId}`
-  return [
-    `CredentialVault exclusively owns API credential data in macOS Keychain service ${identity.bundleId}.credentials; DataStore never owns, serializes, migrates, or persists secret values and may retain only configured-or-missing provider state.`,
-    `Lightweight settings only: UserDefaults with schemaVersion = 1 and versioned keys for provider IDs, transcription and refinement model IDs, hotkeys, paste behavior, history enabled, retention days, selected mode, per-application mode, and launch at login; API keys are forbidden.`,
-    `Durable records: SQLite at ${root}/voice.sqlite3 with PRAGMA foreign_keys = ON, WAL journaling, busy timeout, and PRAGMA user_version = 1.`,
-    "CREATE TABLE history (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, source_bundle_id TEXT, duration_ms INTEGER NOT NULL CHECK(duration_ms >= 0), provider TEXT NOT NULL, transcription_model TEXT NOT NULL, refinement_model TEXT, mode_id TEXT REFERENCES modes(id) ON DELETE SET NULL, raw_text TEXT NOT NULL, refined_text TEXT, outcome TEXT NOT NULL, usage_json TEXT, cost_usd REAL, is_favorite INTEGER NOT NULL DEFAULT 0 CHECK(is_favorite IN (0,1))).",
-    "CREATE TABLE modes (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, instructions TEXT NOT NULL, output_language TEXT, application_bundle_id TEXT, sort_order INTEGER NOT NULL, updated_at TEXT NOT NULL).",
-    "CREATE TABLE vocabulary (id TEXT PRIMARY KEY, spoken TEXT NOT NULL UNIQUE COLLATE NOCASE, replacement TEXT NOT NULL, sort_order INTEGER NOT NULL, updated_at TEXT NOT NULL).",
-    "Migration ownership: DataStore reads PRAGMA user_version, creates a verified backup beside the database, runs each transactional migration with BEGIN IMMEDIATE and COMMIT, rolls back on the first error, leaves the prior database readable, and advances user_version only after validation.",
-    "Retention ownership: DataStore deletes history older than the configured retention boundary in one transaction after launch and after a successful history write; disabled history writes no row, and favorites are retained only when the user-selected policy says so.",
-    "Deletion ownership: DataStore performs explicit deletion of one history row, clear-history, mode, or vocabulary records transactionally; UI reports success only after COMMIT and preserves the last readable state after failure.",
-    ...temporaryAudioLifecycleStatements(audio),
-    `Temporary-audio placement: FileManager.default.temporaryDirectory/${identity.bundleId}/recordingUUID/audio.format is app-owned; cleanup executes delete after ${audio.deletionTriggers.join(", ")} and reports failure without claiming deletion.`,
-    `Saved-recording placement: an explicit user action atomically moves the completed file to ${root}/Recordings/recordingUUID.format; DataStore owns naming, collision checks, later explicit deletion, and failed-move recovery.`,
-    "Recovery ownership: corrupt or migration-failed SQLite never gets silently replaced; preserve the verified backup, open read-only recovery when possible, and require an explicit user decision before rebuild or restore.",
-  ]
-}
-
-function memoryResidentRetention(text: string): boolean {
-  return /\b(?:not written|never written|memory only|in[- ]memory|held in memory|discarded when|session only|not persisted|(?:only )?for the current session|current session only)\b/i.test(text)
+function credentialEntryDetail(presetId: PresetId, serviceName: string): string {
+  const blocked = `every ${serviceName} action stays blocked with a prompt to add the key until it is configured.`
+  if (presetId === "astro-web") {
+    return `Credential entry: the operator sets the ${serviceName} key as a server environment variable before deploy; a missing value makes the server route return a configuration error instead of calling ${serviceName}.`
+  }
+  return `Credential entry: the user pastes the ${serviceName} API key into a masked settings field; the key goes straight to the placement above, the UI shows only configured or missing state, and ${blocked}`
 }
 
 function alignAtomicWrite(behavior: string, blueprintText: string): string {
@@ -995,6 +780,7 @@ function alignAtomicWrite(behavior: string, blueprintText: string): string {
   return `${behavior} The write replaces the destination by renaming a temporary file in the same directory.`
 }
 
+const SESSION_MEMORY_PLACEMENT = "Held in memory for the session and not written to disk."
 const USER_SELECTED_FILE_PLACEMENT = "Local filesystem at user-selected paths via native open/save panels."
 const ATOMIC_RENAME_SCRATCH_PLACEMENT = "A temporary file in the destination file's own directory, renamed over the destination on success and removed on failure; never in temporaryDirectory or Application Support."
 
@@ -1003,7 +789,6 @@ function persistencePlacement(
   preset: PresetContract,
   identity: ProjectIdentity,
   astroPlan?: AstroRoutePlan,
-  hasAudio = false,
   hasCredentials = false,
 ): string {
   const userDefaultsPlacement = hasCredentials
@@ -1013,86 +798,25 @@ function persistencePlacement(
     return `src/content/${astroPlan.contentCollection}/ as build-time markdown or MDX compiled through src/content/config.ts.`
   }
   if (preset.id === "astro-web" && astroPlan?.browserPersistence) return preset.persistence.recordsPlacement
+  if (item.storage === "session") return SESSION_MEMORY_PLACEMENT
   if (!isNativeMacPreset(preset.id)) return item.temporary ? preset.persistence.temporaryPlacement : preset.persistence.recordsPlacement
-  if (memoryResidentRetention(`${item.data} ${item.purpose} ${item.retention}`) && !item.temporary) {
-    return "Held in memory for the session and not written to disk."
+  switch (item.storage) {
+    case "temporary":
+      return atomicRenameScratch(`${item.data} ${item.purpose} ${item.retention}`)
+        ? ATOMIC_RENAME_SCRATCH_PLACEMENT
+        : `FileManager.default.temporaryDirectory/${identity.bundleId}/ for ephemeral runtime scratch files.`
+    case "document":
+      return USER_SELECTED_FILE_PLACEMENT
+    case "settings":
+      return userDefaultsPlacement
+    case "records":
+      return `SQLite at Application Support/${identity.bundleId}/${identity.slug}.sqlite3 under the matching record schema.`
   }
-  if (item.temporary && !hasAudio && atomicRenameScratch(`${item.data} ${item.purpose} ${item.retention}`)) {
-    return ATOMIC_RENAME_SCRATCH_PLACEMENT
-  }
-  if (item.temporary) {
-    return hasAudio
-      ? `FileManager.default.temporaryDirectory/${identity.bundleId}/recordingUUID/audio.format, with Saved recordings moved to Application Support/${identity.bundleId}/Recordings only after explicit user action.`
-      : `FileManager.default.temporaryDirectory/${identity.bundleId}/ for ephemeral runtime scratch files.`
-  }
-  if (item.placementTier) {
-    switch (item.placementTier) {
-      case "keychain":
-        return "macOS Keychain via Security framework with app-scoped service; never stored in plaintext."
-      case "userdefaults":
-        return userDefaultsPlacement
-      case "sqlite":
-        return hasAudio
-          ? `SQLite at Application Support/${identity.bundleId}/voice.sqlite3 under the matching history, modes, or vocabulary schema.`
-          : `SQLite at Application Support/${identity.bundleId}/${identity.slug}.sqlite3 under the application schema.`
-      case "ephemeral":
-        return hasAudio
-          ? `FileManager.default.temporaryDirectory/${identity.bundleId}/recordingUUID/audio.format, with Saved recordings moved to Application Support/${identity.bundleId}/Recordings only after explicit user action.`
-          : `FileManager.default.temporaryDirectory/${identity.bundleId}/ for ephemeral runtime scratch files.`
-      case "filesystem":
-        return USER_SELECTED_FILE_PLACEMENT
-    }
-  }
-  const isDocumentOrFile = /\b(?:document|plain[- ]?text|workspace|file|note|scratch)\b/i.test(`${item.data} ${item.purpose}`)
-  const settings = /\b(?:provider|hotkey|preferences?|settings?|shortcut|launch)\b/i.test(item.data)
-  const records = /\b(?:history|transcript|modes?|vocabulary|replacement)\b/i.test(item.data)
-  if (isDocumentOrFile) return USER_SELECTED_FILE_PLACEMENT
-  if (settings && records) return hasAudio
-    ? `Split by value: lightweight provider, hotkey, preference, and launch settings in UserDefaults; history, modes, vocabulary, and replacements in SQLite at Application Support/${identity.bundleId}/voice.sqlite3.`
-    : `Split by value: lightweight settings in UserDefaults; records in SQLite at Application Support/${identity.bundleId}/${identity.slug}.sqlite3.`
-  if (settings) return userDefaultsPlacement
-  if (records) return hasAudio
-    ? `SQLite at Application Support/${identity.bundleId}/voice.sqlite3 under the matching history, modes, or vocabulary schema.`
-    : `SQLite at Application Support/${identity.bundleId}/${identity.slug}.sqlite3 under the matching record schema.`
-  return preset.persistence.recordsPlacement
-}
-
-function pasteWorkflowContract(feature: GraphFeature): GraphContract {
-  return contract(
-    "CON-PASTE-WORKFLOW",
-    "interface",
-    "Deterministic paste workflow",
-    [feature.id],
-    feature.ownerId,
-    "Use AppKit, ApplicationServices, NSPasteboard, and CGEvent through small injectable native adapters to execute one deterministic insertion workflow for exactly one approved complete candidate.",
-    [
-      "1. At recording start, capture the target NSRunningApplication identity, bundle identifier, process identifier, and current Accessibility focused element when available; never substitute the compiler, HUD, menu-bar popover, or a later-focused application.",
-      "2. After successful final transcription and optional successful refinement, choose exactly one insertion candidate: the accepted refined text when refinement succeeded, otherwise the accepted final raw transcript.",
-      "3. Never paste partial, empty, failed, cancelled, or unapproved text.",
-      "4. Before insertion, verify Accessibility authorization and that the captured target NSRunningApplication and focused element remain valid for the captured process identifier.",
-      "5. Prefer direct Accessibility insertion through the editable selected-text boundary by setting kAXSelectedTextAttribute; success performs no NSPasteboard access.",
-      "6. If direct insertion is unavailable, capture every existing NSPasteboard item and representation plus the original changeCount before writing anything.",
-      "7. Write the one insertion candidate to NSPasteboard and record the resulting app-owned post-write changeCount.",
-      "8. Reactivate the captured NSRunningApplication and verify that it became frontmost; failed activation stops before any synthetic key event.",
-      "9. Synthesize one Command-V through CGEvent only after successful activation.",
-      "10. Wait a bounded documented interval of 750 ms for the target application to consume the paste.",
-      "11. Restore the complete clipboard snapshot only if the current changeCount still equals the app-owned post-write changeCount.",
-      "12. If another application or the user changed the clipboard, never overwrite that newer clipboard content.",
-      "13. If activation, direct insertion, synthetic paste, or clipboard restoration fails, retain the completed transcript and expose copy, preview, and explicit retry actions with a privacy-safe failure category.",
-      "14. Preview mode never inserts before explicit approval; preview cancellation inserts nothing and preserves the completed transcript.",
-      "15. Copy-only mode intentionally leaves the transcript on the clipboard, synthesizes no Command-V, and performs no restoration.",
-      "Invariant summary: capture the previously focused NSRunningApplication and editable AXUIElement; reactivate the captured target application; attempt Accessibility insertion first, using clipboard plus synthetic Command-V only as fallback; snapshot all NSPasteboard item representations and NSPasteboard.changeCount; restore only when the current changeCount equals the app-owned write changeCount; external clipboard mutation wins; never insert partial, failed, cancelled, or empty text; preserve the completed transcript after every insertion failure.",
-      "Native adapter boundary: inject focused-target capture, Accessibility authorization and selected-text insertion, NSPasteboard snapshot/write/restore, NSRunningApplication activation/frontmost verification, CGEvent Command-V, and bounded waiting so tests use no live applications or clipboard.",
-      "Focused tests: direct Accessibility insertion and AX success without clipboard access; Command-V fallback; captured application no longer available; activation failure and target reactivation failure; Accessibility denial and Accessibility denial manual path; non-editable AX target fallback; clipboard changed by another process and external clipboard mutation skips restoration; clipboard restoration and fallback paste and clipboard restoration; copy-only behavior; preview approval and cancellation; incomplete transcript rejection plus partial and failed text rejection; insertion failure preserving the transcript and synthetic paste failure preserves transcript.",
-    ],
-    "A stale target, Accessibility denial, activation failure, unsupported selected-text boundary, CGEvent failure, timeout, or restoration failure never discards the completed transcript or overwrites newer clipboard content.",
-    ["Keep the completed transcript visible for copy and preview, report the exact insertion category, and allow an explicit retry that captures a fresh target rather than reusing a stale Accessibility element."],
-  )
 }
 
 function nativePackagingDetails(preset: PresetContract, identity: ProjectIdentity, needsMicrophone = false): string[] {
   const micDeclaration = needsMicrophone
-    ? `, NSMicrophoneUsageDescription = "${identity.projectName} uses the microphone only while you explicitly record dictation."`
+    ? `, NSMicrophoneUsageDescription = "${identity.projectName} uses the microphone only during a recording the user explicitly starts."`
     : ""
   return [
     `Bundle identity: CFBundleIdentifier = ${identity.bundleId}; CFBundleName = ${identity.projectName}; CFBundleExecutable = ${identity.moduleName}; CFBundleIconFile = AppIcon; CFBundlePackageType = APPL; CFBundleShortVersionString = 1.0.0; CFBundleVersion = 1.`,
@@ -1143,18 +867,16 @@ function buildOwnersAndContracts(
   }))
   const featureDrafts = [...new Map(features.map(feature => [feature.ownerId, {
     id: feature.ownerId,
-    name: feature.ownerId === "OWN-PASTE-COORDINATOR"
-      ? "PasteCoordinator"
-      : preset.id === "astro-web"
-        ? pascal(feature.name)
-        : `${pascal(feature.name)}Feature`,
+    name: preset.id === "astro-web"
+      ? pascal(feature.name)
+      : `${pascal(feature.name)}Feature`,
     kind: "feature" as const,
     dependencyIds: [],
   }])).values()]
 
   const credentialServices = integrationServices.filter(service => service.credentialRequirement !== "none")
   const credentialOwnerFeatureIds = unique(credentialServices.flatMap(service => integrationFeatureIds(service, features)))
-  const hasCredentialDomainData = blueprint.domainData.some(item => isCredentialData(`${item.name} ${item.meaning}`))
+  const hasCredentialDomainData = blueprint.domainData.some(item => item.storage === "secret")
   const coreDrafts: OwnerDraft[] = []
   if (credentialServices.length || hasCredentialDomainData) {
     coreDrafts.push({ id: "OWN-CREDENTIAL-VAULT", name: "CredentialVault", kind: "credential", dependencyIds: [] })
@@ -1211,13 +933,11 @@ function buildOwnersAndContracts(
       feature.recoveryExpectations,
     ))
   }
-  const pasteFeature = features.find(feature => feature.ownerId === "OWN-PASTE-COORDINATOR")
-  if (pasteFeature && isNativeMacPreset(preset.id)) contracts.push(pasteWorkflowContract(pasteFeature))
 
   const dataOwnerId = blueprint.domainData.length || blueprint.persistenceNeeds.length ? "OWN-DATA-STORE" : lifecycleOwnerId
   for (const item of blueprint.domainData) {
-    const credentialData = isCredentialData(`${item.name} ${item.meaning}`)
-    const inMemoryData = !credentialData && memoryResidentRetention(`${item.name} ${item.meaning} ${item.retention}`)
+    const credentialData = item.storage === "secret"
+    const inMemoryData = item.storage === "session"
     const ownerId = credentialData ? "OWN-CREDENTIAL-VAULT" : dataOwnerId
     const credentialDataDetails = credentialData
       ? (credentialServices.length
@@ -1229,8 +949,8 @@ function buildOwnersAndContracts(
       "data",
       item.name,
       credentialData
-        ? credentialOwnerFeatureIds
-        : dataFeatureIds(item.name, item.meaning, features),
+        ? [...dataFeatureIds(item.name, features), ...credentialOwnerFeatureIds]
+        : dataFeatureIds(item.name, features),
       ownerId,
       credentialData ? `${preset.credentialPlacement} CredentialVault exclusively owns credential storage, retrieval, replacement, and deletion; DataStore receives no secret value.` : item.meaning,
       credentialData ? [...credentialDataDetails, `Retention: ${item.retention}`, `Sensitivity: ${item.sensitivity}`] : credentialDataDetails,
@@ -1255,18 +975,16 @@ function buildOwnersAndContracts(
   }
 
   for (const item of blueprint.lifecycleRequirements) {
-    const temporaryAudio = item.event === "Audio capture termination" && blueprint.temporaryAudioLifecycle
-    const lifecycleValues = temporaryAudio ? temporaryAudioLifecycleContractValues(temporaryAudio) : undefined
     contracts.push(contract(
       `CON-LIFECYCLE-${slug(item.event).toUpperCase()}`,
       "lifecycle",
       item.event,
       lifecycleFeatureIds(item.event, features),
       lifecycleOwnerId,
-      lifecycleValues?.decision ?? item.behavior,
-      lifecycleValues?.details ?? [`Cleanup: ${item.cleanup}`],
-      lifecycleValues?.failureBehavior ?? "An interrupted lifecycle transition must not be reported as complete.",
-      lifecycleValues?.recovery ?? [item.cleanup],
+      item.behavior,
+      [`Cleanup: ${item.cleanup}`],
+      "An interrupted lifecycle transition must not be reported as complete.",
+      [item.cleanup],
     ))
   }
 
@@ -1289,9 +1007,8 @@ function buildOwnersAndContracts(
         preset,
         identity,
         astroPlan,
-        blueprint.platformNeeds.includes("audio-input") || hasVoicePersistence(blueprint),
         blueprint.externalServices.some(service => service.credentialRequirement !== "none")
-          || blueprint.domainData.some(data => isCredentialData(`${data.name} ${data.meaning}`)),
+          || blueprint.domainData.some(data => data.storage === "secret"),
       )
       const memoryResident = /not written to disk/i.test(placement)
       const persistenceDecision = preset.id === "astro-web" && astroPlan?.usesContentCollections
@@ -1315,7 +1032,7 @@ function buildOwnersAndContracts(
         `CON-PERSISTENCE-${slug(item.data).toUpperCase()}`,
         "persistence",
         `${item.data} persistence`,
-        dataFeatureIds(item.data, item.purpose, features),
+        dataFeatureIds(item.data, features),
         "OWN-DATA-STORE",
         `${persistenceDecision} ${item.purpose}`,
         [`Placement: ${placement}`, `Retention: ${item.retention}`, `Deletion: ${item.deletionBehavior}`, `Sensitivity: ${item.sensitivity}`],
@@ -1323,19 +1040,6 @@ function buildOwnersAndContracts(
         memoryResident
           ? ["Keep the last in-memory value and allow an explicit retry.", item.deletionBehavior]
           : ["Retry through the same atomic boundary without duplicating the record.", item.deletionBehavior],
-      ))
-    }
-    if (isNativeMacPreset(preset.id) && hasVoicePersistence(blueprint)) {
-      contracts.push(contract(
-        "CON-PERSISTENCE-VOICE-LOCAL-STORAGE",
-        "persistence",
-        "Voice local storage authority",
-        unique(blueprint.persistenceNeeds.flatMap(item => dataFeatureIds(item.data, item.purpose, features))),
-        "OWN-DATA-STORE",
-        "Use one concrete local storage authority without taking credential ownership: CredentialVault exclusively owns API credential data in macOS Keychain only; DataStore owns lightweight non-secret settings in UserDefaults, history, modes and vocabulary in SQLite under Application Support, app-owned temporary audio with verified cleanup, and Saved recordings only after explicit user action.",
-        nativeVoicePersistenceDetails(identity, blueprint.temporaryAudioLifecycle ?? TEMPORARY_AUDIO_LIFECYCLE),
-        "A settings, SQLite, migration, retention, deletion, temporary-file, or saved-recording failure preserves the last valid readable state and is never reported as successful.",
-        ["DataStore owns transactional rollback, verified database backup recovery, retry-safe writes, explicit deletion, retention execution, and temporary-file cleanup reporting."],
       ))
     }
   } else {
@@ -1360,7 +1064,7 @@ function buildOwnersAndContracts(
       integrationFeatureIds(service, features),
       "OWN-CREDENTIAL-VAULT",
       preset.credentialPlacement,
-      credentialDetails(preset.id, identity, service.name, service.credentialRequirement),
+      [...credentialDetails(preset.id, identity, service.name, service.credentialRequirement), credentialEntryDetail(preset.id, service.name)],
       "Missing or rejected credentials block only the provider action and never expose stored values.",
       ["Accept a replacement credential through the same protected input boundary or select a configured service."],
     ))
@@ -1602,8 +1306,8 @@ function deriveLockedStack(
   contracts: readonly GraphContract[],
 ): readonly string[] {
   if (!isNativeMacPreset(preset.id)) return preset.allowedTechnologies
-  const hasCredentials = credentialServices.length > 0 || blueprint.domainData.some(d => isCredentialData(`${d.name} ${d.meaning}`))
-  const hasSqlite = hasVoicePersistence(blueprint) || blueprint.persistenceNeeds.some(p => p.placementTier === "sqlite" || /\b(?:sqlite|database|sql)\b/i.test(`${p.data} ${p.purpose}`))
+  const hasCredentials = credentialServices.length > 0 || blueprint.domainData.some(d => d.storage === "secret")
+  const hasSqlite = blueprint.persistenceNeeds.some(p => p.storage === "records")
   const hasLogin = blueprint.platformNeeds.includes("launch-at-login") || blueprint.platformNeeds.includes("background-execution")
   const usesApplicationSupport = hasSqlite || contracts.some(item => item.kind === "persistence" && item.details.some(detail => /Application Support/.test(detail.replace(/never in [^.;]*Application Support/g, ""))))
   return preset.allowedTechnologies.filter(tech => {
@@ -1621,9 +1325,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
   const identity = projectIdentity(blueprint.projectName)
   const featureIds = allocateStableIds("FEAT", blueprint.features.map(feature => feature.name))
   const resolvedFeatures = resolveRequiredOwners(blueprint.features.map((feature, index): GraphFeature => {
-    const rawOwnerId = feature.providedCapabilities.includes(NATIVE_INSERTION_CAPABILITY)
-      ? "OWN-PASTE-COORDINATOR"
-      : `OWN-${featureIds[index]!.replace(/^FEAT-/, "")}`
+    const rawOwnerId = `OWN-${featureIds[index]!.replace(/^FEAT-/, "")}`
     const reservedOwners = new Set([
       "OWN-CREDENTIAL-VAULT",
       "OWN-DATA-STORE",
@@ -1658,7 +1360,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
   const { ownerDrafts, contracts } = buildOwnersAndContracts(blueprint, preset, identity, features, astroPlan, integrationServices)
   const { owners, phases } = buildPhases(preset, identity, ownerDrafts, contracts, features, requirements, acceptance, astroPlan, integrationServices)
   const persistenceEnabled = blueprint.persistenceNeeds.length > 0
-  const isDocNativeMac = isNativeMacPreset(presetId) && !hasVoicePersistence(blueprint) && !blueprint.persistenceNeeds.some(p => p.placementTier === "sqlite" || /\b(?:sqlite|database|sql)\b/i.test(`${p.data} ${p.purpose}`))
+  const isDocNativeMac = isNativeMacPreset(presetId) && !blueprint.persistenceNeeds.some(p => p.storage === "records")
   const persistenceDecision = persistenceEnabled
     ? astroPlan?.usesContentCollections
       ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.enabledDecision

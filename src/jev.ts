@@ -559,12 +559,20 @@ export function evaluateJevAtomicAudit(outcomes: readonly JevOutcome[], blueprin
   })
 
   const directlyInferredNeeds = JEV_PLATFORM_NEEDS.filter(need => probabilityOf(outcomes, jevPlatformNeedNoulId(need)) >= JEV_INTEGRITY_THRESHOLD)
-  const featureInferredNeeds = featureAudits
+  const confidentFeatureNeeds = new Map(featureAudits
     .filter(f => f.requiredCapability !== "none" && f.capabilityConfidence >= JEV_INTEGRITY_THRESHOLD)
-    .map(f => f.requiredCapability as JevPlatformNeed)
-  const combinedInferredNeeds = Array.from(new Set([...directlyInferredNeeds, ...featureInferredNeeds]))
+    .map(f => [f.featureIndex, f.requiredCapability as JevPlatformNeed]))
+  const combinedInferredNeeds = Array.from(new Set([...directlyInferredNeeds, ...confidentFeatureNeeds.values()]))
 
-  const healed = healBlueprintPlatformNeeds(blueprint, combinedInferredNeeds)
+  const healed = healBlueprintPlatformNeeds({
+    ...blueprint,
+    features: blueprint.features.map((feature, index) => {
+      const need = confidentFeatureNeeds.get(index)
+      return need && !feature.usesPlatformNeeds.includes(need)
+        ? { ...feature, usesPlatformNeeds: [...feature.usesPlatformNeeds, need] }
+        : feature
+    }),
+  }, combinedInferredNeeds)
 
   const unverifiableFeatures = featureAudits.filter(f => !f.verifiable)
   const unverifiableAcceptance = featureAudits.length > 0

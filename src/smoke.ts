@@ -19,16 +19,16 @@ import type { PresetId } from "./presets"
 import type { SemanticBlueprint } from "./schema"
 import {
   fileOrganizerBlueprint,
+  forecastGlanceBlueprint,
   habitTrackerBlueprint,
   knowledgeManagerBlueprint,
   landingPageBlueprint,
 } from "../tests/fixtures/blueprints"
-import { observedAcceptanceOwnershipVoiceBlueprint } from "../tests/fixtures/voice-v3-export"
 
 const marker = "CASCADE_V3_FIXTURE_SMOKE"
 export const smokeCases: ReadonlyArray<{ presetId: PresetId; blueprint: SemanticBlueprint }> = [
   { presetId: "native-macos-swiftui-desktop", blueprint: fileOrganizerBlueprint },
-  { presetId: "native-macos-swiftui-menubar", blueprint: observedAcceptanceOwnershipVoiceBlueprint() },
+  { presetId: "native-macos-swiftui-menubar", blueprint: forecastGlanceBlueprint },
   { presetId: "tauri2-rust-typescript-desktop", blueprint: knowledgeManagerBlueprint },
   { presetId: "astro-web", blueprint: landingPageBlueprint },
   { presetId: "android-kotlin-compose", blueprint: habitTrackerBlueprint },

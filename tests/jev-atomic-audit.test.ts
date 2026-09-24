@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { compileNormalizedPacket, normalizeBlueprint } from "../src/compiler"
+import { compileNormalizedPacket, compileProjectGraph, normalizeBlueprint } from "../src/compiler"
 import {
   buildJevAtomicAuditRequest,
   evaluateJevAtomicAudit,
@@ -14,9 +14,10 @@ import {
   type JevProvider,
 } from "../src/jev"
 import { DEFAULT_API_URL, generatePacket, type BlueprintProvider } from "../src/pipeline"
+import type { SemanticBlueprint } from "../src/schema"
 import { fileOrganizerBlueprint } from "./fixtures/blueprints"
 
-function createSampleBlueprint() {
+function createSampleBlueprint(): SemanticBlueprint {
   return {
     ...fileOrganizerBlueprint,
     features: [
@@ -26,6 +27,9 @@ function createSampleBlueprint() {
         trigger: "User clicks a file row.",
         userOutcome: "Preview panel displays the file metadata and thumbnail.",
         acceptanceSignals: ["Preview updates within 50ms of selection", "Error state rendered if file unreadable"],
+        usesPlatformNeeds: ["filesystem"],
+        usesData: ["UserPreferences", "TemporaryScanBuffer"],
+        usesServices: [],
         failureOutcome: "Empty preview with error notification.",
       },
       {
@@ -34,6 +38,9 @@ function createSampleBlueprint() {
         trigger: "User asks for AI advice.",
         userOutcome: "Feels smart and delights the user with intuitive organization.",
         acceptanceSignals: ["User feels delighted by the suggestions", "Suggestions feel natural and intuitive"],
+        usesPlatformNeeds: [],
+        usesData: ["FileAuditHistory"],
+        usesServices: [],
         failureOutcome: "No suggestions.",
       },
     ],
@@ -42,18 +49,21 @@ function createSampleBlueprint() {
         name: "UserPreferences",
         purpose: "Lightweight UI settings and theme",
         retentionIntent: "Preserved across restarts in user defaults",
+        storage: "settings",
         sensitivity: "personal" as const,
       },
       {
         name: "FileAuditHistory",
         purpose: "Durable log of all file rename and move operations",
         retentionIntent: "Structured SQLite storage for undo/redo history",
+        storage: "records",
         sensitivity: "personal" as const,
       },
       {
         name: "TemporaryScanBuffer",
         purpose: "Transient memory/disk buffer while scanning directories",
         retentionIntent: "Deleted immediately upon scan completion",
+        storage: "temporary",
         sensitivity: "personal" as const,
       },
     ],
@@ -133,6 +143,7 @@ describe("Opportunity 2: Jev Atomic Contract & Placement Auditor", () => {
     const blueprint = {
       ...base,
       platformNeeds: base.platformNeeds.filter(p => p !== "filesystem"),
+      features: base.features.map(feature => ({ ...feature, usesPlatformNeeds: feature.usesPlatformNeeds.filter(p => p !== "filesystem") })),
     }
 
     const outcomes: JevOutcome[] = [
@@ -157,13 +168,17 @@ describe("Opportunity 2: Jev Atomic Contract & Placement Auditor", () => {
 
     const decision = evaluateJevAtomicAudit(outcomes, blueprint)
     expect(decision.addedPlatformNeeds).toContain("filesystem")
+    expect(decision.blueprint.features[0]!.usesPlatformNeeds).toContain("filesystem")
+    expect(decision.blueprint.features[1]!.usesPlatformNeeds).not.toContain("filesystem")
 
-    // Normalize with atomic audits
-    const normalized = normalizeBlueprint(blueprint, "native-macos-swiftui-desktop", decision)
+    const normalized = normalizeBlueprint(decision.blueprint, "native-macos-swiftui-desktop", decision)
     expect(normalized.platformNeeds).toContain("filesystem")
+    expect(normalized.permissionNeeds.map(need => need.capability)).toContain("filesystem")
+    const graph = compileProjectGraph(normalized, "native-macos-swiftui-desktop")
+    expect(graph.contracts.find(contract => contract.id === "CON-PERMISSION-FILESYSTEM")?.featureIds).toEqual(["FEAT-PREVIEW-PANE"])
   })
 
-  it("assigns persistence placement directly from Jev storage tier without regex fragility", async () => {
+  it("assigns persistence placement from the declared storage kind without regex fragility", async () => {
     const blueprint = createSampleBlueprint()
     const outcomes: JevOutcome[] = [
       ...JEV_PLATFORM_NEEDS.map(need => ({
@@ -190,9 +205,9 @@ describe("Opportunity 2: Jev Atomic Contract & Placement Auditor", () => {
     const histNeed = normalized.persistenceNeeds.find(p => p.data === "FileAuditHistory")
     const buffNeed = normalized.persistenceNeeds.find(p => p.data === "TemporaryScanBuffer")
 
-    expect(prefNeed?.placementTier).toBe("userdefaults")
-    expect(histNeed?.placementTier).toBe("sqlite")
-    expect(buffNeed?.placementTier).toBe("ephemeral")
+    expect(prefNeed?.storage).toBe("settings")
+    expect(histNeed?.storage).toBe("records")
+    expect(buffNeed?.storage).toBe("temporary")
     expect(buffNeed?.temporary).toBe(true)
 
     // Compile packet and verify contracts

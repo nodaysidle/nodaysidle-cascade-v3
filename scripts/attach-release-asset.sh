@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Attach a locally built DMG/APK/zip to an existing GitHub Release for this tag.
-# Usage: Scripts/attach-release-asset.sh v3.1.0 ./path/to/NODAYSIDLE-Cascade-V3-3.1.0-aarch64.dmg
+# Usage: scripts/attach-release-asset.sh v3.1.0 ./path/to/NODAYSIDLE-Cascade-V3-3.1.0-aarch64.dmg
 set -euo pipefail
 
 TAG="${1:-}"

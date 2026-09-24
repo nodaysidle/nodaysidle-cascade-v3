@@ -15,12 +15,12 @@ import {
   docsPortalBlueprint,
   fileOrganizerBlueprint,
   fixtureCases,
+  forecastGlanceBlueprint,
   habitTrackerBlueprint,
   knowledgeManagerBlueprint,
   landingPageBlueprint,
   networkMonitorBlueprint,
 } from "./fixtures/blueprints"
-import { nodaysidleVoiceBlueprint } from "./fixtures/voice"
 
 function messyBlueprint() {
   const messy = structuredClone(fileOrganizerBlueprint)
@@ -63,7 +63,7 @@ describe("deterministic exact-five compiler", () => {
   })
 
   it("compiles the same normalized blueprint to byte-identical packets", async () => {
-    const normalized = normalizeBlueprint(nodaysidleVoiceBlueprint, "native-macos-swiftui-menubar")
+    const normalized = normalizeBlueprint(forecastGlanceBlueprint, "native-macos-swiftui-menubar")
     const first = await compileNormalizedPacket(normalized, "native-macos-swiftui-menubar")
     const second = await compileNormalizedPacket(normalized, "native-macos-swiftui-menubar")
 
@@ -78,6 +78,7 @@ describe("deterministic exact-five compiler", () => {
       { ...duplicate.features[0]!, name: "Fast Search" },
       { ...duplicate.features[1]!, name: "fast-search." },
     ]
+    duplicate.dataObjects = duplicate.dataObjects.filter(item => item.name === "Organization rules")
     const normalized = normalizeBlueprint(duplicate, "native-macos-swiftui-desktop")
     const graph = compileProjectGraph(normalized, "native-macos-swiftui-desktop")
 
@@ -106,7 +107,7 @@ describe("deterministic exact-five compiler", () => {
   })
 
   it("maps every owner to one implementation file, focused test, and dependency-safe phase", () => {
-    const normalized = normalizeBlueprint(nodaysidleVoiceBlueprint, "native-macos-swiftui-menubar")
+    const normalized = normalizeBlueprint(forecastGlanceBlueprint, "native-macos-swiftui-menubar")
     const graph = compileProjectGraph(normalized, "native-macos-swiftui-menubar")
     const fileOwners = new Set<string>()
     const testOwners = new Set<string>()
@@ -180,44 +181,18 @@ describe("preset-owned decisions", () => {
     expect(packet.documents["TRD.md"]).toContain(marker)
   })
 
-  it("derives complete Voice credential, permission, persistence, lifecycle, recovery, and packaging contracts", async () => {
-    const packet = await compilePacket(nodaysidleVoiceBlueprint, "native-macos-swiftui-menubar")
+  it("derives credential, integration, permission, persistence, lifecycle, recovery, and packaging contracts from the idea", async () => {
+    const packet = await compilePacket(forecastGlanceBlueprint, "native-macos-swiftui-menubar")
     const text = Object.values(packet.documents).join("\n")
 
-    for (const marker of [
-      "global hotkeys",
-      "push-to-talk",
-      "toggle modes",
-      "microphone capture",
-      "recording HUD",
-      "Deepgram",
-      "OpenRouter",
-      "Keychain",
-      "Accessibility",
-      "Input Monitoring",
-      "safe auto-paste",
-      "clipboard preservation",
-      "transcription history",
-      "temporary audio",
-      "retry and provider switching",
-      "Swift Package Manager",
-      "codesign",
-      "LaunchServices",
-      "URLSessionWebSocketTask",
-      "FileManager.default.temporaryDirectory",
-      "/Applications/NODAYSIDLE Voice.app",
-    ]) expect(text.toLowerCase()).toContain(marker.toLowerCase())
-
+    for (const marker of ["Weather service", "Keychain", "Swift Package Manager", "codesign", "LaunchServices", "/Applications/Forecast Glance.app"]) {
+      expect(text.toLowerCase()).toContain(marker.toLowerCase())
+    }
     const kinds = new Set(packet.graph.contracts.map(contract => contract.kind))
     for (const kind of ["interface", "data", "integration", "lifecycle", "persistence", "credential", "permission", "recovery", "security", "packaging"]) {
       expect(kinds).toContain(kind)
     }
-    const network = packet.graph.contracts.find(contract => contract.id === "CON-PERMISSION-NETWORK")
-    expect(network?.featureIds).toContain("FEAT-DEEPGRAM-STREAMING-TRANSCRIPTION")
-    expect(network?.featureIds).toContain("FEAT-OPENROUTER-TRANSCRIPTION-AND-REFINEMENT")
-    const background = packet.graph.contracts.find(contract => contract.id === "CON-PERMISSION-BACKGROUND-STARTUP")
-    expect(background?.featureIds).toContain("FEAT-PROVIDER-AND-LAUNCH-SETTINGS")
-    expect(background?.featureIds).not.toContain("FEAT-SAFE-AUTO-PASTE-AND-CLIPBOARD-PRESERVATION")
+    expect(packet.graph.contracts.find(contract => contract.id === "CON-PERMISSION-NETWORK")?.featureIds.length).toBeGreaterThan(0)
   })
 
   it("makes persistence-enabled and persistence-disabled behavior explicit", async () => {

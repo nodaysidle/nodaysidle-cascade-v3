@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { compilePacket } from "../src/compiler"
+import { PRESET_IDS } from "../src/presets"
 import type { SemanticBlueprint } from "../src/schema"
 
 export const noteSummarizerAstroBlueprint: SemanticBlueprint = {
@@ -16,6 +17,9 @@ export const noteSummarizerAstroBlueprint: SemanticBlueprint = {
       behavior: "Render markdown notes from local collections with fast filtering.",
       failureOutcome: "Display empty state if no notes exist.",
       acceptanceSignals: ["Notes catalog renders without error"],
+      usesPlatformNeeds: [],
+      usesData: ["Note documents"],
+      usesServices: [],
     },
     {
       name: "AI Note Summarization",
@@ -24,10 +28,13 @@ export const noteSummarizerAstroBlueprint: SemanticBlueprint = {
       behavior: "Send note text to OpenRouter and display generated executive summary.",
       failureOutcome: "Display error notice and keep original note untouched if API fails.",
       acceptanceSignals: ["Summary appears in callout block", "Original note content remains unmodified"],
+      usesPlatformNeeds: ["network"],
+      usesData: ["Note documents"],
+      usesServices: ["OpenRouter"],
     },
   ],
   dataObjects: [
-    { name: "Note documents", purpose: "Store markdown note files.", sensitivity: "personal", retentionIntent: "Retain locally in content collection." },
+    { name: "Note documents", purpose: "Store markdown note files.", sensitivity: "personal", retentionIntent: "Retain locally in content collection.", storage: "document" },
   ],
   externalServices: [
     {
@@ -58,5 +65,19 @@ describe("Cross-Preset OpenRouter Quality & Isolation (H1 & M2)", () => {
 
     // Keeps generic or designated integration
     expect(allDocs).toContain("CON-INTEGRATION-OPENROUTER")
+  })
+
+  it("tells the downstream builder how the user supplies each required API key in every preset", async () => {
+    for (const presetId of PRESET_IDS) {
+      const packet = await compilePacket(noteSummarizerAstroBlueprint, presetId)
+      expect(packet.exportable, presetId).toBe(true)
+      const credential = packet.graph.contracts.find(contract => contract.id === "CON-CREDENTIAL-OPENROUTER")!
+      const entry = credential.details.find(detail => detail.startsWith("Credential entry:"))
+      expect(entry, presetId).toBeDefined()
+      expect(entry, presetId).toContain("OpenRouter")
+      expect(packet.documents["TRD.md"], presetId).toContain(entry!)
+      if (presetId === "astro-web") expect(entry).toContain("server environment variable")
+      else expect(entry, presetId).toContain("masked settings field")
+    }
   })
 })

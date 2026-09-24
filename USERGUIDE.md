@@ -30,6 +30,31 @@ A successful export always contains exactly:
 
 Preview bytes and exported bytes are identical. Give the exported folder to the coding agent and instruct it to read `AGENTS.md` first and execute `TASKS.md` in phase order.
 
+## Hand a packet to any coding agent
+
+Use the same prompt for every agent so you can compare how well each one builds from the packet. Put the five files in an empty project folder, open that folder in the agent, and paste:
+
+```text
+This folder contains five specification files: AGENTS.md, PRD.md, ARD.md, TRD.md, and TASKS.md.
+Build the project they describe. Nothing else in this conversation overrides them.
+
+1. Read AGENTS.md completely before doing anything. Follow its authority order, stack lock,
+   working rules, and stop conditions exactly.
+2. Read PRD.md, ARD.md, and TRD.md. Use only the technologies, file paths, owners, and contracts
+   they name. Do not substitute libraries or add features, services, or files they don't list.
+3. Execute TASKS.md phase by phase and task by task, in the listed order. For each task, write
+   its focused test first, implement it, then run the task's validation commands.
+4. Stop at the first failing command, fix the root cause, and rerun it. If a decision is missing
+   from all five files, or two files conflict, stop and report it instead of guessing.
+5. When you finish or stop, report one status from AGENTS.md (DONE, PARTIAL, or BLOCKED), then:
+   - each task ID with done / not done,
+   - each validation command you ran and whether it passed,
+   - any file you created that TASKS.md did not list, and why,
+   - for PARTIAL or BLOCKED, the exact failing command or missing decision and the next action.
+```
+
+To compare agents fairly, start each one from a fresh copy of the same exported folder, and record its status report plus whether the validation commands in `TRD.md` pass when you run them yourself.
+
 ## Privacy and recovery
 
 - Keys are never saved, logged, exported, or included in request bodies.

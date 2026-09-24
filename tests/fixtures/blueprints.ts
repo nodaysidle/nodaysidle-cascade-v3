@@ -1,5 +1,4 @@
 import type { PlatformNeed, SemanticBlueprint } from "../../src/schema"
-import { nodaysidleVoiceBlueprint } from "./voice"
 
 export type FixturePresetId =
   | "native-macos-swiftui-desktop"
@@ -10,15 +9,24 @@ export type FixturePresetId =
 
 type Feature = SemanticBlueprint["features"][number]
 
-function feature(
-  name: string,
-  userOutcome: string,
-  behavior: string,
-  acceptance: string,
-  trigger = `The user starts ${name.toLowerCase()}.`,
-  failure = "The operation stops without replacing the last valid state and explains what can be retried.",
-): Feature {
-  return { name, userOutcome, trigger, behavior, failureOutcome: failure, acceptanceSignals: [acceptance] }
+interface FeatureUses {
+  readonly platform?: readonly PlatformNeed[]
+  readonly data?: readonly string[]
+  readonly services?: readonly string[]
+}
+
+function feature(name: string, userOutcome: string, behavior: string, acceptance: string, uses: FeatureUses = {}): Feature {
+  return {
+    name,
+    userOutcome,
+    trigger: `The user starts ${name.toLowerCase()}.`,
+    behavior,
+    failureOutcome: "The operation stops without replacing the last valid state and explains what can be retried.",
+    acceptanceSignals: [acceptance],
+    usesPlatformNeeds: [...(uses.platform ?? [])],
+    usesData: [...(uses.data ?? [])],
+    usesServices: [...(uses.services ?? [])],
+  }
 }
 
 interface FixtureSeed {
@@ -58,13 +66,13 @@ export const fileOrganizerBlueprint = blueprint({
   goals: ["Preview every planned move", "Undo completed organization batches", "Keep filenames and contents on the device"],
   nonGoals: ["Cloud synchronization", "Document editing"],
   features: [
-    feature("Folder scan", "See every eligible file exactly once", "Read metadata only inside a user-selected folder and group eligible files without opening their contents.", "Unreadable files stay in place with a clear explanation."),
-    feature("Move preview", "Review every source and destination before writing", "Build a complete move plan and identify destination collisions before any filesystem change.", "No move occurs outside the reviewed plan."),
-    feature("Reversible batch", "Restore every successfully moved file", "Apply the approved plan, stop safely on partial failure, and record the completed subset for exact undo.", "Undo restores the completed subset to original locations."),
+    feature("Folder scan", "See every eligible file exactly once", "Read metadata only inside a user-selected folder and group eligible files without opening their contents.", "Unreadable files stay in place with a clear explanation.", { platform: ["filesystem"], data: ["Organization rules"] }),
+    feature("Move preview", "Review every source and destination before writing", "Build a complete move plan and identify destination collisions before any filesystem change.", "No move occurs outside the reviewed plan.", { platform: ["filesystem"], data: ["Organization rules"] }),
+    feature("Reversible batch", "Restore every successfully moved file", "Apply the approved plan, stop safely on partial failure, and record the completed subset for exact undo.", "Undo restores the completed subset to original locations.", { platform: ["filesystem", "local-storage"], data: ["Move journal"] }),
   ],
   dataObjects: [
-    { name: "Organization rules", purpose: "Map file metadata to reviewed destination folders.", sensitivity: "personal", retentionIntent: "Keep locally until edited or reset." },
-    { name: "Move journal", purpose: "Record completed source and destination pairs for undo.", sensitivity: "personal", retentionIntent: "Keep through the configured undo window." },
+    { name: "Organization rules", purpose: "Map file metadata to reviewed destination folders.", sensitivity: "personal", retentionIntent: "Keep locally until edited or reset.", storage: "records" },
+    { name: "Move journal", purpose: "Record completed source and destination pairs for undo.", sensitivity: "personal", retentionIntent: "Keep through the configured undo window.", storage: "records" },
   ],
   platformNeeds: ["filesystem", "local-storage"],
   productConstraints: ["Never upload filenames, paths, metadata, or contents.", "Never follow links outside the selected folder."],
@@ -77,11 +85,11 @@ export const photoCleanerBlueprint = blueprint({
   goals: ["Explain exposed metadata", "Remove selected categories from copies", "Keep source images unchanged"],
   nonGoals: ["Photo editing", "Social publishing"],
   features: [
-    feature("Metadata inspection", "Understand what each image exposes", "List human-readable location, device, timestamp, and descriptive metadata for selected images.", "Every reported value identifies its source and category."),
-    feature("Cleaning policy", "Choose exactly which metadata categories to remove", "Maintain a reviewed category policy without altering an image.", "The export summary matches the selected policy."),
-    feature("Verified copy export", "Receive cleaned copies with unchanged originals", "Write new files, reread metadata, and discard incomplete outputs when verification fails.", "Every output passes the selected policy and source hashes remain unchanged."),
+    feature("Metadata inspection", "Understand what each image exposes", "List human-readable location, device, timestamp, and descriptive metadata for selected images.", "Every reported value identifies its source and category.", { platform: ["filesystem"] }),
+    feature("Cleaning policy", "Choose exactly which metadata categories to remove", "Maintain a reviewed category policy without altering an image.", "The export summary matches the selected policy.", { platform: ["local-storage"], data: ["Cleaning policy"] }),
+    feature("Verified copy export", "Receive cleaned copies with unchanged originals", "Write new files, reread metadata, and discard incomplete outputs when verification fails.", "Every output passes the selected policy and source hashes remain unchanged.", { platform: ["filesystem"], data: ["Cleaning policy"] }),
   ],
-  dataObjects: [{ name: "Cleaning policy", purpose: "Remember the last reviewed metadata categories.", sensitivity: "personal", retentionIntent: "Keep locally until reset." }],
+  dataObjects: [{ name: "Cleaning policy", purpose: "Remember the last reviewed metadata categories.", sensitivity: "personal", retentionIntent: "Keep locally until reset.", storage: "settings" }],
   platformNeeds: ["filesystem", "local-storage"],
   productConstraints: ["Never transmit selected photographs or metadata.", "Never overwrite a source image or existing destination."],
 })
@@ -93,11 +101,11 @@ export const networkMonitorBlueprint = blueprint({
   goals: ["Show current connectivity at a glance", "Record meaningful transitions", "Avoid repeated alerts"],
   nonGoals: ["Packet capture", "Remote employee monitoring"],
   features: [
-    feature("Reachability summary", "See offline, degraded, reachable, or unknown state", "Run bounded probes and publish the newest stable classification with sample time.", "Unavailable probes become unknown rather than falsely offline."),
-    feature("Transition timeline", "Review when connectivity changed", "Store deduplicated state transitions and representative latency without traffic content.", "Repeated samples do not flood the timeline."),
-    feature("Meaningful alerts", "Receive one outage and one recovery alert", "Notify only after a stable state crosses the configured threshold.", "Denied notifications never block monitoring."),
+    feature("Reachability summary", "See offline, degraded, reachable, or unknown state", "Run bounded probes and publish the newest stable classification with sample time.", "Unavailable probes become unknown rather than falsely offline.", { platform: ["network", "background-execution"] }),
+    feature("Transition timeline", "Review when connectivity changed", "Store deduplicated state transitions and representative latency without traffic content.", "Repeated samples do not flood the timeline.", { platform: ["local-storage"], data: ["Incident timeline"] }),
+    feature("Meaningful alerts", "Receive one outage and one recovery alert", "Notify only after a stable state crosses the configured threshold.", "Denied notifications never block monitoring.", { platform: ["notifications"] }),
   ],
-  dataObjects: [{ name: "Incident timeline", purpose: "Keep timestamped reachability states and aggregate latency.", sensitivity: "personal", retentionIntent: "Keep locally for fourteen days." }],
+  dataObjects: [{ name: "Incident timeline", purpose: "Keep timestamped reachability states and aggregate latency.", sensitivity: "personal", retentionIntent: "Keep locally for fourteen days.", storage: "records" }],
   platformNeeds: ["network", "notifications", "local-storage", "background-execution"],
   productConstraints: ["Never capture payloads, visited domains, or application traffic.", "Run no more than one probe per endpoint."],
 })
@@ -109,14 +117,14 @@ export const knowledgeManagerBlueprint = blueprint({
   goals: ["Capture and link notes quickly", "Search offline", "Export a portable collection"],
   nonGoals: ["Real-time collaboration", "Hosted accounts"],
   features: [
-    feature("Note capture", "Create and edit notes with honest save status", "Persist titled plain-text notes while keeping unsaved content visible after a failed write.", "Reopening a saved note preserves exact content."),
-    feature("Explicit note links", "Navigate known links and visible missing targets", "Create directional links and preserve recoverable missing references when a target is deleted.", "Every link resolves or shows a missing-target state."),
-    feature("Offline search", "Find notes without network access", "Index titles and bodies locally and rebuild derived index data without altering notes.", "A newly saved note appears after the bounded index update."),
-    feature("Portable export", "Reconstruct notes and links from a selected folder", "Export notes, relationships, and a manifest through an atomic destination boundary.", "A fresh import preserves note and link counts."),
+    feature("Note capture", "Create and edit notes with honest save status", "Persist titled plain-text notes while keeping unsaved content visible after a failed write.", "Reopening a saved note preserves exact content.", { platform: ["local-storage"], data: ["Notes and links"] }),
+    feature("Explicit note links", "Navigate known links and visible missing targets", "Create directional links and preserve recoverable missing references when a target is deleted.", "Every link resolves or shows a missing-target state.", { platform: ["local-storage"], data: ["Notes and links"] }),
+    feature("Offline search", "Find notes without network access", "Index titles and bodies locally and rebuild derived index data without altering notes.", "A newly saved note appears after the bounded index update.", { data: ["Notes and links", "Search index"] }),
+    feature("Portable export", "Reconstruct notes and links from a selected folder", "Export notes, relationships, and a manifest through an atomic destination boundary.", "A fresh import preserves note and link counts.", { platform: ["filesystem"], data: ["Notes and links"] }),
   ],
   dataObjects: [
-    { name: "Notes and links", purpose: "Store user-authored text and directional relationships.", sensitivity: "personal", retentionIntent: "Keep locally until explicit deletion." },
-    { name: "Search index", purpose: "Provide derived offline search data.", sensitivity: "personal", retentionIntent: "Keep until rebuilt or application data is cleared." },
+    { name: "Notes and links", purpose: "Store user-authored text and directional relationships.", sensitivity: "personal", retentionIntent: "Keep locally until explicit deletion.", storage: "records" },
+    { name: "Search index", purpose: "Provide derived offline search data.", sensitivity: "personal", retentionIntent: "Keep until rebuilt or application data is cleared.", storage: "records" },
   ],
   platformNeeds: ["filesystem", "local-storage"],
   productConstraints: ["All core note operations work offline.", "Exports never modify the local collection."],
@@ -129,12 +137,12 @@ export const invoiceArchiveBlueprint = blueprint({
   goals: ["Keep invoices local", "Require field verification", "Produce reproducible reconciliation exports"],
   nonGoals: ["Tax advice", "Payments or bank connections"],
   features: [
-    feature("Invoice import", "Add selected invoices without cloud upload", "Copy selected files into the archive and surface unsupported or unreadable inputs before acceptance.", "Every accepted document has one archive record."),
-    feature("Verified fields", "Confirm vendor, amount, currency, date, and status", "Keep extracted values provisional until the user reviews them.", "No provisional value silently becomes authoritative."),
-    feature("Duplicate review", "Resolve likely duplicates without losing originals", "Compare stable document evidence and require an explicit keep, merge, or reject choice.", "A duplicate decision remains reversible until export."),
-    feature("Reconciliation export", "Receive a stable local summary", "Export reviewed records in deterministic order without modifying the archive.", "Repeated export from unchanged records is byte-identical."),
+    feature("Invoice import", "Add selected invoices without cloud upload", "Copy selected files into the archive and surface unsupported or unreadable inputs before acceptance.", "Every accepted document has one archive record.", { platform: ["filesystem"], data: ["Invoice archive"] }),
+    feature("Verified fields", "Confirm vendor, amount, currency, date, and status", "Keep extracted values provisional until the user reviews them.", "No provisional value silently becomes authoritative.", { data: ["Invoice archive"] }),
+    feature("Duplicate review", "Resolve likely duplicates without losing originals", "Compare stable document evidence and require an explicit keep, merge, or reject choice.", "A duplicate decision remains reversible until export.", { data: ["Invoice archive"] }),
+    feature("Reconciliation export", "Receive a stable local summary", "Export reviewed records in deterministic order without modifying the archive.", "Repeated export from unchanged records is byte-identical.", { platform: ["filesystem"], data: ["Invoice archive"] }),
   ],
-  dataObjects: [{ name: "Invoice archive", purpose: "Store document references, verified fields, and duplicate decisions.", sensitivity: "sensitive", retentionIntent: "Keep until explicit record deletion." }],
+  dataObjects: [{ name: "Invoice archive", purpose: "Store document references, verified fields, and duplicate decisions.", sensitivity: "sensitive", retentionIntent: "Keep until explicit record deletion.", storage: "records" }],
   platformNeeds: ["filesystem", "local-storage"],
   productConstraints: ["Never upload financial documents.", "Never overwrite an imported source document."],
 })
@@ -179,12 +187,12 @@ export const habitTrackerBlueprint = blueprint({
   goals: ["Track habits offline", "Explain streak calculations", "Use reminders only by opt-in"],
   nonGoals: ["Social feeds", "Health diagnosis"],
   features: [
-    feature("Habit schedules", "Create recurring weekday routines", "Store named habits with explicit active weekdays and archive behavior.", "Existing completion history survives schedule edits."),
-    feature("Daily completion", "Mark today's expected habits quickly", "Toggle one local completion per habit and calendar day.", "Repeated taps never create duplicate completion rows."),
-    feature("Deterministic streaks", "Understand current and longest streaks", "Calculate streaks from saved schedules and completions using the current local day.", "Displayed counts match documented weekday rules."),
-    feature("Optional reminders", "Receive enabled local reminders", "Schedule alerts only after explicit opt-in and cancel them when habits are disabled or deleted.", "Denied notifications leave tracking fully usable."),
+    feature("Habit schedules", "Create recurring weekday routines", "Store named habits with explicit active weekdays and archive behavior.", "Existing completion history survives schedule edits.", { platform: ["local-storage"], data: ["Habits and completions"] }),
+    feature("Daily completion", "Mark today's expected habits quickly", "Toggle one local completion per habit and calendar day.", "Repeated taps never create duplicate completion rows.", { platform: ["local-storage"], data: ["Habits and completions"] }),
+    feature("Deterministic streaks", "Understand current and longest streaks", "Calculate streaks from saved schedules and completions using the current local day.", "Displayed counts match documented weekday rules.", { data: ["Habits and completions"] }),
+    feature("Optional reminders", "Receive enabled local reminders", "Schedule alerts only after explicit opt-in and cancel them when habits are disabled or deleted.", "Denied notifications leave tracking fully usable.", { platform: ["notifications", "background-execution"], data: ["Habits and completions"] }),
   ],
-  dataObjects: [{ name: "Habits and completions", purpose: "Store schedules, daily outcomes, and archive state.", sensitivity: "personal", retentionIntent: "Keep until explicit habit deletion or data reset." }],
+  dataObjects: [{ name: "Habits and completions", purpose: "Store schedules, daily outcomes, and archive state.", sensitivity: "personal", retentionIntent: "Keep until explicit habit deletion or data reset.", storage: "records" }],
   platformNeeds: ["local-storage", "notifications", "background-execution"],
   productConstraints: ["All core behavior works in airplane mode.", "Use the current local calendar day consistently."],
 })
@@ -196,23 +204,54 @@ export const trailChecklistBlueprint = blueprint({
   goals: ["Reuse templates", "Keep trips independent", "Make location optional"],
   nonGoals: ["Navigation", "Emergency rescue or social routes"],
   features: [
-    feature("Reusable gear templates", "Reuse ordered gear lists across trips", "Create categories and items without carrying trip completion state back into the template.", "Editing a template leaves existing trips unchanged."),
-    feature("Trip checklist snapshot", "Track one trip independently", "Copy a template into a dated trip with independent checked state and trip-only items.", "Resetting one trip changes no template or other trip."),
-    feature("Optional trailhead", "Attach one coarse location or manual label", "Request a foreground position only after the user enables it for the current trip.", "Denied access leaves the trip fully usable."),
-    feature("Packing progress", "See checked and remaining counts", "Calculate progress from stored item state by category and whole trip.", "Counts always equal the visible stored item states."),
+    feature("Reusable gear templates", "Reuse ordered gear lists across trips", "Create categories and items without carrying trip completion state back into the template.", "Editing a template leaves existing trips unchanged.", { platform: ["local-storage"], data: ["Gear templates"] }),
+    feature("Trip checklist snapshot", "Track one trip independently", "Copy a template into a dated trip with independent checked state and trip-only items.", "Resetting one trip changes no template or other trip.", { platform: ["local-storage"], data: ["Gear templates", "Trip checklists"] }),
+    feature("Optional trailhead", "Attach one coarse location or manual label", "Request a foreground position only after the user enables it for the current trip.", "Denied access leaves the trip fully usable.", { platform: ["location"], data: ["Trip checklists"] }),
+    feature("Packing progress", "See checked and remaining counts", "Calculate progress from stored item state by category and whole trip.", "Counts always equal the visible stored item states.", { data: ["Trip checklists"] }),
   ],
   dataObjects: [
-    { name: "Gear templates", purpose: "Store reusable ordered gear categories and items.", sensitivity: "personal", retentionIntent: "Keep until explicit deletion." },
-    { name: "Trip checklists", purpose: "Store dated snapshots, checked state, and optional trailhead.", sensitivity: "personal", retentionIntent: "Keep until the trip is deleted." },
+    { name: "Gear templates", purpose: "Store reusable ordered gear categories and items.", sensitivity: "personal", retentionIntent: "Keep until explicit deletion.", storage: "records" },
+    { name: "Trip checklists", purpose: "Store dated snapshots, checked state, and optional trailhead.", sensitivity: "personal", retentionIntent: "Keep until the trip is deleted.", storage: "records" },
   ],
   platformNeeds: ["local-storage", "location"],
   productConstraints: ["All checklist actions work offline.", "Never request continuous or background location."],
 })
 
+export const forecastGlanceBlueprint = blueprint({
+  productName: "Forecast Glance",
+  summary: "A compact forecast utility that shows current conditions and the next hours for saved places using a weather service the user connects with their own API key.",
+  targetUsers: ["People who check the weather several times a day"],
+  goals: ["Show current conditions at a glance", "Keep saved places local", "Work only with the user's own weather API key"],
+  nonGoals: ["Severe weather emergency alerts", "Weather radar maps"],
+  features: [
+    feature("Weather service connection", "Connect the weather service once", "Accept the user's weather API key, verify it with one test request, and show configured or missing state.", "A rejected key shows a clear error and stores nothing.", { platform: ["network"], data: ["Weather API key"], services: ["Weather service"] }),
+    feature("Current conditions", "See temperature and conditions for the selected place", "Request current conditions for the selected saved place and show the newest successful result with its fetch time.", "A failed refresh keeps the last successful result visible with its age.", { platform: ["network"], data: ["Saved places"], services: ["Weather service"] }),
+    feature("Saved places", "Switch between a few saved places", "Add, rename, reorder, and delete saved places stored on the device.", "Deleting a place removes it from the list and from local storage.", { platform: ["local-storage"], data: ["Saved places"] }),
+  ],
+  dataObjects: [
+    { name: "Saved places", purpose: "Store place names and coordinates chosen by the user.", sensitivity: "personal", retentionIntent: "Keep locally until the user deletes the place.", storage: "records" },
+    { name: "Weather API key", purpose: "Authenticate requests to the weather service.", sensitivity: "sensitive", retentionIntent: "Keep until the user replaces or removes the key.", storage: "secret" },
+  ],
+  externalServices: [
+    { name: "Weather service", purpose: "Provide current conditions and hourly forecasts for coordinates.", dataSent: ["Coordinates of the selected saved place"], credentialRequired: true },
+  ],
+  platformNeeds: ["network", "local-storage"],
+  productConstraints: ["Send only coordinates to the weather service.", "Never display or log the API key after it is saved."],
+})
+
+export const sharedOutcome = "Every saved change appears in the next export"
+
+export function sharedAcceptanceBlueprint(): SemanticBlueprint {
+  const shared = structuredClone(knowledgeManagerBlueprint)
+  shared.features[0]!.acceptanceSignals = [...shared.features[0]!.acceptanceSignals, sharedOutcome]
+  shared.features[3]!.acceptanceSignals = [...shared.features[3]!.acceptanceSignals, sharedOutcome]
+  return shared
+}
+
 export const fixtureCases: ReadonlyArray<{ presetId: FixturePresetId; blueprint: SemanticBlueprint }> = [
   { presetId: "native-macos-swiftui-desktop", blueprint: fileOrganizerBlueprint },
   { presetId: "native-macos-swiftui-desktop", blueprint: photoCleanerBlueprint },
-  { presetId: "native-macos-swiftui-menubar", blueprint: nodaysidleVoiceBlueprint },
+  { presetId: "native-macos-swiftui-menubar", blueprint: forecastGlanceBlueprint },
   { presetId: "native-macos-swiftui-menubar", blueprint: networkMonitorBlueprint },
   { presetId: "tauri2-rust-typescript-desktop", blueprint: knowledgeManagerBlueprint },
   { presetId: "tauri2-rust-typescript-desktop", blueprint: invoiceArchiveBlueprint },

@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest"
 import { auditProjectGraph } from "../src/audit"
 import { compilePacket, type GraphTask, type ProjectGraph } from "../src/compiler"
 import type { SemanticBlueprint } from "../src/schema"
-import { docsPortalBlueprint } from "./fixtures/blueprints"
-import { observedAcceptanceOwnershipVoiceBlueprint } from "./fixtures/voice-v3-export"
+import { docsPortalBlueprint, sharedAcceptanceBlueprint } from "./fixtures/blueprints"
 
 const deploymentOutcome = "Local builds and the Vercel deployment workflow publish the same verified routes"
 
@@ -24,6 +23,9 @@ export function astroOwnershipBlueprint(
         behavior: `Render the custom not-found route and configure the security headers while preserving this release invariant: ${deploymentOutcome}.`,
         failureOutcome: "A routing or header validation failure blocks deployment without replacing the last verified release.",
         acceptanceSignals: ["Unknown routes show the custom 404 page", "Production responses include the configured security headers"],
+        usesPlatformNeeds: [],
+        usesData: [],
+        usesServices: [],
       },
       {
         name: featureNames[1],
@@ -32,6 +34,9 @@ export function astroOwnershipBlueprint(
         behavior: "Document exact install, local build, preview, Vercel deployment, and post-deployment verification commands.",
         failureOutcome: "A failed build or deployment keeps the last verified release active and identifies the first failed command.",
         acceptanceSignals: [deploymentOutcome],
+        usesPlatformNeeds: [],
+        usesData: [],
+        usesServices: [],
       },
     ],
     dataObjects: [],
@@ -182,7 +187,7 @@ describe("authoritative task acceptance criteria", () => {
   })
 
   it("rejects shared integration acceptance outside OWN-PACKAGING", async () => {
-    const graph = (await compilePacket(observedAcceptanceOwnershipVoiceBlueprint(), "native-macos-swiftui-menubar")).graph
+    const graph = (await compilePacket(sharedAcceptanceBlueprint(), "tauri2-rust-typescript-desktop")).graph
     const sharedAcceptance = graph.acceptance.find(item => item.kind === "integration")!
     const task = graph.phases.flatMap(phase => phase.tasks).find(item => item.ownerIds.length === 1 && item.ownerIds[0] !== "OWN-PACKAGING")!
     const mutated = replaceTask(graph, task.id, current => ({

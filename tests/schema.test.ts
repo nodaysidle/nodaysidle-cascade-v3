@@ -133,6 +133,7 @@ describe("compact semantic provider boundary", () => {
   it("accepts empty optional arrays and legitimate placeholder wording", () => {
     const candidate = {
       ...fileOrganizerBlueprint,
+      features: fileOrganizerBlueprint.features.map(feature => ({ ...feature, usesData: [] })),
       nonGoals: [],
       dataObjects: [],
       externalServices: [],
@@ -174,6 +175,9 @@ describe("hard semantic blockers", () => {
       behavior: "TODO",
       failureOutcome: "Unknown",
       acceptanceSignals: ["TBD"],
+      usesPlatformNeeds: [],
+      usesData: [],
+      usesServices: [],
     }]
 
     expect(SemanticBlueprintSchema.safeParse(candidate).success).toBe(true)

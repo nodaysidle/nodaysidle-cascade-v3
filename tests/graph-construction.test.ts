@@ -6,12 +6,10 @@ import {
   compilePacket,
   type ProjectGraph,
 } from "../src/compiler"
-import type { SemanticBlueprint } from "../src/schema"
-import { observedAcceptanceOwnershipVoiceBlueprint } from "./fixtures/voice-v3-export"
+import type { PresetId } from "../src/presets"
+import { sharedAcceptanceBlueprint, sharedOutcome } from "./fixtures/blueprints"
 
-function screenshotFailureBlueprint(): SemanticBlueprint {
-  return observedAcceptanceOwnershipVoiceBlueprint()
-}
+const PRESET: PresetId = "tauri2-rust-typescript-desktop"
 
 function ownerTask(graph: ProjectGraph, ownerId: string) {
   return graph.phases.flatMap((phase, phaseIndex) => phase.tasks.map(task => ({ phaseIndex, task })))
@@ -33,27 +31,23 @@ function expectGraphError(graph: ProjectGraph, rule: string): void {
 }
 
 describe("authoritative owner, task, and acceptance graph construction", () => {
-  it("normalizes the three visible screenshot acceptance-ownership failures before rendering", async () => {
-    const packet = await compilePacket(screenshotFailureBlueprint(), "native-macos-swiftui-menubar")
+  it("keeps a shared acceptance outcome out of both feature tasks", async () => {
+    const packet = await compilePacket(sharedAcceptanceBlueprint(), PRESET)
     const acceptanceFailures = packet.failures.filter(failure => failure.rule === "graph.acceptance-ownership")
-    const insertion = packet.graph.features.find(feature => feature.id === "FEAT-INSERTION-BEHAVIOR")!
-    const hotkey = packet.graph.features.find(feature => feature.id === "FEAT-GLOBAL-HOTKEY-DICTATION")!
-    const insertionTask = ownerTask(packet.graph, insertion.ownerId)
-    const hotkeyTask = ownerTask(packet.graph, hotkey.ownerId)
 
     expect(acceptanceFailures).toEqual([])
-    expect(insertionTask.phaseIndex).toBeLessThan(hotkeyTask.phaseIndex)
-    expect(hotkeyTask.task.dependencies).toContain(insertionTask.task.id)
-    expect(insertionTask.task.featureIds).toEqual([insertion.id])
-    expect(hotkeyTask.task.featureIds).toEqual([hotkey.id])
+    for (const id of ["FEAT-NOTE-CAPTURE", "FEAT-PORTABLE-EXPORT"]) {
+      const feature = packet.graph.features.find(item => item.id === id)!
+      expect(ownerTask(packet.graph, feature.ownerId).task.featureIds).toEqual([feature.id])
+    }
     expect(packet.exportable).toBe(true)
   })
 
   it("uses stable-ID topological ordering when provider feature order is reversed", async () => {
-    const forward = await compilePacket(screenshotFailureBlueprint(), "native-macos-swiftui-menubar")
-    const reversedBlueprint = screenshotFailureBlueprint()
+    const forward = await compilePacket(sharedAcceptanceBlueprint(), PRESET)
+    const reversedBlueprint = sharedAcceptanceBlueprint()
     reversedBlueprint.features.reverse()
-    const reversed = await compilePacket(reversedBlueprint, "native-macos-swiftui-menubar")
+    const reversed = await compilePacket(reversedBlueprint, PRESET)
 
     expect(reversed.graph.owners.map(owner => owner.id)).toEqual(forward.graph.owners.map(owner => owner.id))
     expect(reversed.graph.phases.map(phase => phase.tasks[0]!.ownerIds[0] ?? "foundation"))
@@ -62,8 +56,8 @@ describe("authoritative owner, task, and acceptance graph construction", () => {
   })
 
   it("owns shared acceptance once in the final integration and packaging gate", async () => {
-    const packet = await compilePacket(screenshotFailureBlueprint(), "native-macos-swiftui-menubar")
-    const shared = packet.graph.acceptance.filter(item => item.criterion === "Approved final text reaches the configured target application exactly once")
+    const packet = await compilePacket(sharedAcceptanceBlueprint(), PRESET)
+    const shared = packet.graph.acceptance.filter(item => item.criterion === sharedOutcome)
 
     expect(shared).toHaveLength(1)
     expect(shared[0]).toMatchObject({ kind: "integration", ownerId: "OWN-PACKAGING" })
@@ -75,39 +69,31 @@ describe("authoritative owner, task, and acceptance graph construction", () => {
     }
   })
 
-  it("lets two feature owners depend on one insertion interface without claiming it", async () => {
-    const blueprint = screenshotFailureBlueprint()
-    const file = blueprint.features.find(feature => feature.name === "File transcription")!
-    file.behavior = "Transcribe one supported file, then pass one approved final transcript to the insertion behavior for the configured target application."
-    file.acceptanceSignals = ["One supported file produces one approved final transcript"]
-    const packet = await compilePacket(blueprint, "native-macos-swiftui-menubar")
-    const insertion = packet.graph.features.find(feature => feature.id === "FEAT-INSERTION-BEHAVIOR")!
-    const insertionTask = ownerTask(packet.graph, insertion.ownerId).task
+  it("keeps each task on its directly owned feature when one feature refers to another", async () => {
+    const blueprint = sharedAcceptanceBlueprint()
+    const search = blueprint.features.find(feature => feature.name === "Offline search")!
+    search.behavior = "Index titles and bodies locally, and pass each selected result to note capture for editing."
+    const packet = await compilePacket(blueprint, PRESET)
 
-    for (const id of ["FEAT-GLOBAL-HOTKEY-DICTATION", "FEAT-FILE-TRANSCRIPTION"]) {
+    for (const id of ["FEAT-OFFLINE-SEARCH", "FEAT-NOTE-CAPTURE", "FEAT-PORTABLE-EXPORT"]) {
       const feature = packet.graph.features.find(item => item.id === id)!
       const task = ownerTask(packet.graph, feature.ownerId).task
-      expect(task.dependencies).toContain(insertionTask.id)
       expect(task.featureIds).toEqual([feature.id])
       expect(task.acceptanceIds.every(acceptanceId => packet.graph.acceptance.find(item => item.id === acceptanceId)?.ownerId === feature.ownerId)).toBe(true)
     }
+    expect(packet.exportable).toBe(true)
   })
 
-  it("derives only the feature-to-feature capability edge that is actually required", async () => {
-    const packet = await compilePacket(screenshotFailureBlueprint(), "native-macos-swiftui-menubar")
-    const insertion = packet.graph.features.find(feature => feature.id === "FEAT-INSERTION-BEHAVIOR")!
-    const hotkey = packet.graph.features.find(feature => feature.id === "FEAT-GLOBAL-HOTKEY-DICTATION")!
-    const hud = packet.graph.features.find(feature => feature.id === "FEAT-FLOATING-RECORDING-HUD")!
-    const insertionTask = ownerTask(packet.graph, insertion.ownerId).task
+  it("infers no feature-to-feature owner edges from domain vocabulary", async () => {
+    const packet = await compilePacket(sharedAcceptanceBlueprint(), PRESET)
 
-    expect(ownerTask(packet.graph, hotkey.ownerId).task.dependencies).toContain(insertionTask.id)
-    expect(ownerTask(packet.graph, hud.ownerId).task.dependencies).not.toContain(insertionTask.id)
+    for (const feature of packet.graph.features) expect(feature.requiredOwnerIds).toEqual([])
   })
 
   it("deduplicates every feature, contract, dependency, and acceptance reference", async () => {
-    const blueprint = screenshotFailureBlueprint()
+    const blueprint = sharedAcceptanceBlueprint()
     blueprint.features[0]!.acceptanceSignals.push(blueprint.features[0]!.acceptanceSignals[0]!)
-    const graph = (await compilePacket(blueprint, "native-macos-swiftui-menubar")).graph
+    const graph = (await compilePacket(blueprint, PRESET)).graph
 
     for (const contract of graph.contracts) expect(new Set(contract.featureIds).size).toBe(contract.featureIds.length)
     for (const { task } of tasks(graph)) {
@@ -119,13 +105,13 @@ describe("authoritative owner, task, and acceptance graph construction", () => {
   })
 
   it("rejects missing owners before any renderer can consume the graph", async () => {
-    const graph = structuredClone((await compilePacket(screenshotFailureBlueprint(), "native-macos-swiftui-menubar")).graph) as ProjectGraph & { features: Array<ProjectGraph["features"][number]> }
+    const graph = structuredClone((await compilePacket(sharedAcceptanceBlueprint(), PRESET)).graph) as ProjectGraph & { features: Array<ProjectGraph["features"][number]> }
     graph.features[0] = { ...graph.features[0]!, ownerId: "OWN-MISSING" }
     expectGraphError(graph, "graph.references")
   })
 
   it("rejects direct and transitive dependency cycles before rendering", async () => {
-    const source = (await compilePacket(screenshotFailureBlueprint(), "native-macos-swiftui-menubar")).graph
+    const source = (await compilePacket(sharedAcceptanceBlueprint(), PRESET)).graph
     const direct = structuredClone(source) as ProjectGraph & { phases: Array<ProjectGraph["phases"][number]> }
     direct.phases[1] = { ...direct.phases[1]!, dependencies: [direct.phases[1]!.id] }
     expectGraphError(direct, "graph.cycles")
@@ -138,7 +124,7 @@ describe("authoritative owner, task, and acceptance graph construction", () => {
   })
 
   it("rejects create-before-modify violations before rendering", async () => {
-    const source = (await compilePacket(screenshotFailureBlueprint(), "native-macos-swiftui-menubar")).graph
+    const source = (await compilePacket(sharedAcceptanceBlueprint(), PRESET)).graph
     const graph = structuredClone(source) as ProjectGraph & { phases: Array<ProjectGraph["phases"][number]> }
     const early = graph.phases[1]!
     const task = early.tasks[0]!
@@ -148,7 +134,7 @@ describe("authoritative owner, task, and acceptance graph construction", () => {
   })
 
   it("keeps task acceptance and dependencies structurally owned and backward-only", async () => {
-    const packet = await compilePacket(screenshotFailureBlueprint(), "native-macos-swiftui-menubar")
+    const packet = await compilePacket(sharedAcceptanceBlueprint(), PRESET)
     const graph = packet.graph
     const order = new Map(tasks(graph).map(({ phaseIndex, task }) => [task.id, phaseIndex]))
 
@@ -168,8 +154,8 @@ describe("authoritative owner, task, and acceptance graph construction", () => {
   })
 
   it("renders one graph's owner, dependency, and acceptance IDs through all five documents", async () => {
-    const packet = await compilePacket(screenshotFailureBlueprint(), "native-macos-swiftui-menubar")
-    const feature = packet.graph.features.find(item => item.id === "FEAT-GLOBAL-HOTKEY-DICTATION")!
+    const packet = await compilePacket(sharedAcceptanceBlueprint(), PRESET)
+    const feature = packet.graph.features.find(item => item.id === "FEAT-NOTE-CAPTURE")!
     const task = ownerTask(packet.graph, feature.ownerId).task
     const acceptanceIds = packet.graph.acceptance.filter(item => item.featureIds.includes(feature.id)).map(item => item.id)
 

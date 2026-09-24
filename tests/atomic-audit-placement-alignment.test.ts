@@ -4,7 +4,7 @@ import type { SemanticBlueprint } from "../src/schema"
 import type { JevAtomicAuditDecision } from "../src/jev"
 
 describe("Atomic Audit Placement Alignment (H3)", () => {
-  it("attaches storage tier to the correct persistent data object when prior objects are filtered", () => {
+  it("places each data object by its declared storage kind, keeps secrets out of persistence, and ignores conflicting Jev tiers", () => {
     const rawBlueprint: SemanticBlueprint = {
       productName: "ReaderApp",
       summary: "Reading app with API key, session draft, and reading history.",
@@ -19,6 +19,9 @@ describe("Atomic Audit Placement Alignment (H3)", () => {
           behavior: "Render article text and record reading history",
           failureOutcome: "Show error",
           acceptanceSignals: ["Articles load"],
+          usesPlatformNeeds: ["local-storage"],
+          usesData: ["API Key", "Session Draft", "Reading History"],
+          usesServices: [],
         },
       ],
       // [0] API Key (credential -> filtered out of persistenceNeeds)
@@ -30,18 +33,21 @@ describe("Atomic Audit Placement Alignment (H3)", () => {
           purpose: "Provider token",
           sensitivity: "sensitive",
           retentionIntent: "Store in keychain",
+          storage: "secret",
         },
         {
           name: "Session Draft",
           purpose: "Transient editor buffer",
           sensitivity: "personal",
           retentionIntent: "session only",
+          storage: "session",
         },
         {
           name: "Reading History",
           purpose: "Tracks completed articles",
           sensitivity: "personal",
           retentionIntent: "Keep in local database",
+          storage: "records",
         },
       ],
       externalServices: [],
@@ -57,9 +63,9 @@ describe("Atomic Audit Placement Alignment (H3)", () => {
       unverifiableAcceptance: false,
       featureAudits: [],
       dataAudits: [
-        { dataIndex: 0, dataName: "API Key", storageTier: "keychain", tierConfidence: 0.9 },
-        { dataIndex: 1, dataName: "Session Draft", storageTier: "ephemeral", tierConfidence: 0.9 },
-        { dataIndex: 2, dataName: "Reading History", storageTier: "sqlite", tierConfidence: 0.9 },
+        { dataIndex: 0, dataName: "API Key", storageTier: "userdefaults", tierConfidence: 0.9 },
+        { dataIndex: 1, dataName: "Session Draft", storageTier: "sqlite", tierConfidence: 0.9 },
+        { dataIndex: 2, dataName: "Reading History", storageTier: "ephemeral", tierConfidence: 0.9 },
       ],
       unverifiableFeatures: [],
       featureIssues: [],
@@ -67,16 +73,10 @@ describe("Atomic Audit Placement Alignment (H3)", () => {
 
     const normalized = normalizeBlueprint(rawBlueprint, "native-macos-swiftui-desktop", atomicAuditDecision)
 
-    expect(normalized.persistenceNeeds).toHaveLength(2)
-    const sessionDraftNeed = normalized.persistenceNeeds[0]!
-    const historyNeed = normalized.persistenceNeeds[1]!
-
-    expect(sessionDraftNeed.data).toBe("Session Draft")
-    // If index was misaligned, Session Draft (at index 0 in filtered list) would match dataIndex 0 (Keychain)
-    expect(sessionDraftNeed.placementTier).toBe("ephemeral")
-
-    expect(historyNeed.data).toBe("Reading History")
-    // If index was misaligned, Reading History (at index 1 in filtered list) would match dataIndex 1 (Ephemeral)
-    expect(historyNeed.placementTier).toBe("sqlite")
+    expect(normalized.persistenceNeeds.map(need => [need.data, need.storage])).toEqual([
+      ["Session Draft", "session"],
+      ["Reading History", "records"],
+    ])
+    expect(normalized.domainData.find(item => item.name === "API Key")?.storage).toBe("secret")
   })
 })

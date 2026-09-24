@@ -30,6 +30,7 @@ import {
   type ProgressStage,
 } from "../src/pipeline"
 import { PRESET_IDS, isPresetId } from "../src/presets"
+import type { SemanticBlueprint } from "../src/schema"
 import { canExport, canGenerate, createInitialState, reduceAppState, statusActionLabel } from "../src/state"
 import { fixtureJevProvider, fixtureProvider, smokeCases } from "../src/smoke"
 import { fileOrganizerBlueprint } from "./fixtures/blueprints"
@@ -108,6 +109,11 @@ function postflightJson(
 const allSevenInferred: Partial<Record<JevPlatformNeed, number>> = Object.fromEntries(
   JEV_PLATFORM_NEEDS.map(need => [need, 0.9]),
 )
+
+function withDeclaredNeeds(platformNeeds: JevPlatformNeed[]): SemanticBlueprint {
+  const blueprint = structuredClone(fileOrganizerBlueprint)
+  return { ...blueprint, platformNeeds, features: blueprint.features.map(feature => ({ ...feature, usesPlatformNeeds: [] })) }
+}
 
 describe("Jev preflight boundary", () => {
   it("rejects non-viable intake with one Jev request and zero DeepSeek calls", async () => {
@@ -249,7 +255,7 @@ describe("Jev preflight boundary", () => {
 
 describe("Jev postflight boundary", () => {
   it("heals all seven canonical platform needs add-only", async () => {
-    const blueprint = { ...structuredClone(fileOrganizerBlueprint), platformNeeds: [] }
+    const blueprint = withDeclaredNeeds([])
     const snapshot = structuredClone(blueprint)
     const { provider } = deepseekSequence([JSON.stringify(blueprint)])
     const { provider: jevProvider } = jevSequence([preflightJson(0.9), postflightJson(allSevenInferred)])
@@ -259,10 +265,7 @@ describe("Jev postflight boundary", () => {
     expect(result.status).toBe("gate-clean")
     expect(captured).toHaveLength(1)
     expect(captured[0]!.blueprint.platformNeeds).toEqual([...JEV_PLATFORM_NEEDS])
-    expect(captured[0]!.blueprint.permissionNeeds.map(need => need.capability)).toEqual([
-      "microphone",
-      "filesystem",
-    ])
+    expect(captured[0]!.blueprint.permissionNeeds).toEqual([])
     expect(result.jev?.addedPlatformNeeds).toEqual([...JEV_PLATFORM_NEEDS])
     expect(blueprint).toEqual(snapshot)
   })
@@ -292,7 +295,7 @@ describe("Jev postflight boundary", () => {
 
   it("preserves declared platform need order and appends only missing needs in canonical order", async () => {
     const declared: Array< (typeof JEV_PLATFORM_NEEDS)[number] > = ["notifications", "filesystem"]
-    const blueprint = { ...structuredClone(fileOrganizerBlueprint), platformNeeds: [...declared] }
+    const blueprint = withDeclaredNeeds([...declared])
     const { provider } = deepseekSequence([JSON.stringify(blueprint)])
     const { provider: jevProvider } = jevSequence([preflightJson(0.9), postflightJson(allSevenInferred)])
     const captured: CompilerCapture[] = []
@@ -319,7 +322,7 @@ describe("Jev postflight boundary", () => {
   })
 
   it("heals at exactly the integrity threshold and adds nothing below it", async () => {
-    const emptyNeedsBlueprint = { ...structuredClone(fileOrganizerBlueprint), platformNeeds: [] }
+    const emptyNeedsBlueprint = withDeclaredNeeds([])
     const atThreshold: Partial<Record<JevPlatformNeed, number>> = Object.fromEntries(
       JEV_PLATFORM_NEEDS.map(need => [need, JEV_INTEGRITY_THRESHOLD]),
     )

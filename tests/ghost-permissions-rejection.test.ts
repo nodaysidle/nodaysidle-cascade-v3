@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest"
 import { compilePacket } from "../src/compiler"
 import { auditProjectGraph } from "../src/audit"
 import type { SemanticBlueprint } from "../src/schema"
-import { monospaceBlueprint } from "./monospace-quality.test"
+import { fileOrganizerBlueprint } from "./fixtures/blueprints"
 
 describe("Ghost Permissions Rejection & Orphan Contract Audit Gate (H2 & M1)", () => {
   it("prunes declared platform needs that have no corresponding feature requirements", async () => {
-    // Monospace blueprint with unneeded permissions declared
+    // Blueprint with unneeded permissions declared
     const bloatedBlueprint: SemanticBlueprint = {
-      ...monospaceBlueprint,
+      ...fileOrganizerBlueprint,
       platformNeeds: [
         "filesystem",
         "local-storage",
@@ -29,7 +29,7 @@ describe("Ghost Permissions Rejection & Orphan Contract Audit Gate (H2 & M1)", (
   })
 
   it("fails the audit gate if an orphan permission contract with zero linked features exists", async () => {
-    const packet = await compilePacket(monospaceBlueprint, "native-macos-swiftui-desktop")
+    const packet = await compilePacket(fileOrganizerBlueprint, "native-macos-swiftui-desktop")
     
     // Artificially inject an orphan permission contract
     const mutatedGraph = {
@@ -56,14 +56,16 @@ describe("Ghost Permissions Rejection & Orphan Contract Audit Gate (H2 & M1)", (
 
   it("does not crash with unknown owner OWN-CREDENTIAL-VAULT when domainData has credentials but no services (M1)", async () => {
     const credentialDataBlueprint: SemanticBlueprint = {
-      ...monospaceBlueprint,
+      ...fileOrganizerBlueprint,
       productName: "SecretStash",
+      features: fileOrganizerBlueprint.features.map((feature, index) => ({ ...feature, usesData: index === 0 ? ["API Secret Key"] : [] })),
       dataObjects: [
         {
           name: "API Secret Key",
           purpose: "User-entered private token stored securely for custom plugins.",
           sensitivity: "sensitive",
           retentionIntent: "Retain securely until removed by user.",
+          storage: "secret",
         },
       ],
       externalServices: [], // No external services declared!

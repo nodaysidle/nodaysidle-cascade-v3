@@ -2,7 +2,7 @@
 
 ## Product boundary
 
-NODAYSIDLE Cascade V3 is a standalone macOS Tauri 2 application at `/Applications/NODAYSIDLE Cascade V3.app`, bundle ID `com.nodaysidle.cascade.v3`. It accepts one software idea, one locked technology preset, one selected DeepSeek model, and one memory-only key, then produces exactly `PRD.md`, `ARD.md`, `TRD.md`, `TASKS.md`, and `AGENTS.md`.
+NODAYSIDLE Cascade V3 is a standalone macOS Tauri 2 application at `/Applications/NODAYSIDLE Cascade V3.app`, bundle ID `com.nodaysidle.cascade.v3`. It accepts one software idea, one locked technology preset, one selected DeepSeek model, and two memory-only keys (DeepSeek and TypeSafe Jev), then produces exactly `PRD.md`, `ARD.md`, `TRD.md`, `TASKS.md`, and `AGENTS.md`.
 
 It has no accounts, telemetry, analytics, database, remote backend, settings persistence, automatic model fallback, provider retry, provider repair, or compatibility path to an older compiler.
 
@@ -17,11 +17,13 @@ It has no accounts, telemetry, analytics, database, remote backend, settings per
 ## Runtime flow
 
 ```text
-idea + locked preset + model + URL + memory-only key
-  -> one Rust DeepSeek Responses request
+idea + locked preset + model + URL + two memory-only keys
+  -> Jev viability and preset-fit preflight
+  -> one Rust DeepSeek Responses request when viable
   -> completed-response classification
   -> strict JSON parse and compact schema validation
-  -> hard semantic blocker audit
+  -> hard semantic blocker audit, including feature reference checks
+  -> Jev platform-need healing and stack-leakage integrity gate
   -> deterministic local normalization
   -> deterministic preset compiler
   -> mechanical graph audit
@@ -32,14 +34,14 @@ idea + locked preset + model + URL + memory-only key
   -> Rust hash revalidation and atomic exact-five export
 ```
 
-There is exactly one provider request for each Generate action. Incomplete, truncated, filtered, failed, in-progress, malformed, cancelled, or unknown responses are rejected before semantic parsing or compilation. Schema-valid usable meaning proceeds directly to local normalization; no provider call rewrites a blueprint.
+There is exactly one DeepSeek request for each Generate action, plus the Jev decision requests before and after it. Incomplete, truncated, filtered, failed, in-progress, malformed, cancelled, or unknown responses are rejected before semantic parsing or compilation. Schema-valid usable meaning proceeds directly to local normalization; no provider call rewrites a blueprint.
 
 Provider output is not claimed to be byte-deterministic. Only repeated local compilation from the same accepted normalized blueprint and preset is required to be byte-identical.
 
 ## Provider boundary
 
 - Endpoint default: `https://api.deepseek.com/responses`.
-- Selectable models: `deepseek-v4-pro` and `deepseek-v4-flash`; no fallback.
+- Selectable models: `deepseek-flash` (default) and `deepseek-v4-pro`; no fallback. `deepseek-v4-flash` is a retired alias accepted only for compatibility.
 - Fixed request: `reasoning.effort: "none"`, `temperature: 0.0`, `top_p: 1.0`, `max_output_tokens: 16384`, `stream: false`, `store: false`, and strict `text.format.type: "json_schema"`.
 - Rust accepts text only from one completed assistant message in a top-level completed response with no error or incomplete detail.
 - Model-aware total timeout, bounded body reads, cancellation, and a single outbound send are enforced locally.
@@ -63,11 +65,11 @@ The provider fields are exactly:
 - `qualityRequirements`
 - `productConstraints`
 
-A feature supplies only name, outcome, trigger, behavior, failure outcome, and acceptance signals. Data objects supply name, purpose, sensitivity, and retention intent. External services supply name, purpose, data sent, and whether a credential is required. Platform needs use the closed local enum. Features are capped at 12 and secondary lists at 8.
+A feature supplies name, outcome, trigger, behavior, failure outcome, acceptance signals, and explicit references: the platform needs it uses, the data object names it reads or writes, and the external service names it calls. Data objects supply name, purpose, sensitivity, retention intent, and a storage kind (settings, records, document, secret, temporary, or session) that the preset maps to a concrete store. External services supply name, purpose, data sent, and whether a credential is required. Platform needs use the closed local enum. Features are capped at 12 and secondary lists at 8.
 
 The provider cannot add fields for IDs, files, tests, commands, APIs, packages, modules, owners, phases, architecture, credential mechanics, build/signing instructions, Markdown, or final documents.
 
-Hard blockers are transport/completion failure, invalid JSON, schema-invalid JSON, unusable core product meaning, no meaningful feature, secret material, or meaning that cannot be normalized safely. Harmless headings, generic identities, embedded IDs, paths, commands, framework suggestions, duplicate items, casing, punctuation, empty optional arrays, and legitimate `placeholder` prose are discarded or normalized locally.
+Hard blockers are transport/completion failure, invalid JSON, schema-invalid JSON, unusable core product meaning, no meaningful feature, secret material, a feature reference to an undeclared data object or service, a data object or service that no feature uses, or meaning that cannot be normalized safely. Harmless headings, generic identities, embedded IDs, paths, commands, framework suggestions, duplicate items, casing, punctuation, empty optional arrays, and legitimate `placeholder` prose are discarded or normalized locally.
 
 ## Preset compiler
 
@@ -105,12 +107,12 @@ The packet is frozen after rendering. Web Crypto calculates preview hashes. Rust
 
 ## Interface and accessibility
 
-The existing two-column control-room UI remains. The visible stages are Provider, Blueprint validation, Local normalization, Preset compiler, Mechanical audit, Agent-readiness audit, Rendering, and Export gate. Gate Clean enables export. Failure retains form state and Retry, locks export, keeps a non-success placeholder preview, and displays at most three safe path/rule/fixed-message issues.
+The existing two-column control-room UI remains. The visible stages are Jev preflight, Provider, Blueprint validation, Jev integrity, Local normalization, Preset compiler, Mechanical audit, Agent-readiness audit, Rendering, and Export gate. Gate Clean enables export. Failure retains form state and Retry, locks export, keeps a non-success placeholder preview, and displays at most three safe path/rule/fixed-message issues.
 
 Native labels and controls, ARIA tab semantics, keyboard navigation, live regions, visible focus, scalable text, high contrast, and reduced motion remain required. Provider JSON is never rendered.
 
 ## Test and release boundary
 
-Vitest covers the compact schema, tolerant normalization, hard blockers, one-call pipeline, deterministic graph and bytes, exact-five output, stable requirements, all five presets, ten varied realistic fixtures, Voice readiness, preview/export identity, recoverable UI state, and the complete 5x5 leakage matrix. Rust tests cover request construction, strict completion classification, redaction, URL validation, timeout, cancellation, one-send/no-retry behavior, exact-five hashes, atomic export, collision handling, and cleanup.
+Vitest covers the compact schema, tolerant normalization, hard blockers, one-call pipeline, deterministic graph and bytes, exact-five output, stable requirements, all five presets, ten varied realistic fixtures compiled across all five presets, explicit feature references, preview/export identity, recoverable UI state, and the complete 5x5 leakage matrix. Rust tests cover request construction, strict completion classification, redaction, URL validation, timeout, cancellation, one-send/no-retry behavior, exact-five hashes, atomic export, collision handling, and cleanup.
 
 A smoke-only Vite branch and Cargo feature inject offline fixtures into a temporary build. The installed smoke build uses only `/Applications/NODAYSIDLE Cascade V3.app`, drives every preset and tab through the real DOM and Rust export, and writes a receipt outside the bundle. Production is then rebuilt without the smoke branch/feature, scanned for fixture markers, strictly signed, installed, identity-checked, and launched through LaunchServices.

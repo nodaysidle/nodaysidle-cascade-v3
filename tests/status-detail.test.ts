@@ -28,4 +28,10 @@ describe("provider instructions", () => {
     const instructions = buildBlueprintInstructions({ idea: "A reminder app." })
     expect(instructions).toContain("request the app makes or the app state a test can read")
   })
+
+  it("tells the provider that every declared data object and service must be used by a feature", () => {
+    const instructions = buildBlueprintInstructions({ idea: "A file organizer." })
+    expect(instructions).toContain("every dataObject must appear in some feature's usesData")
+    expect(instructions).toContain("every externalService in some feature's usesServices")
+  })
 })

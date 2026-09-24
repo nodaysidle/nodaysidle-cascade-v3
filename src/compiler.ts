@@ -285,6 +285,10 @@ const providerId = /\b(?:FEAT|REQ|TASK|PHASE|CONTRACT|CON|CTR|OWN)-[A-Z0-9-]+\b/
 const sourcePath = /(^|[\s("'`])(?:~\/|\.{0,2}\/|\/(?:Users|Volumes|Applications)\/|(?:src|tests?|Sources|Tests|app\/src|src-tauri)\/)[A-Za-z0-9_./ -]+/gim
 const command = /(?:\.\/gradlew|npm|pnpm|yarn|cargo|swift|xcodebuild|adb)\s+(?:run\s+)?[A-Za-z0-9:._-]+(?:\s+--?[A-Za-z0-9:._="'/-]+)*/gi
 const documentName = /\b(?:PRD|ARD|TRD|TASKS|AGENTS)\.md\b/gi
+// Short lowercase format tokens such as "rates from <date>" become {date}: angle brackets vanish as
+// HTML in Markdown viewers. Capitalized or filler tokens such as <Your App Name> stay for the gate.
+const formatToken = /<([a-z][a-z0-9]*(?:[ _-][a-z0-9]+){0,2})>/g
+const fillerToken = /\b(?:your|insert|placeholder|todo|tbd|example|here)\b/
 
 function cleanMeaning(value: string): string {
   return value
@@ -296,6 +300,7 @@ function cleanMeaning(value: string): string {
     .replace(command, "the local validation command")
     .replace(providerId, "")
     .replace(documentName, "the applicable contract document")
+    .replace(formatToken, (token, name: string) => fillerToken.test(name) ? token : `{${name}}`)
     .replace(/\beither\s+/gi, "")
     .replace(/\breject\s+or\s+(?:explicitly\s+)?split\b/gi, "reject")
     .replace(/\bchoose (?:one|between)\b/gi, "select")

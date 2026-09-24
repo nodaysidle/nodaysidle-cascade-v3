@@ -484,7 +484,8 @@ function markdownFailures(name: string, markdown: string): AuditFailure[] {
   for (const heading of requiredHeadings[name as DocumentName] ?? []) {
     if (!markdown.includes(heading)) failures.push(failure("markdown.valid", name, `${name} is missing required heading ${heading}.`))
   }
-  if (unfinishedPattern.test(markdown) || /<[^>]+>|\[insert\s+[^\]]+\]/i.test(markdown)) failures.push(failure("content.unfinished", name, `${name} contains unfinished content.`))
+  const unfinished = markdown.match(unfinishedPattern) ?? markdown.match(/<[^>]+>|\[insert\s+[^\]]+\]/i)
+  if (unfinished) failures.push(failure("content.unfinished", name, `${name} contains unfinished content: "${unfinished[0].slice(0, 60)}".`))
   if (unresolvedDecisionPattern.test(markdown)) failures.push(failure("content.unresolved-decision", name, `${name} contains an unresolved implementation alternative.`))
   if (genericIdentityPattern.test(markdown)) failures.push(failure("content.identity", name, `${name} contains a generic identity.`))
   if (secretPatterns.some(pattern => pattern.test(markdown))) failures.push(failure("content.secret-shaped", name, `${name} contains a secret-shaped value.`))

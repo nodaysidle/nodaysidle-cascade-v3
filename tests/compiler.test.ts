@@ -253,6 +253,20 @@ describe("agent readiness and negative gate behavior", () => {
     expect(auditPacket(packet.graph, unresolved, PRESETS[packet.presetId])).toContainEqual(expect.objectContaining({ rule: "content.unfinished" }))
   })
 
+  it("keeps stated format tokens readable and exportable while filler tokens still block export", async () => {
+    const withToken = structuredClone(fileOrganizerBlueprint)
+    withToken.features[0]!.acceptanceSignals = ["The status line reads \"scanned <file count> files at <time>\" after a scan"]
+    const clean = await compilePacket(withToken, "tauri2-rust-typescript-desktop")
+    expect(clean.exportable).toBe(true)
+    expect(clean.documents["PRD.md"]).toContain("scanned {file count} files at {time}")
+
+    const withFiller = structuredClone(fileOrganizerBlueprint)
+    withFiller.features[0]!.acceptanceSignals = ["The window title shows <Your App Name> after a scan"]
+    const blocked = await compilePacket(withFiller, "tauri2-rust-typescript-desktop")
+    expect(blocked.exportable).toBe(false)
+    expect(blocked.failures).toContainEqual(expect.objectContaining({ rule: "content.unfinished", message: expect.stringContaining("<Your App Name>") }))
+  })
+
   it("detects create-before-modify corruption as a local compiler defect", () => {
     const normalized = normalizeBlueprint(fileOrganizerBlueprint, "native-macos-swiftui-desktop")
     const graph = structuredClone(compileProjectGraph(normalized, "native-macos-swiftui-desktop"))

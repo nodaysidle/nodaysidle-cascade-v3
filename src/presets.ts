@@ -8,7 +8,7 @@ export const PRESET_IDS = [
 
 export type PresetId = (typeof PRESET_IDS)[number]
 export type OwnerKind = "feature" | "integration" | "data" | "credential" | "permission" | "lifecycle" | "packaging"
-export const PERMISSION_CAPABILITIES = ["microphone", "accessibility", "notifications", "filesystem", "network", "camera", "location", "global-input", "clipboard", "background-startup"] as const
+export const PERMISSION_CAPABILITIES = ["microphone", "accessibility", "notifications", "filesystem", "network", "camera", "location", "global-input", "clipboard", "background-startup", "background-execution"] as const
 export type PermissionCapability = (typeof PERMISSION_CAPABILITIES)[number]
 export type PresetRuntimeMode = "native" | "cross-platform" | "static" | "server" | "android"
 
@@ -88,6 +88,7 @@ const swiftPermissionPatterns: Readonly<Record<PermissionCapability, string>> = 
   "global-input": "Register shortcuts with Carbon RegisterEventHotKey; use an event tap only when required and explain Input Monitoring denial.",
   clipboard: "Use NSPasteboard with representation-preserving snapshot and restoration around explicit copy or paste work.",
   "background-startup": "Use SMAppService.mainApp and expose an explicit login-item toggle; denial leaves manual launch available.",
+  "background-execution": "Keep the process running after the last window closes by returning false from applicationShouldTerminateAfterLastWindowClosed(_:); register no login item unless launch at login is also required.",
 }
 
 const tauriPermissionPatterns: Readonly<Record<PermissionCapability, string>> = {
@@ -101,6 +102,7 @@ const tauriPermissionPatterns: Readonly<Record<PermissionCapability, string>> = 
   "global-input": "Register global shortcuts through the Tauri global-shortcut plugin and platform permission adapters without broad event capture.",
   clipboard: "Use the Tauri clipboard plugin through an explicit capability and restore prior content when the feature promises preservation.",
   "background-startup": "Use the Tauri autostart plugin behind an explicit user setting and preserve manual launch when denied.",
+  "background-execution": "Keep the Rust process and tray running after the main window closes: in App::run, call api.prevent_exit() on RunEvent::ExitRequested when code is None, so an explicit Quit still exits; register no autostart entry unless launch at login is also required.",
 }
 
 const webPermissionPatterns: Readonly<Record<PermissionCapability, string>> = {
@@ -114,6 +116,7 @@ const webPermissionPatterns: Readonly<Record<PermissionCapability, string>> = {
   "global-input": "Web pages cannot register system-wide input; scope keyboard shortcuts to the focused page and state that boundary.",
   clipboard: "Use the Async Clipboard API only from a user action and retain a selectable-text fallback when permission is denied.",
   "background-startup": "Static web output cannot start at operating-system login; provide installable or bookmark guidance without claiming background startup.",
+  "background-execution": "A web page cannot run after it is closed; perform background work only while the page is open and state that boundary instead of claiming background operation.",
 }
 
 const androidPermissionPatterns: Readonly<Record<PermissionCapability, string>> = {
@@ -127,6 +130,7 @@ const androidPermissionPatterns: Readonly<Record<PermissionCapability, string>> 
   "global-input": "Android does not expose arbitrary system-wide hotkeys to ordinary apps; use supported media, notification, or in-app actions only.",
   clipboard: "Use ClipboardManager only from a user action and never read clipboard contents in the background.",
   "background-startup": "Use WorkManager or exact platform-supported scheduling for bounded work; do not claim unrestricted startup at boot.",
+  "background-execution": "Use WorkManager for bounded deferred work that must run while the app is not in the foreground; do not keep a persistent foreground service unless the product needs ongoing user-visible work.",
 }
 
 function swiftOwnerFiles(input: OwnerFileInput): OwnerFiles {
@@ -213,7 +217,7 @@ const swiftDesktop: PresetContract = {
   registrationFile: (_kind, identity) => `Sources/${identity.moduleName}/AppState.swift`,
   runtimeMode: () => "native",
   runtimeArchitecture: ["Use an @main SwiftUI App entry with WindowGroup; one @Observable @MainActor AppState owns presentation state, feature services are injected at the composition root, and AppKit adapters remain in Platform owners.", "Run I/O and provider work in cancellable async tasks or actors off the main actor and publish UI state on the main actor."],
-  integrationBoundary: "Use one actor-owned URLSession boundary: URLSession.data(for:) for HTTPS requests and URLSessionWebSocketTask for streaming; encode and decode typed Codable DTOs, map failures before they reach UI state, and never expose raw response bodies.",
+  integrationBoundary: "Use one actor-owned URLSession boundary with URLSession.data(for:) for HTTPS requests; encode and decode typed Codable DTOs, map failures before they reach UI state, and never expose raw response bodies.",
   recoveryRules: ["Represent operations as idle, active, succeeded, failed, or cancelled and preserve the last valid user state.", "Use explicit user retries only; cancel tasks and close streams, file handles, delegates, and temporary resources on every terminal path."],
   persistence: {
     enabledDecision: "Persistence: enabled with UserDefaults for lightweight settings and SQLite for durable record collections in Application Support.",
@@ -286,7 +290,7 @@ const tauriDesktop: PresetContract = {
   registrationFile: kind => kind === "feature" ? "src/main.ts" : "src-tauri/src/lib.rs",
   runtimeMode: () => "cross-platform",
   runtimeArchitecture: ["The TypeScript DOM frontend owns presentation and sends typed Tauri invoke requests; Rust commands own filesystem, network, credential, persistence, and platform operations behind least-privilege capabilities.", "Managed Rust state owns cancellable operations and returns allowlisted serializable results; frontend state never receives secrets, raw provider bodies, or unrestricted paths."],
-  integrationBoundary: "Use reqwest::Client inside a dedicated Rust integration owner for HTTPS and tokio_tungstenite::connect_async only when streaming is required; expose typed DTOs through Tauri commands and keep credentials and raw responses in Rust memory only.",
+  integrationBoundary: "Use reqwest::Client inside a dedicated Rust integration owner for HTTPS; expose typed DTOs through Tauri commands and keep credentials and raw responses in Rust memory only.",
   recoveryRules: ["Return one allowlisted error enum through each Tauri command and preserve the last valid frontend state.", "Use cancellation tokens and scoped Rust resources; roll back transactions and remove temporary files before reporting a terminal result."],
   persistence: {
     enabledDecision: "Persistence: enabled and local-first; settings use atomic JSON and record collections use SQLite through a Rust repository boundary.",

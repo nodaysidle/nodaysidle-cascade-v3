@@ -336,7 +336,7 @@ const permissionByNeed: Partial<Record<PlatformNeed, PermissionCapability>> = {
   notifications: "notifications",
   filesystem: "filesystem",
   network: "network",
-  "background-execution": "background-startup",
+  "background-execution": "background-execution",
   "launch-at-login": "background-startup",
   location: "location",
 }
@@ -351,7 +351,8 @@ const needPurpose: Readonly<Record<PermissionCapability, string>> = {
   location: "Use foreground location only for the declared user outcome.",
   "global-input": "Receive the explicitly configured system-wide action without broad input capture.",
   clipboard: "Read or write clipboard content only for the explicit user action and preserve prior content when promised.",
-  "background-startup": "Run bounded background or login behavior only after the user enables it.",
+  "background-startup": "Start at login only after the user enables it.",
+  "background-execution": "Keep running after the main window closes only while a declared background feature needs it.",
 }
 
 const deniedBehavior: Readonly<Record<PermissionCapability, string>> = {
@@ -365,6 +366,7 @@ const deniedBehavior: Readonly<Record<PermissionCapability, string>> = {
   "global-input": "Keep in-app controls available and explain the permission recovery path.",
   clipboard: "Keep the result visible for manual copy or paste without replacing prior content.",
   "background-startup": "Keep manual launch and foreground behavior available.",
+  "background-execution": "Keep foreground behavior available and state that background work stops when the app closes.",
 }
 
 function permissionResourceId(capability: PermissionCapability): string {
@@ -776,15 +778,29 @@ function credentialDetails(presetId: PresetId, identity: ProjectIdentity, servic
   return [`Credential vault service: ${identity.bundleId}.credentials`, `Credential account: ${serviceSlug}-${kind}`, "The frontend receives only configured or missing state."]
 }
 
+// "Exchange Rate API" + " API key" would read "Exchange Rate API API key".
+function credentialLabel(serviceName: string): string {
+  return /\bAPI$/i.test(serviceName) ? `${serviceName} key` : `${serviceName} API key`
+}
+
 function credentialEntryDetail(presetId: PresetId, serviceName: string): string {
   const blocked = `every ${serviceName} action stays blocked with a prompt to add the key until it is configured.`
   if (presetId === "astro-web") {
     return `Credential entry: the operator sets the ${serviceName} key as a server environment variable before deploy; a missing value makes the server route return a configuration error instead of calling ${serviceName}.`
   }
-  return `Credential entry: the user pastes the ${serviceName} API key into a masked settings field; the key goes straight to the placement above, the UI shows only configured or missing state, and ${blocked}`
+  return `Credential entry: the user pastes the ${credentialLabel(serviceName)} into a masked settings field; the key goes straight to the placement above, the UI shows only configured or missing state, and ${blocked}`
 }
 
 const ATOMIC_WRITE_SENTENCE = "Every write replaces the destination by renaming a temporary file in the same directory; a failed write leaves the previous file intact."
+const ATOMIC_TRANSACTION_SENTENCE = "Every write commits in one SQLite transaction; a failed write rolls back and leaves the previous rows intact."
+
+// The atomic guarantee follows the concrete store: files are swapped by rename, SQLite commits
+// transactionally, and stores that are already atomic per value need no extra rule.
+function atomicWriteDetail(placement: string): string | undefined {
+  if (/\bSQLite\b/.test(placement)) return ATOMIC_TRANSACTION_SENTENCE
+  if (/\bJSON\b|filesystem|\bfile\b/i.test(placement)) return ATOMIC_WRITE_SENTENCE
+  return undefined
+}
 
 const SESSION_MEMORY_PLACEMENT = "Held in memory for the session and not written to disk."
 const USER_SELECTED_FILE_PLACEMENT = "Local filesystem at user-selected paths via native open/save panels."
@@ -805,7 +821,10 @@ function persistencePlacement(
   }
   if (preset.id === "astro-web" && astroPlan?.browserPersistence) return preset.persistence.recordsPlacement
   if (item.storage === "session") return SESSION_MEMORY_PLACEMENT
-  if (!isNativeMacPreset(preset.id)) return item.temporary ? preset.persistence.temporaryPlacement : preset.persistence.recordsPlacement
+  if (!isNativeMacPreset(preset.id)) {
+    if (item.storage === "temporary") return preset.persistence.temporaryPlacement
+    return item.storage === "settings" ? preset.persistence.settingsPlacement : preset.persistence.recordsPlacement
+  }
   switch (item.storage) {
     case "temporary":
       return item.writeMode === "atomic-replace"
@@ -961,7 +980,7 @@ function buildOwnersAndContracts(
       credentialData ? `${preset.credentialPlacement} CredentialVault exclusively owns credential storage, retrieval, replacement, and deletion; DataStore receives no secret value.` : item.meaning,
       credentialData ? [...credentialDataDetails, `Retention: ${item.retention}`, `Sensitivity: ${item.sensitivity}`] : credentialDataDetails,
       credentialData ? "Missing, rejected, unreadable, replacement-failed, or deletion-failed credentials block only the affected provider action without exposing or copying a secret." : inMemoryData ? "A failed update leaves the last in-memory state valid." : "Reject invalid or incomplete records without replacing the last valid state.",
-      credentialData ? ["Preserve the prior Keychain value after failed replacement, report deletion only after Keychain confirms it, and expose an explicit replacement or provider-selection action."] : inMemoryData ? ["Keep the last in-memory value and rebuild it from its source on the next explicit action."] : ["Preserve the last valid record and expose a bounded correction or rebuild path."],
+      credentialData ? ["Preserve the prior stored credential after failed replacement, report deletion only after the credential store confirms it, and expose an explicit replacement or provider-selection action."] : inMemoryData ? ["Keep the last in-memory value and rebuild it from its source on the next explicit action."] : ["Preserve the last valid record and expose a bounded correction or rebuild path."],
     ))
   }
 
@@ -1041,7 +1060,7 @@ function buildOwnersAndContracts(
         `${persistenceDecision} ${item.purpose}`,
         [
           `Placement: ${placement}`,
-          ...(item.writeMode === "atomic-replace" && !item.temporary && !memoryResident ? [`Write mode: ${ATOMIC_WRITE_SENTENCE}`] : []),
+          ...(item.writeMode === "atomic-replace" && !item.temporary && !memoryResident && atomicWriteDetail(placement) ? [`Write mode: ${atomicWriteDetail(placement)}`] : []),
           `Retention: ${item.retention}`,
           `Deletion: ${item.deletionBehavior}`,
           `Sensitivity: ${item.sensitivity}`,

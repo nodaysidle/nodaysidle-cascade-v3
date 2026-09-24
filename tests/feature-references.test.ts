@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { compileProjectGraph, NormalizationError, normalizeBlueprint } from "../src/compiler"
+import { compilePacket, compileProjectGraph, NormalizationError, normalizeBlueprint } from "../src/compiler"
 import { auditSemanticIntake, type SemanticBlueprint } from "../src/schema"
 import { docsPortalBlueprint, fileOrganizerBlueprint, forecastGlanceBlueprint } from "./fixtures/blueprints"
 
@@ -87,7 +87,7 @@ describe("explicit feature references", () => {
     expect(recovery("exit")).toMatch(/Release partial resources before exiting/)
   })
 
-  it("adds the atomic write rule only for a declared atomic-replace data object", () => {
+  it("adds the store-specific atomic write rule only for a declared atomic-replace data object", () => {
     const blueprint = structuredClone(fileOrganizerBlueprint)
     blueprint.summary = `${blueprint.summary} Every journal save is written atomically by renaming a temporary file.`
     const writeMode = () => compileProjectGraph(normalizeBlueprint(blueprint, PRESET), PRESET)
@@ -96,7 +96,7 @@ describe("explicit feature references", () => {
 
     expect(writeMode()).toEqual([])
     blueprint.dataObjects[1]!.writeMode = "atomic-replace"
-    expect(writeMode()).toEqual([expect.stringMatching(/renaming a temporary file in the same directory/)])
+    expect(writeMode()).toEqual([expect.stringMatching(/commits in one SQLite transaction/)])
   })
 
   it("places Astro routes only from the declared surface, never from page wording", () => {
@@ -125,5 +125,27 @@ describe("explicit feature references", () => {
 
     blueprint.dataObjects[1]!.writeMode = "direct"
     expect(auditSemanticIntake(blueprint)).toContainEqual(expect.objectContaining({ path: "dataObjects[2]", rule: "semantic.unused-data-object" }))
+  })
+
+  it("places Tauri settings in JSON, keeps background running separate from launch at login, and words credentials per preset", async () => {
+    const blueprint = structuredClone(fileOrganizerBlueprint)
+    blueprint.dataObjects.push({ name: "Display preferences", purpose: "Remember the list density.", sensitivity: "internal", retentionIntent: "Keep until reset.", storage: "settings", writeMode: "atomic-replace" })
+    blueprint.externalServices.push({ name: "Rates API", purpose: "Fetch exchange rates.", dataSent: ["currency codes"], credentialRequired: true })
+    blueprint.features[0]!.usesData = [...blueprint.features[0]!.usesData, "Display preferences"]
+    blueprint.features[1]!.usesServices = ["Rates API"]
+    blueprint.features[1]!.usesPlatformNeeds = [...blueprint.features[1]!.usesPlatformNeeds, "network"]
+    blueprint.features[2]!.usesPlatformNeeds = [...blueprint.features[2]!.usesPlatformNeeds, "background-execution"]
+    const packet = await compilePacket(blueprint, "tauri2-rust-typescript-desktop")
+    const contract = (id: string) => packet.graph.contracts.find(item => item.id === id)
+    const text = Object.values(packet.documents).join("\n")
+
+    expect(packet.exportable).toBe(true)
+    expect(contract("CON-PERSISTENCE-DISPLAY-PREFERENCES")?.details).toContainEqual(expect.stringMatching(/^Placement: Atomic JSON/))
+    expect(contract("CON-PERSISTENCE-DISPLAY-PREFERENCES")?.details).toContainEqual(expect.stringMatching(/^Write mode: .*renaming a temporary file/))
+    expect(contract("CON-PERMISSION-BACKGROUND-EXECUTION")?.decision).toMatch(/prevent_exit/)
+    expect(contract("CON-PERMISSION-BACKGROUND-STARTUP")).toBeUndefined()
+    expect(text).not.toMatch(/autostart plugin/i)
+    expect(text).toContain("pastes the Rates API key into a masked settings field")
+    expect(text).not.toMatch(/API API|Keychain|connect_async/)
   })
 })

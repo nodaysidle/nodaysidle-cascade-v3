@@ -1,5 +1,29 @@
 # Audit changelog
 
+## Round 2, GUI packet audit fixes (2026-09-24, evening)
+
+A live GUI run (subscription tracker, Tauri) exposed defects one stage at a time; each was fixed in
+the compiler with a regression test: unused temporary atomic copy (`518e54e`), Jev per-feature
+question judged OS features by name (`ec7aeaf`, measured against Jev jev-1.13), `<date>` format
+tokens failing the export gate (`a157f89`). The packet then exported to
+`/Volumes/omarchyuser/projekti/renewalradar` and its audit found, now fixed:
+
+- Settings on Tauri, Astro, and Android used the records store; they now use the preset's
+  settings placement (Tauri: atomic JSON).
+- The atomic write rule said "rename a temporary file" for SQLite; SQLite now gets a transaction
+  rule, files keep the rename rule, and stores that are atomic per value get none.
+- `background-execution` (keep running after the window closes) now has its own capability and
+  per-preset decision (Tauri `prevent_exit`, AppKit `applicationShouldTerminateAfterLastWindowClosed`)
+  instead of the launch-at-login autostart contract.
+- `failureRecovery` instruction: fallback only when the failure names what the app switches to;
+  rejections and errors are retry.
+- Wording: "Keychain" removed from preset-neutral credential recovery, "X API API key" fixed, and
+  the optional streaming clauses removed from the Swift and Tauri integration instructions.
+
+Not changed: phase order within ready owners stays alphabetical by owner ID. Ordering by the
+blueprint's feature order broke the existing invariant that reversing the provider's feature order
+yields the same packet (`tests/graph-construction.test.ts`); the invariant was kept.
+
 ## Round 2, follow-up (2026-09-24, 14:10–14:40)
 
 Committed as `5511d19` together with round 2; not pushed. The app was rebuilt and installed with

@@ -34,5 +34,6 @@ describe("provider instructions", () => {
     expect(instructions).toContain("every dataObject must appear in some feature's usesData")
     expect(instructions).toContain("every externalService in some feature's usesServices")
     expect(instructions).toContain("Do not declare that temporary copy as its own dataObject")
+    expect(instructions).toContain("retry when the operation is rejected, blocked, or shows an error the user must act on")
   })
 })

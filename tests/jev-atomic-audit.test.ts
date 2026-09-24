@@ -97,6 +97,9 @@ describe("Opportunity 2: Jev Atomic Contract & Placement Auditor", () => {
     expect(request.nouls.some(n => n.id === jevFeatureVerifiableNoulId(0))).toBe(true)
     expect(request.nouls.some(n => n.id === jevFeatureCapabilityNoulId(0))).toBe(true)
     expect(request.nouls.some(n => n.id === jevFeatureVerifiableNoulId(1))).toBe(true)
+    const featureQuestion = request.nouls.find(n => n.id === jevFeatureVerifiableNoulId(1))!.question
+    expect(featureQuestion).toContain("`blueprint.features[1].acceptanceSignals`")
+    expect(featureQuestion).toContain("a test double may stand in for the OS")
     expect(request.nouls.some(n => n.id === jevFeatureCapabilityNoulId(1))).toBe(true)
 
     // Verify data nouls

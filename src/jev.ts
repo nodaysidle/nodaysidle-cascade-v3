@@ -311,7 +311,9 @@ export function buildJevAtomicAuditRequest(input: JevAtomicAuditRequestInput): J
     nouls.push({
       kind: "boolean",
       id: jevFeatureVerifiableNoulId(index),
-      question: `Can the acceptance signals for feature '${feature.name}' be mechanically asserted by automated programmatic unit or integration tests without human subjective impression?`,
+      // Point Jev at the exact signals and allow OS test doubles; naming the feature alone made it
+      // judge OS features by their names and block checkable notification or login signals.
+      question: `Judge only the strings in \`blueprint.features[${index}].acceptanceSignals\`. Can an automated test assert every one of them by checking concrete values, app state, files, or the requests the app sends to operating-system APIs (a test double may stand in for the OS)? Answer false if any signal depends on a person's opinion or feeling.`,
     })
     nouls.push({
       kind: "choice",

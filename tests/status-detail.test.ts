@@ -33,5 +33,6 @@ describe("provider instructions", () => {
     const instructions = buildBlueprintInstructions({ idea: "A file organizer." })
     expect(instructions).toContain("every dataObject must appear in some feature's usesData")
     expect(instructions).toContain("every externalService in some feature's usesServices")
+    expect(instructions).toContain("Do not declare that temporary copy as its own dataObject")
   })
 })

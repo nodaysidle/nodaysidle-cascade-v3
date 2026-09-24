@@ -113,4 +113,17 @@ describe("explicit feature references", () => {
     expect(pages()).toEqual(["src/pages/guides/[slug].astro", "src/pages/about.astro", "src/pages/404.astro"])
     expect(plan().contentCollection).toBe("guides")
   })
+
+  it("links an undeclared-use temporary atomic copy to the features that save atomic data", () => {
+    const blueprint = structuredClone(fileOrganizerBlueprint)
+    blueprint.dataObjects[1]!.writeMode = "atomic-replace"
+    blueprint.dataObjects.push({ name: "Store write temporary copy", purpose: "In-progress copy of a journal save.", sensitivity: "personal", retentionIntent: "Removed after the rename or on the next save attempt.", storage: "temporary", writeMode: "atomic-replace" })
+
+    expect(auditSemanticIntake(blueprint).filter(issue => issue.rule === "semantic.unused-data-object")).toEqual([])
+    const graph = compileProjectGraph(normalizeBlueprint(blueprint, PRESET), PRESET)
+    expect(graph.contracts.find(contract => contract.id === "CON-PERSISTENCE-STORE-WRITE-TEMPORARY-COPY")?.featureIds).toEqual(["FEAT-REVERSIBLE-BATCH"])
+
+    blueprint.dataObjects[1]!.writeMode = "direct"
+    expect(auditSemanticIntake(blueprint)).toContainEqual(expect.objectContaining({ path: "dataObjects[2]", rule: "semantic.unused-data-object" }))
+  })
 })

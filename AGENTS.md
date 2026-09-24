@@ -31,7 +31,9 @@ The only stack-specific knowledge lives in `src/presets.ts` (plus `src/astroWeb.
   persistence, and integration contracts link only to the features that declare them.
 - Each data object declares `storage` (settings, records, document, secret, temporary, session);
   the preset maps that kind to a concrete store. It also declares `writeMode` (direct,
-  atomic-replace), which sets the atomic-write rule and temporary-file placement.
+  atomic-replace), which sets the atomic-write rule and temporary-file placement. A temporary
+  atomic-replace object is the in-progress copy of atomic saves and links to every feature that
+  uses a stored atomic-replace object (`featureDataUses` in `src/schema.ts`).
 - Each feature declares `failureRecovery` (retry, fallback, exit) and `surface` (main, item-page,
   about-page, not-found-page); Astro routes come from `surface`, and the content collection is
   named after the declared public data object.

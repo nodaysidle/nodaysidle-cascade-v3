@@ -2,7 +2,7 @@ import { auditAgentReadinessGraph, auditMechanicalGraph, auditPacket, auditProje
 import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS, planAstroWeb, type AstroRoutePlan } from "./astroWeb"
 import { PRESETS, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
 import { renderPacket } from "./renderers"
-import { featureReferenceIssues, referenceKey, type DataStorage, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
+import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
 
@@ -454,7 +454,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       requiredCapabilities: [],
       resourceIds: [],
       usesPlatformNeeds: unique(feature.usesPlatformNeeds),
-      usesData: unique(feature.usesData.map(name => dataNameByKey.get(referenceKey(name))!)),
+      usesData: unique(featureDataUses(source, feature).map(name => dataNameByKey.get(referenceKey(name))!)),
       usesServices: unique(feature.usesServices.map(name => serviceNameByKey.get(referenceKey(name))!)),
       surface: feature.surface,
     }

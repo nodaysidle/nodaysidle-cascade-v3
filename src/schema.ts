@@ -251,6 +251,20 @@ export function referenceKey(name: string): string {
   return name.normalize("NFKC").trim().replace(/\s+/g, " ").replace(/[.]+$/, "").toLocaleLowerCase("en-US")
 }
 
+// A temporary atomic-replace data object is the in-progress copy of atomic saves, so it belongs to
+// every feature that uses a stored atomic-replace data object. Declared fields decide this, never wording.
+export function featureDataUses(blueprint: SemanticBlueprint, feature: SemanticBlueprint["features"][number]): string[] {
+  const byKey = new Map(blueprint.dataObjects.map(item => [referenceKey(item.name), item]))
+  const writesAtomicData = feature.usesData.some(name => {
+    const item = byKey.get(referenceKey(name))
+    return item?.writeMode === "atomic-replace" && item.storage !== "temporary"
+  })
+  if (!writesAtomicData) return [...feature.usesData]
+  const scratch = blueprint.dataObjects.filter(item => item.storage === "temporary" && item.writeMode === "atomic-replace").map(item => item.name)
+  const listed = new Set(feature.usesData.map(referenceKey))
+  return [...feature.usesData, ...scratch.filter(name => !listed.has(referenceKey(name)))]
+}
+
 export function featureReferenceIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
   const issues: SemanticIssue[] = []
   const dataKeys = new Set(blueprint.dataObjects.map(item => referenceKey(item.name)))
@@ -267,6 +281,7 @@ export function featureReferenceIssues(blueprint: SemanticBlueprint): SemanticIs
       else issues.push({ path: `features[${featureIndex}].usesServices[${index}]`, rule: "semantic.unknown-service-reference", message: `Feature '${feature.name}' references service '${name}', which is not a declared externalService.` })
     })
   })
+  blueprint.features.forEach(feature => featureDataUses(blueprint, feature).forEach(name => usedData.add(referenceKey(name))))
   blueprint.dataObjects.forEach((item, index) => {
     if (!usedData.has(referenceKey(item.name))) issues.push({ path: `dataObjects[${index}]`, rule: "semantic.unused-data-object", message: `No feature lists '${item.name}' in usesData, so no feature owns it.` })
   })
@@ -315,7 +330,7 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "For every feature, list in usesPlatformNeeds each platform need that feature itself exercises, in usesData the exact names of the dataObjects it reads or writes, and in usesServices the exact names of the externalServices it calls. Use empty arrays when a feature uses none. Every name must match a declared dataObject or externalService exactly. Declare a dataObject or externalService only when at least one feature lists it: every dataObject must appear in some feature's usesData and every externalService in some feature's usesServices, or the blueprint is rejected.",
     "For every dataObject, set storage to settings for small user preferences, records for structured app-owned records or history, document for files the user opens or saves, secret for API keys, tokens, or other credentials, temporary for short-lived files removed automatically, and session for values held in memory and never written to disk.",
     "For every feature, set failureRecovery to exit when its failure outcome ends the app or process, fallback when the failure outcome switches automatically to a stated default or alternative, and retry otherwise. Set surface to item-page when the feature is shown on its own page per item with a direct link, about-page when it is the product's about or background page, not-found-page when it handles unknown links, and main otherwise.",
-    "For every dataObject, set writeMode to atomic-replace when a save must never leave a partially written copy (it is written to a temporary copy and swapped in whole), and direct otherwise. A temporary dataObject that is that in-progress copy also uses atomic-replace.",
+    "For every dataObject, set writeMode to atomic-replace when a save must never leave a partially written copy (it is written to a temporary copy and swapped in whole), and direct otherwise. Do not declare that temporary copy as its own dataObject; writeMode atomic-replace on the stored dataObject already covers it.",
     `Software idea: ${input.idea.trim()}`,
   ].join("\n\n")
 }

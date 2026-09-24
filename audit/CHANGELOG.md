@@ -1,5 +1,42 @@
 # Audit changelog
 
+## Round 2, follow-up (2026-09-24, 14:10–14:40)
+
+Committed as `5511d19` together with round 2; not pushed. The app was rebuilt and installed with
+`npm run install:app -- --clean` (binary 14:28, codesign verified, launches).
+
+- **Astro palette:** dark-first Void Black (`#0B0F14`) is the default; it switches to light-first only
+  when the summary, quality requirements, or constraints explicitly ask for a light palette, theme,
+  or mode. Test in `tests/astro-markdown-quality.test.ts`.
+- **Item 7, Jev boundary test flake — root cause fixed:** on macOS an accepted socket inherits the
+  listener's nonblocking mode, so the mock's first `read` returned `WouldBlock` and it answered
+  before the request arrived (hyper `UnexpectedMessage` → `transport`). The mock now switches the
+  stream to blocking, reads the full request (headers + content-length body), and waits up to 3 s
+  for the first connection. The original file failed 2/30 idle and 5/10 under a parallel release
+  build; the fix passed 40/40 idle and 15/15 under load. Suite time unchanged (0.76 s).
+- **Item 1, key cleanup:** README probe now reads the key at a hidden prompt (fish and zsh forms
+  tested with a dummy value). The leaked entry was deleted from fish history with `history delete`
+  and replaced with `sk-***` in Cursor transcript `9c514138…`; both now have 0 matches. Rotation
+  is still yours.
+- **Item 8, global instructions** (outside the repo; backups in
+  `/Volumes/omarchyuser/COMPILER/audit-backups/global-instructions-*`): deleted the duplicate
+  `COMPILER/CLAUDE.md`; delegation rule aligned; Context7 rule rewritten without boosters (same
+  requirement); Obsidian three-heading ritual replaced; workspace atlas moved verbatim to
+  `~/.claude/workspace-atlas.md` with a short pointer; React/Tailwind persona scoped to React,
+  Next.js, and Tailwind projects; commit guidelines kept global. Git-safety, secret, deploy, test,
+  and approval rules verified unchanged.
+
+### Still open
+
+- The live probe of the new provider schema needs your key (README form).
+- Key-shaped strings (`sk-` + 32 or more characters) remain in about 20 other agent logs (Cursor
+  projects for hermes and prd-compiler-v2-lab, Cursor `aaaa67af` for this repo, and Antigravity
+  `brain/*` transcripts). Not touched: out of scope, and some may be other keys or test values.
+  Rotating the affected keys is the fix.
+- `src-tauri/src/lib.rs` `delayed_server` unit-test helper still starts its hold window at spawn
+  (same pattern as the old Jev mock, but it never answers, so it can't hit the race above).
+- A fresh-session check that the scoped persona no longer applies here was not run.
+
 ## Round 2 (2026-09-24, afternoon)
 
 Nothing is committed or pushed, and the app in `/Applications` was not rebuilt. Final checks:

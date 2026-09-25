@@ -244,6 +244,26 @@ export const forecastGlanceBlueprint = blueprint({
   productConstraints: ["Send only coordinates to the weather service.", "Never display or log the API key after it is saved."],
 })
 
+export const scanDrawerBlueprint = blueprint({
+  productName: "Scan Drawer",
+  summary: "A local drawer for scanned paper documents that copies each imported PDF or image into its own library folder, tags it, and keeps everything on the device.",
+  targetUsers: ["People who keep scanned paperwork on their own computer"],
+  goals: ["Keep scans in a local library without network access", "Find scans by tag"],
+  nonGoals: ["No OCR or automatic text extraction", "No cloud sync"],
+  features: [
+    feature("Scan import", "Add scanned files to the library", "The app copies each chosen PDF, PNG, or JPEG into its own library folder under a generated file name and creates a scan record that points to the copy.", "After importing one PDF, the library folder contains exactly one new file with the same bytes.", { platform: ["filesystem"], data: ["Stored scans", "Scan index"] }),
+    feature("Scan removal", "Remove a scan and its copy", "On confirmation, the app deletes the scan record and removes its copied file from the library folder.", "After removal, no file exists at the removed scan's copied path.", { data: ["Stored scans", "Scan index"] }),
+    feature("Tag filter", "Narrow the list to one tag", "Selecting a tag shows only scans with that tag; if the saved tag list cannot be read, the list shows every scan.", "With scans tagged Home and Work, selecting Home shows only the Home scans.", { data: ["Scan index", "Drawer preferences"], recovery: "fallback" }),
+  ],
+  dataObjects: [
+    { name: "Stored scans", purpose: "The copied scan files the app keeps in its own library folder.", sensitivity: "personal", retentionIntent: "Keep until the user removes the scan.", storage: "app-files", writeMode: "direct" },
+    { name: "Scan index", purpose: "One record per scan with its tag and the name of its copied file.", sensitivity: "personal", retentionIntent: "Keep until the user removes the scan.", storage: "records", writeMode: "direct" },
+    { name: "Drawer preferences", purpose: "The saved tag list and the selected tag.", sensitivity: "internal", retentionIntent: "Keep until the user changes it.", storage: "settings", writeMode: "direct" },
+  ],
+  platformNeeds: ["filesystem", "local-storage"],
+  productConstraints: ["Never upload scans.", "Never modify the original file the user chose."],
+})
+
 export const sharedOutcome = "Every saved change appears in the next export"
 
 export function sharedAcceptanceBlueprint(): SemanticBlueprint {

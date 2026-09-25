@@ -196,6 +196,7 @@ export interface ProjectGraph {
     readonly decision: string
     readonly settingsPlacement: string
     readonly recordsPlacement: string
+    readonly appFilesPlacement?: string
   }
   readonly signingDecision: string
   readonly installationDecision: string
@@ -412,8 +413,10 @@ function deriveProblemStatement(targetUsers: readonly string[], goals: readonly 
   const goalText = primaryGoal.replace(/\.$/, "")
   const avoidText = avoided.replace(/\.$/, "").replace(/^(?:no|never|not|without)\s+/i, "")
   const verb = /^(?:a|an|one|each|every)\b/i.test(audience) ? "needs" : "need"
-  const lowerFirst = (text: string) => `${text.charAt(0).toLowerCase()}${text.slice(1)}`
-  return `${audience} ${verb} a focused way to ${lowerFirst(goalText)} without ${lowerFirst(avoidText)}.`
+  // Lowercase only a capitalized ordinary word; acronyms such as OCR or API keep their case.
+  const lowerFirst = (text: string) => /^[A-Z][a-z]/.test(text) ? `${text.charAt(0).toLowerCase()}${text.slice(1)}` : text
+  const joiner = /\bwithout\b/i.test(goalText) ? "and without" : "without"
+  return `${audience} ${verb} a focused way to ${lowerFirst(goalText)} ${joiner} ${lowerFirst(avoidText)}.`
 }
 
 function astroContentSiteSemantics(source: SemanticBlueprint, presetId: PresetId): boolean {
@@ -710,10 +713,12 @@ function lowerAcceptanceOwnership(sourceFeatures: readonly GraphFeature[]): {
   const requirements = features.map(feature => {
     const ownedAcceptance = acceptance.filter(item => item.kind === "feature" && item.featureIds[0] === feature.id)
     const behaviorText = feature.behavior.trim()
-    const statement = /^(?:the\s+|this\s+|if\s+|when\s+|after\s+|before\s+|while\s+|during\s+|once\s+|unless\s+|a\s+|an\s+)/i.test(behaviorText)
+    // A behavior that is already a full sentence stays verbatim; only a bare lowercase predicate
+    // gets a subject.
+    const statement = /^(?:must\s+|shall\s+)/i.test(behaviorText)
+      ? `The product ${behaviorText.charAt(0).toLowerCase()}${behaviorText.slice(1)}`
+      : /^[A-Z]/.test(behaviorText) || /^(?:the\s+|this\s+|if\s+|when\s+|after\s+|before\s+|while\s+|during\s+|once\s+|unless\s+|a\s+|an\s+)/i.test(behaviorText)
       ? behaviorText
-      : /^(?:must\s+|shall\s+)/i.test(behaviorText)
-      ? `The product ${behaviorText}`
       : `The product must ${behaviorText}`
     return {
       id: feature.id.replace(/^FEAT-/, "REQ-"),
@@ -813,7 +818,7 @@ function atomicWriteDetail(placement: string): string | undefined {
 }
 
 const SESSION_MEMORY_PLACEMENT = "Held in memory for the session and not written to disk."
-const USER_SELECTED_FILE_PLACEMENT = "Local filesystem at user-selected paths via native open/save panels."
+export const USER_SELECTED_FILE_PLACEMENT = "Local filesystem at user-selected paths via native open/save panels."
 const ATOMIC_RENAME_SCRATCH_PLACEMENT = "A temporary file in the destination file's own directory, renamed over the destination on success and removed on failure; never in temporaryDirectory or Application Support."
 
 function persistencePlacement(
@@ -831,6 +836,7 @@ function persistencePlacement(
   }
   if (preset.id === "astro-web" && astroPlan?.browserPersistence) return preset.persistence.recordsPlacement
   if (item.storage === "session") return SESSION_MEMORY_PLACEMENT
+  if (item.storage === "app-files") return preset.persistence.appFilesPlacement(identity)
   if (!isNativeMacPreset(preset.id)) {
     if (item.storage === "temporary") return preset.persistence.temporaryPlacement
     return item.storage === "settings" ? preset.persistence.settingsPlacement : preset.persistence.recordsPlacement
@@ -847,6 +853,22 @@ function persistencePlacement(
     case "records":
       return `SQLite at Application Support/${identity.bundleId}/${identity.slug}.sqlite3 under the matching record schema.`
   }
+}
+
+// Names only the native stores the blueprint declares, in a fixed order, so the summary never
+// claims a store (SQLite, user-selected files) that no persistence contract uses.
+function nativePersistenceStores(declared: ReadonlySet<string>): string[] {
+  return [
+    declared.has("settings") ? "UserDefaults for lightweight settings" : undefined,
+    declared.has("records") ? "SQLite for durable record collections in Application Support" : undefined,
+    declared.has("document") ? "local filesystem at user-selected paths for document storage" : undefined,
+    declared.has("app-files") ? "app-owned files in Application Support" : undefined,
+  ].filter((store): store is string => store !== undefined)
+}
+
+function joinWithAnd(items: readonly string[]): string {
+  if (items.length < 3) return items.join(" and ")
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`
 }
 
 function nativePackagingDetails(preset: PresetContract, identity: ProjectIdentity, needsMicrophone = false): string[] {
@@ -1052,6 +1074,8 @@ function buildOwnersAndContracts(
           ? preset.persistence.enabledDecision
           : memoryResident
             ? "Kept in memory for the session and not written to disk."
+            : item.storage === "app-files"
+            ? "Persistence: app-owned files kept in the app's own data folder."
             : /\bSQLite\b/.test(placement)
               ? preset.persistence.enabledDecision
               : /\bUserDefaults\b/.test(placement)
@@ -1415,13 +1439,17 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
   const { ownerDrafts, contracts } = buildOwnersAndContracts(blueprint, preset, identity, features, astroPlan, integrationServices)
   const { owners, phases } = buildPhases(preset, identity, ownerDrafts, contracts, features, requirements, acceptance, astroPlan, integrationServices)
   const persistenceEnabled = blueprint.persistenceNeeds.length > 0
-  const isDocNativeMac = isNativeMacPreset(presetId) && !blueprint.persistenceNeeds.some(p => p.storage === "records")
+  const declaredStorage = new Set(blueprint.persistenceNeeds.map(p => p.storage))
+  const isDocNativeMac = isNativeMacPreset(presetId) && !declaredStorage.has("records")
+  const nativeStores = isNativeMacPreset(presetId) ? nativePersistenceStores(declaredStorage) : []
   const persistenceDecision = persistenceEnabled
     ? astroPlan?.usesContentCollections
       ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.enabledDecision
       : astroPlan?.browserPersistence
         ? preset.persistence.enabledDecision
-        : isDocNativeMac
+        : nativeStores.length
+          ? `Persistence: enabled with ${joinWithAnd(nativeStores)}.`
+          : isDocNativeMac
           ? "Persistence: enabled with UserDefaults for lightweight settings and local filesystem at user-selected paths for document storage."
           : preset.persistence.enabledDecision
     : preset.persistence.disabledDecision
@@ -1431,8 +1459,15 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
   const persistenceRecords = astroPlan?.usesContentCollections
     ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.recordsPlacement.replace("{collection}", astroPlan.contentCollection)
     : isDocNativeMac
-      ? USER_SELECTED_FILE_PLACEMENT
+      ? declaredStorage.has("document") || !declaredStorage.has("app-files")
+        ? USER_SELECTED_FILE_PLACEMENT
+        : "No record collection is declared."
       : preset.persistence.recordsPlacement
+  // Read back from the rendered contract so the summary always matches the per-object placement.
+  const appFilesData = blueprint.persistenceNeeds.find(p => p.storage === "app-files")?.data
+  const appFilesPlacement = appFilesData
+    ? contracts.find(item => item.kind === "persistence" && item.name === `${appFilesData} persistence`)?.details.find(detail => detail.startsWith("Placement: "))?.slice("Placement: ".length)
+    : undefined
 
   const effectiveIntegrationBoundary = integrationServices.length === 0 && !blueprint.platformNeeds.includes("network")
     ? "Standalone local application: no remote network endpoints, cloud credentials, or third-party web services are used."
@@ -1459,6 +1494,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
       decision: persistenceDecision,
       settingsPlacement: persistenceSettings,
       recordsPlacement: persistenceRecords,
+      ...(appFilesPlacement ? { appFilesPlacement } : {}),
     },
     signingDecision: preset.signingDecision(identity),
     installationDecision: preset.installationDecision(identity),

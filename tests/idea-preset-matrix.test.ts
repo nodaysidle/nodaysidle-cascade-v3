@@ -12,6 +12,7 @@ import {
   landingPageBlueprint,
   networkMonitorBlueprint,
   photoCleanerBlueprint,
+  scanDrawerBlueprint,
   trailChecklistBlueprint,
 } from "./fixtures/blueprints"
 
@@ -26,6 +27,7 @@ const ideas: readonly SemanticBlueprint[] = [
   habitTrackerBlueprint,
   trailChecklistBlueprint,
   forecastGlanceBlueprint,
+  scanDrawerBlueprint,
 ]
 
 const matrix = ideas.flatMap(blueprint => PRESET_IDS.map(presetId => ({ idea: blueprint.productName, presetId, blueprint })))
@@ -87,5 +89,43 @@ describe("every idea compiles to an agent-ready packet in every preset", () => {
     if (presetId.startsWith("native-macos") && packet.documents["TRD.md"].includes("@Observable")) {
       expect(packet.documents["TRD.md"]).toContain("LSMinimumSystemVersion = 14.0")
     }
+  })
+})
+
+describe("declared storage, recovery, and sentence form stay precise", () => {
+  test.for(PRESET_IDS)("Scan Drawer × %s", async presetId => {
+    const packet = await compilePacket(scanDrawerBlueprint, presetId)
+    const text = Object.values(packet.documents).join("\n")
+    expect(packet.failures).toEqual([])
+
+    // App-owned files never land at user-selected paths.
+    const stored = packet.graph.contracts.find(item => item.id === "CON-PERSISTENCE-STORED-SCANS")!
+    expect(stored.details.find(detail => detail.startsWith("Placement:"))).not.toMatch(/at user-selected paths/)
+    if (presetId !== "astro-web") {
+      expect(stored.details).toContain(`Placement: ${PRESETS[presetId].persistence.appFilesPlacement(packet.graph.identity)}`)
+    }
+    if (presetId.startsWith("native-macos")) {
+      expect(stored.details).toContain(`Placement: Files in Application Support/${packet.graph.identity.bundleId}/Files/, created only by the app under generated unique file names; stored references hold the file name relative to that folder, never an absolute path or a user-selected location.`)
+      expect(packet.documents["ARD.md"]).toContain(`- App files: ${PRESETS[presetId].persistence.appFilesPlacement(packet.graph.identity)}`)
+      expect(packet.graph.persistence.decision).toBe("Persistence: enabled with UserDefaults for lightweight settings, SQLite for durable record collections in Application Support, and app-owned files in Application Support.")
+    }
+
+    // A declared automatic fallback never sits next to a rule that forbids non-user retries.
+    const fallback = packet.graph.contracts.find(item => item.id === "CON-TAG-FILTER-RECOVERY")!
+    expect(fallback.recovery.join(" ")).toContain("Apply the stated fallback automatically")
+    expect(text).not.toContain("Use explicit user retries only")
+
+    // Full-sentence behaviors stay verbatim; no requirement reads "The product must On ...".
+    expect(text).not.toMatch(/The product must [A-Z]/)
+    const removal = packet.graph.requirements.find(item => item.featureId === "FEAT-SCAN-REMOVAL")!
+    expect(removal.statement).toBe(scanDrawerBlueprint.features[1]!.behavior)
+
+    // Acronyms keep their case and "without" is not chained.
+    expect(packet.documents["PRD.md"]).toContain("need a focused way to keep scans in a local library without network access and without OCR or automatic text extraction.")
+
+    // The ARD lifecycle section lists each lifecycle contract once.
+    const lifecycle = packet.documents["ARD.md"].split("## Platform Lifecycle")[1]!.split("\n## ")[0]!.split("\n").filter(line => line.startsWith("- "))
+    expect(new Set(lifecycle).size).toBe(lifecycle.length)
+    expect(lifecycle.length).toBe(packet.graph.contracts.filter(item => item.kind === "lifecycle").length)
   })
 })

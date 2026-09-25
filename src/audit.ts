@@ -3,6 +3,7 @@ import {
   type ContractKind,
   type DocumentName,
   type ProjectGraph,
+  USER_SELECTED_FILE_PLACEMENT,
 } from "./compiler"
 import { PRESET_IDS, PRESETS, type PresetContract } from "./presets"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
@@ -387,6 +388,19 @@ function collectGraphFailures(graph: ProjectGraph): AuditFailure[] {
       if (missing.length || positiveForbiddenPlacement) {
         failures.push(failure("contract.persistence-placement", item.id, `${item.id} must place credentials only in macOS Keychain and explicitly forbid every generic store.`))
       }
+    }
+  }
+
+  // Files the app keeps in its own folder must never be placed at user-selected paths, and user
+  // documents must never be placed in the app's own folder.
+  for (const item of graph.presetId === "astro-web" ? [] : graph.contracts.filter(contract => contract.kind === "persistence")) {
+    const placement = item.details.find(detail => detail.startsWith("Placement:")) ?? ""
+    const storage = persistenceStorage(graph, item.name)
+    if (storage === "app-files" && placement !== `Placement: ${PRESETS[graph.presetId].persistence.appFilesPlacement(graph.identity)}`) {
+      failures.push(failure("contract.persistence-placement", item.id, `${item.id} must place app-owned files in the preset's app data folder.`))
+    }
+    if (storage === "document" && nativeMac && placement !== `Placement: ${USER_SELECTED_FILE_PLACEMENT}`) {
+      failures.push(failure("contract.persistence-placement", item.id, `${item.id} must place user documents only at user-selected paths.`))
     }
   }
 

@@ -63,6 +63,7 @@ export interface PresetContract {
     readonly settingsPlacement: string
     readonly recordsPlacement: string
     readonly temporaryPlacement: string
+    readonly appFilesPlacement: (identity: ProjectIdentity) => string
   }
   readonly credentialPlacement: string
   readonly permissionPatterns: Readonly<Record<PermissionCapability, string>>
@@ -221,12 +222,13 @@ const swiftDesktop: PresetContract = {
   runtimeMode: () => "native",
   runtimeArchitecture: ["Use an @main SwiftUI App entry with WindowGroup; one @Observable @MainActor AppState owns presentation state, feature services are injected at the composition root, and AppKit adapters remain in Platform owners.", "Run I/O and provider work in cancellable async tasks or actors off the main actor and publish UI state on the main actor."],
   integrationBoundary: "Use one actor-owned URLSession boundary with URLSession.data(for:) for HTTPS requests; encode and decode typed Codable DTOs, map failures before they reach UI state, and never expose raw response bodies.",
-  recoveryRules: ["Represent operations as idle, active, succeeded, failed, or cancelled and preserve the last valid user state.", "Use explicit user retries only; cancel tasks and close streams, file handles, delegates, and temporary resources on every terminal path."],
+  recoveryRules: ["Represent operations as idle, active, succeeded, failed, or cancelled and preserve the last valid user state.", "Start a retry only from an explicit user action; a declared automatic fallback is not a retry. Cancel tasks and close streams, file handles, delegates, and temporary resources on every terminal path."],
   persistence: {
     enabledDecision: "Persistence: enabled with UserDefaults for lightweight settings and SQLite for durable record collections in Application Support.",
     disabledDecision: "Persistence: disabled; keep transient state in memory and write no application records between launches.",
     settingsPlacement: "UserDefaults with versioned keys and explicit reset behavior.",
     recordsPlacement: "SQLite in Application Support with schema-versioned transactional migrations and owner-scoped repositories.",
+    appFilesPlacement: identity => `Files in Application Support/${identity.bundleId}/Files/, created only by the app under generated unique file names; stored references hold the file name relative to that folder, never an absolute path or a user-selected location.`,
     temporaryPlacement: "Use FileManager.default.temporaryDirectory with one per-operation subdirectory; retain it only for an explicit recovery decision and verify deletion after success, discard, or exhausted recovery.",
   },
   credentialPlacement: "Store API keys in macOS Keychain only, with the project bundle ID as service and a deterministic provider-account name.",
@@ -305,6 +307,7 @@ const tauriDesktop: PresetContract = {
     disabledDecision: "Persistence: disabled; keep transient state in memory and create no app-data files.",
     settingsPlacement: "Atomic JSON in the Tauri app-data directory through one Rust command boundary.",
     recordsPlacement: "SQLite in the Tauri app-data directory with migrations and transactions owned by Rust.",
+    appFilesPlacement: () => "Files in the files/ subdirectory of the Tauri app-data directory, created only by Rust under generated unique file names; stored references hold the file name relative to that folder, never an absolute path or a user-selected location.",
     temporaryPlacement: "Use the Tauri app-cache directory with one random per-operation file owned by Rust; retain only for explicit recovery and delete on success, discard, cancellation, or exhausted recovery.",
   },
   credentialPlacement: "Store external credentials through a Rust platform credential-vault adapter; never expose stored values to the frontend after insertion.",
@@ -365,6 +368,7 @@ const astroWeb: PresetContract = {
     disabledDecision: "Persistence: disabled. No application data is retained between visits; static assets use ordinary HTTP caching only.",
     settingsPlacement: "Build-time content schema in src/content/config.ts; browser-only settings use IndexedDB only when semantics explicitly require client-side retention.",
     recordsPlacement: "Public catalog records live in src/content/{collection}/ and compile through getCollection(); authenticated remote records require an explicit server-rendered contract.",
+    appFilesPlacement: () => "Blobs in a dedicated IndexedDB object store keyed by generated unique IDs; stored references hold that ID, never a file path or build-time content.",
     temporaryPlacement: "Keep temporary values in memory as Blob or structured state and revoke object URLs on completion; do not mirror build-time catalog data into IndexedDB.",
   },
   credentialPlacement: "Never ship service credentials to the browser; a required secret switches output to server rendering and reads the deployment secret at request time.",
@@ -416,12 +420,13 @@ const androidCompose: PresetContract = {
   runtimeMode: () => "android",
   runtimeArchitecture: ["MainActivity.setContent hosts a Material 3 Compose tree; ViewModels expose immutable StateFlow UI state and call repository or platform-service owners through constructor-injected interfaces.", "Collect state with lifecycle-aware Compose APIs, run I/O in structured coroutines off the main dispatcher, and keep Activity instances free of durable state."],
   integrationBoundary: "Use HttpsURLConnection inside a coroutine-backed service or repository owner, map JSON into locked Kotlin data classes before returning, close streams in finally blocks, and expose only privacy-safe typed failures to ViewModels.",
-  recoveryRules: ["Model loading, success, empty, denied, failed, and cancelled states explicitly in immutable UI state.", "Use structured coroutine cancellation, Room transactions, and cache-file cleanup; retries and provider changes always require an explicit user action."],
+  recoveryRules: ["Model loading, success, empty, denied, failed, and cancelled states explicitly in immutable UI state.", "Use structured coroutine cancellation, Room transactions, and cache-file cleanup; retries and provider changes always require an explicit user action, and a declared automatic fallback is not a retry."],
   persistence: {
     enabledDecision: "Persistence: enabled with DataStore for settings and Room for record collections behind repository boundaries.",
     disabledDecision: "Persistence: disabled; ViewModel state is transient and no application records survive process death.",
     settingsPlacement: "Preferences DataStore with typed keys and explicit reset behavior.",
     recordsPlacement: "Room entities, DAO transactions, migrations, and repository APIs for durable records.",
+    appFilesPlacement: () => "Files in File(context.filesDir, \"files\"), created only by the app under generated unique file names; stored references hold the file name relative to that folder, never an absolute path or a user-selected location.",
     temporaryPlacement: "Use Context.cacheDir with one per-operation file; retain only for explicit recovery and delete after success, discard, cancellation, or exhausted recovery.",
   },
   credentialPlacement: "Store app-owned credentials with Android Keystore-backed encryption and never expose decrypted values to Compose state.",

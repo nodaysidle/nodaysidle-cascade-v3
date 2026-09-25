@@ -1,5 +1,28 @@
 # Audit changelog
 
+## ReceiptShelf packet audit, native macOS desktop (2026-09-26)
+
+Compiler findings, each fixed with the Scan Drawer fixture in `tests/idea-preset-matrix.test.ts`:
+
+- The schema had no storage kind for files the app copies or creates in its own folder, so an
+  app-owned library was placed at user-selected paths. New storage kind `app-files`, mapped per
+  preset (`appFilesPlacement`): Application Support/<bundle ID>/Files/ on macOS, the Tauri
+  app-data `files/` folder, `File(context.filesDir, "files")` on Android, an IndexedDB object store
+  on Astro. The audit blocks export when app files or native documents are misplaced, and ARD
+  names the app-file placement. Needs one live probe because the provider schema changed.
+- The native and Android recovery rules forbade any non-user retry, contradicting features that
+  declare an automatic fallback. The rules now say a declared fallback is not a retry.
+- Behaviors that were already full sentences got a "The product must" prefix ("The product must
+  On confirmation…"). Capitalized sentences now stay verbatim.
+- The problem statement lowercased acronyms ("oCR") and chained "without … without". Acronyms keep
+  their case and the second clause joins with "and without".
+- ARD Platform Lifecycle repeated every lifecycle rule three times; it now lists each lifecycle
+  contract once.
+
+Idea findings (not compiler work): new receipts were created with an empty currency although the
+default currency applies to new receipts; `filesystem` declared on features that do not use it;
+the CSV export declared no atomic-replace data object.
+
 ## Tauri local proof without the DMG step (2026-09-25)
 
 `npm run tauri:build` built a DMG whose Finder styling step times out in headless agent sessions

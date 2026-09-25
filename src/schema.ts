@@ -38,7 +38,7 @@ const FeatureSchema = z.strictObject({
   usesServices: z.array(shortMeaning).max(8),
 })
 
-export const DataStorageSchema = z.enum(["settings", "records", "document", "secret", "temporary", "session"])
+export const DataStorageSchema = z.enum(["settings", "records", "document", "app-files", "secret", "temporary", "session"])
 export const DataWriteModeSchema = z.enum(["direct", "atomic-replace"])
 
 const DataObjectSchema = z.strictObject({
@@ -330,7 +330,7 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "Use no more than twelve features and no more than eight values in each prose list. List a platform need only when a stated feature uses it. Do not add features, settings, or platform needs that the idea does not ask for.",
     "Every acceptance signal checks only the behavior of its own feature. Never repeat a behavior that another feature owns.",
     "For every feature, list in usesPlatformNeeds each platform need that feature itself exercises, in usesData the exact names of the dataObjects it reads or writes, and in usesServices the exact names of the externalServices it calls. Use empty arrays when a feature uses none. Every name must match a declared dataObject or externalService exactly. Declare a dataObject or externalService only when at least one feature lists it: every dataObject must appear in some feature's usesData and every externalService in some feature's usesServices, or the blueprint is rejected.",
-    "For every dataObject, set storage to settings for small user preferences, records for structured app-owned records or history, document for files the user opens or saves, secret for API keys, tokens, or other credentials, temporary for short-lived files removed automatically, and session for values held in memory and never written to disk.",
+    "For every dataObject, set storage to settings for small user preferences, records for structured app-owned records or history, document for files the user opens or saves at a location the user chooses, app-files for files the app itself copies or creates and keeps in its own folder (such as imported attachments, photos, or recordings), secret for API keys, tokens, or other credentials, temporary for short-lived files removed automatically, and session for values held in memory and never written to disk.",
     "For every feature, set failureRecovery to exit when its failure outcome ends the app or process; fallback only when the failure outcome itself names data or a default the app switches to automatically so the user does nothing (for example the last cached rates or the previous saved value); and retry when the operation is rejected, blocked, or shows an error the user must act on, and in every other case. Set surface to main unless the idea itself asks for that feature as its own page per item with a direct link (item-page), an about page (about-page), or a page for unknown links (not-found-page). Never add a feature only to use a surface value.",
     "For every dataObject, set writeMode to atomic-replace when a save must never leave a partially written copy (it is written to a temporary copy and swapped in whole), and direct otherwise. Do not declare that temporary copy as its own dataObject; writeMode atomic-replace on the stored dataObject already covers it.",
     `Software idea: ${input.idea.trim()}`,

@@ -30,7 +30,7 @@ The only stack-specific knowledge lives in `src/presets.ts` (plus `src/astroWeb.
 
 - Each feature declares `usesPlatformNeeds`, `usesData`, and `usesServices`. Permission, data,
   persistence, and integration contracts link only to the features that declare them.
-- Each data object declares `storage` (settings, records, document, secret, temporary, session);
+- Each data object declares `storage` (settings, records, document, app-files, secret, temporary, session);
   the preset maps that kind to a concrete store. It also declares `writeMode` (direct,
   atomic-replace), which sets the atomic-write rule and temporary-file placement. A temporary
   atomic-replace object is the in-progress copy of atomic saves and links to every feature that

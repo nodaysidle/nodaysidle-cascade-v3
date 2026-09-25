@@ -393,4 +393,3 @@ describe("Jev idea review", () => {
     expect(decision.ideaReviewFeatures[0]!.ideaFidelity).toBe(0.5)
   })
 })
-

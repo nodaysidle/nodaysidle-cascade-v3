@@ -538,7 +538,10 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
   const lifecycleRequirements = [
     {
       event: "Application launch",
-      behavior: "Initialize preset-owned state and services without starting privileged capture, remote requests, or destructive work automatically.",
+      // A declared background need means some feature must run from launch, such as clipboard recording.
+      behavior: platformNeeds.includes("background-execution")
+        ? "Initialize preset-owned state and services and start the declared background features; start no other capture, remote request, or destructive work automatically."
+        : "Initialize preset-owned state and services without starting privileged capture, remote requests, or destructive work automatically.",
       cleanup: "Rollback partial initialization and keep a safe retry or manual launch path.",
     },
     {

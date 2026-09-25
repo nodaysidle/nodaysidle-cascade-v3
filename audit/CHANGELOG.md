@@ -1,5 +1,19 @@
 # Audit changelog
 
+## Local dry run: clipboard manager idea (2026-09-25)
+
+Compiled a hand-written blueprint for the clipboard-manager idea (no paid request) for all five
+presets and audited the compiler-owned parts. Fixed with tests:
+
+- The launch lifecycle rule forbade starting capture automatically, which contradicts any declared
+  background feature. With `background-execution` declared, launch now starts the declared
+  background features and nothing else.
+- Tauri permission rules now name the exact plugin crates (`tauri-plugin-clipboard-manager`,
+  `-global-shortcut`, `-notification`, `-dialog` with `-fs`, `-autostart`), matching the wiring
+  rule that every listed plugin crate is initialized. Crate names checked in the plugins-workspace docs.
+- Tauri background execution now puts work that must continue while the window is hidden in a Rust
+  tokio task that emits events, not in webview timers.
+
 ## Built-app audit: runtime wiring (2026-09-25)
 
 An agent built RenewalDesk from the renewaldesk packet and reported DONE with every check green,

@@ -97,15 +97,15 @@ const swiftPermissionPatterns: Readonly<Record<PermissionCapability, string>> = 
 const tauriPermissionPatterns: Readonly<Record<PermissionCapability, string>> = {
   microphone: "Expose one Rust command and a least-privilege Tauri capability for platform microphone authorization; never capture before approval.",
   accessibility: "Keep macOS Accessibility, Windows UI Automation, and Linux accessibility adapters behind one Rust command with denial recovery.",
-  notifications: "Use the Tauri notification plugin with an explicit capability and preserve in-app status when the operating system denies alerts.",
-  filesystem: "Use the Tauri dialog and filesystem scopes for user-selected paths only; canonicalize every Rust path before access.",
+  notifications: "Use tauri-plugin-notification with an explicit capability and preserve in-app status when the operating system denies alerts.",
+  filesystem: "Use tauri-plugin-dialog for user-selected paths and tauri-plugin-fs scopes limited to those paths; canonicalize every Rust path before access.",
   network: "Perform remote calls in Rust with an allowlisted HTTPS destination and privacy-safe errors.",
   camera: "Expose camera access through a least-privilege capability and platform permission prompt only after an explicit action.",
   location: "Use a platform adapter with foreground-only access unless semantics explicitly require more; denial keeps non-location behavior available.",
-  "global-input": "Register global shortcuts through the Tauri global-shortcut plugin and platform permission adapters without broad event capture.",
-  clipboard: "Use the Tauri clipboard plugin through an explicit capability and restore prior content when the feature promises preservation.",
-  "background-startup": "Use the Tauri autostart plugin behind an explicit user setting and preserve manual launch when denied.",
-  "background-execution": "Keep the Rust process and tray running after the main window closes: in App::run, call api.prevent_exit() on RunEvent::ExitRequested when code is None, so an explicit Quit still exits; register no autostart entry unless launch at login is also required.",
+  "global-input": "Register global shortcuts through tauri-plugin-global-shortcut and platform permission adapters without broad event capture.",
+  clipboard: "Use tauri-plugin-clipboard-manager through an explicit capability and restore prior content when the feature promises preservation.",
+  "background-startup": "Use tauri-plugin-autostart behind an explicit user setting and preserve manual launch when denied.",
+  "background-execution": "Keep the Rust process and tray running after the main window closes: in App::run, call api.prevent_exit() on RunEvent::ExitRequested when code is None, so an explicit Quit still exits; register no autostart entry unless launch at login is also required. Run work that must continue while the window is hidden, such as polling or scheduled checks, in a Rust tokio task that emits events to the frontend, not in webview timers, which the operating system may throttle while the window is hidden.",
 }
 
 const webPermissionPatterns: Readonly<Record<PermissionCapability, string>> = {

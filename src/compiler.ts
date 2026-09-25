@@ -245,8 +245,10 @@ export function slug(value: string): string {
   return normalized || `project-${fnv1a(value).toString(16).padStart(8, "0")}`
 }
 
+// Split camelCase and acronym boundaries first so "ExchangeRateAPI" becomes ExchangeRateApi, not Exchangerateapi.
 function pascal(value: string): string {
-  const result = slug(value).split("-").filter(Boolean).map(part => part[0]!.toUpperCase() + part.slice(1)).join("")
+  const words = value.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+  const result = slug(words).split("-").filter(Boolean).map(part => part[0]!.toUpperCase() + part.slice(1)).join("")
   return /^[A-Za-z]/.test(result) ? result : `Project${result}`
 }
 
@@ -780,7 +782,7 @@ function credentialDetails(presetId: PresetId, identity: ProjectIdentity, servic
 
 // "Exchange Rate API" + " API key" would read "Exchange Rate API API key".
 function credentialLabel(serviceName: string): string {
-  return /\bAPI$/i.test(serviceName) ? `${serviceName} key` : `${serviceName} API key`
+  return /API$/.test(serviceName) || /\bapi$/i.test(serviceName) ? `${serviceName} key` : `${serviceName} API key`
 }
 
 function credentialEntryDetail(presetId: PresetId, serviceName: string): string {

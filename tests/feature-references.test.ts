@@ -148,4 +148,19 @@ describe("explicit feature references", () => {
     expect(text).toContain("pastes the Rates API key into a masked settings field")
     expect(text).not.toMatch(/API API|Keychain|connect_async/)
   })
+
+  it("names one-word API services and camelCase products without doubling or flattening them", async () => {
+    const blueprint = structuredClone(fileOrganizerBlueprint)
+    blueprint.productName = "RenewalRadar"
+    blueprint.externalServices.push({ name: "ExchangeRateAPI", purpose: "Fetch exchange rates.", dataSent: ["currency codes"], credentialRequired: true })
+    blueprint.features[1]!.usesServices = ["ExchangeRateAPI"]
+    blueprint.features[1]!.usesPlatformNeeds = [...blueprint.features[1]!.usesPlatformNeeds, "network"]
+    const packet = await compilePacket(blueprint, "tauri2-rust-typescript-desktop")
+    const text = Object.values(packet.documents).join("\n")
+
+    expect(text).toContain("pastes the ExchangeRateAPI key into a masked settings field")
+    expect(text).not.toContain("API API")
+    expect(packet.graph.owners.map(owner => owner.name)).toContain("ExchangeRateApiIntegration")
+    expect(text).not.toContain("Exchangerateapi")
+  })
 })

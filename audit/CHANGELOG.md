@@ -1,5 +1,20 @@
 # Audit changelog
 
+## Round 2, third GUI packet audit (2026-09-25)
+
+Packet `/Volumes/omarchyuser/projekti/renewalradar` (02:22) confirmed the scope fixes: no invented
+About or not-found feature, no launch-at-login, notifications no longer own the tray check, recovery
+kinds correct on all 11 features. Fixed with a test:
+
+- A one-word service name ("ExchangeRateAPI") still produced "ExchangeRateAPI API key"; the label
+  now also recognizes a trailing uppercase API.
+- `pascal()` flattened camelCase ("ExchangerateapiIntegration", module "Renewalradar"); it now
+  splits camelCase and acronym boundaries first. IDs, slugs, and bundle IDs are unchanged.
+
+Not changed (user decision): provider content errors in that packet (trials counted in totals before
+conversion, zero totals when no rates are cached, a retry action on the empty list). A Jev check of
+each feature against the idea was proposed and deferred.
+
 ## Round 2, second GUI packet audit (2026-09-25)
 
 Packet `/Volumes/omarchyuser/projekti/renewalwatch` confirmed the previous fixes (recovery kinds,

@@ -1,5 +1,13 @@
 # Audit changelog
 
+## Tauri local proof without the DMG step (2026-09-25)
+
+`npm run tauri:build` built a DMG whose Finder styling step times out in headless agent sessions
+(ClipVault). The Tauri validation command is now `npm run tauri -- build --bundles app`; DMG, MSI,
+and AppImage bundles are a separate release step. The packet locks `productName` to the project
+name, and the artifact path is the real bundle (`src-tauri/target/release/bundle/macos/<name>.app`)
+instead of a nonexistent `bundle/<slug>` folder.
+
 ## ClipVault built-app audit (2026-09-25)
 
 The agent's build from `/Volumes/omarchyuser/projekti/clipvault` was genuinely wired (plugins,

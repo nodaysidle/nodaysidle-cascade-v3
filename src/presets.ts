@@ -317,13 +317,13 @@ const tauriDesktop: PresetContract = {
     () => "cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
     () => "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
     () => "cargo test --manifest-path src-tauri/Cargo.toml",
-    () => "npm run tauri:build",
+    () => "npm run tauri -- build --bundles app",
   ],
-  packagingRules: ["Build the frontend with Vite and the native boundary with Cargo.", "Bundle macOS, Windows, and Linux targets with Tauri 2.", "Use least-privilege capabilities for every command and plugin.", "Verify the platform installer or bundle before launch smoke."],
-  installationDecision: () => "Install the selected platform installer or bundle using the native DMG app copy, MSI installer, or verified Linux package flow; then launch the installed identity and preserve rollback evidence.",
+  packagingRules: ["Build the frontend with Vite and the native boundary with Cargo.", "Set tauri.conf.json productName to the locked project name.", "Local proof builds only the macOS .app with npm run tauri -- build --bundles app; the DMG, MSI, and AppImage bundles are a separate release step (npm run tauri -- build) and are never part of local proof, because DMG window styling fails in headless sessions.", "Use least-privilege capabilities for every command and plugin.", "Verify the platform installer or bundle before launch smoke."],
+  installationDecision: () => "For local macOS proof, copy the re-signed .app from the artifact path into /Applications; for release, install the DMG app copy, MSI installer, or verified Linux package; then launch the installed identity and preserve rollback evidence.",
   signingDecision: () => "Use Tauri platform signing: macOS codesign/notarization, Windows code signing, and verified Linux package checksums. For local macOS proof without a signing identity, re-sign the built .app with codesign --force --deep --sign - before installing it, because the release bundle otherwise fails codesign --verify --deep --strict.",
-  outputArtifact: "DMG/MSI/AppImage platform bundles",
-  artifactPath: identity => `src-tauri/target/release/bundle/${identity.slug}`,
+  outputArtifact: "macOS .app for local proof; DMG/MSI/AppImage platform bundles for release",
+  artifactPath: identity => `src-tauri/target/release/bundle/macos/${identity.projectName}.app`,
   wiringRules: [
     "src-tauri/src/lib.rs defines a public app_builder function, generic over tauri::Runtime, that takes and returns a tauri::Builder, initializes every tauri-plugin crate listed in src-tauri/Cargo.toml and registers every #[tauri::command] with invoke_handler(tauri::generate_handler![...]); run() calls app_builder(tauri::Builder::default()) and adds the tray and run-event handling.",
     "src/main.ts constructs every feature with adapters that call invoke() or the initialized plugin APIs; test doubles (in-memory stores, console-only notifications, fake tray or credential calls) exist only under tests/.",
@@ -331,7 +331,7 @@ const tauriDesktop: PresetContract = {
     "Before completion, launch the installed app, complete one acceptance outcome per feature through the UI, quit, relaunch, and confirm that saved records and settings are still present.",
   ],
   wiringManifestFiles: ["src-tauri/Cargo.toml"],
-  completionEvidence: ["TypeScript, Vitest, Rust format, Clippy, and Cargo tests pass.", "Tauri builds platform bundles from the locked capabilities.", "The selected platform bundle installs and launches.", "Local data and temporary-resource cleanup survive restart smoke."],
+  completionEvidence: ["TypeScript, Vitest, Rust format, Clippy, and Cargo tests pass.", "Tauri builds the .app bundle from the locked capabilities.", "The built .app installs and launches.", "Local data and temporary-resource cleanup survive restart smoke."],
 }
 
 const astroWeb: PresetContract = {

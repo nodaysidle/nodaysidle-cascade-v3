@@ -142,7 +142,7 @@ describe("preset-owned decisions", () => {
   const expected = {
     "native-macos-swiftui-desktop": ["WindowGroup", "Swift Testing", ".app", "codesign --verify --deep --strict"],
     "native-macos-swiftui-menubar": ["MenuBarExtra", "SMAppService", ".app", "codesign --verify --deep --strict"],
-    "tauri2-rust-typescript-desktop": ["tauri::Builder", "Vite", "npm run tauri:build", "DMG/MSI/AppImage"],
+    "tauri2-rust-typescript-desktop": ["tauri::Builder", "Vite", "npm run tauri -- build --bundles app", "DMG/MSI/AppImage"],
     "astro-web": ["Astro", "static output", "npm run test:a11y", "dist/"],
     "android-kotlin-compose": ["Jetpack Compose", "StateFlow", "./gradlew assembleDebug", "app-debug.apk"],
   } satisfies Record<PresetId, string[]>
@@ -157,6 +157,14 @@ describe("preset-owned decisions", () => {
       expect(PRESETS[presetId].outputArtifact).not.toBe("")
       for (const rule of PRESETS[presetId].lifecycleRules) expect(text).toContain(rule)
     }
+  })
+
+  it("keeps the Tauri DMG build out of local proof and points at the built .app", async () => {
+    const packet = await compilePacket(fileOrganizerBlueprint, "tauri2-rust-typescript-desktop")
+    const text = Object.values(packet.documents).join("\n")
+    expect(text).not.toContain("tauri:build")
+    expect(PRESETS["tauri2-rust-typescript-desktop"].validationCommands.map(command => command(packet.graph.identity))).toContain("npm run tauri -- build --bundles app")
+    expect(text).toContain(`src-tauri/target/release/bundle/macos/${packet.graph.identity.projectName}.app`)
   })
 
   it.each([

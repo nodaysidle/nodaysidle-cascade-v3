@@ -22,27 +22,24 @@ notes for the user, not compiler work.
 1. **Prove the wiring gate on the other presets.** Generate and build one app each for native
    macOS desktop, macOS menu bar, Android, and Astro. Only Tauri has been built end to end. The
    Swift, Android, and Astro wiring rules are untested in practice.
-2. **Local Tauri builds without the DMG step.** `npm run tauri:build` builds a DMG whose Finder
-   styling step times out in headless agent sessions (ClipVault). Make the local proof command
-   `npm run tauri -- build --bundles app` and keep the DMG as a separate release step.
-3. **Capabilities must match initialized plugins.** RenewalDesk granted `notification:default`,
+2. **Capabilities must match initialized plugins.** RenewalDesk granted `notification:default`,
    `dialog:default`, and `fs:default` for plugins it never initialized. Add a Tauri wiring rule:
    every capability permission belongs to an initialized plugin, and every initialized plugin has
    its least-privilege permissions.
-4. **Cross-feature state in focused tests.** Provider acceptance signals sometimes mention another
+3. **Cross-feature state in focused tests.** Provider acceptance signals sometimes mention another
    feature's state (ClipVault: recording tests mention pins built later). Add a generic packet
    rule: a focused test may set another feature's state directly through the data owner instead
    of its UI, so phase order never blocks a test.
-5. **Needs a feature declares but never uses.** DeepSeek listed `filesystem` on a pin feature and
+4. **Needs a feature declares but never uses.** DeepSeek listed `filesystem` on a pin feature and
    `notifications` on a tray feature. Candidate fix: a Jev question per declared feature need
    ("does this feature's behavior use X?"). Calibrate it on real packets before wiring it in; it
    may only warn.
-6. **Hands-on checks agents can't run.** Headless agents can't click the tray or press global
+5. **Hands-on checks agents can't run.** Headless agents can't click the tray or press global
    shortcuts, so GUI checks stay PARTIAL. Explore a preset-defined, test-only smoke entry the agent
    can drive from the command line, without shipping test doubles.
-7. **Jev idea review stays advisory.** Calibration on 20+ features showed overlapping scores for
+6. **Jev idea review stays advisory.** Calibration on 20+ features showed overlapping scores for
    wrong and correct features. Revisit only with more labelled packets.
-8. **Release.** `package.json` is still 3.0.1 after many compiler changes. Bump with
+7. **Release.** `package.json` is still 3.0.1 after many compiler changes. Bump with
    `scripts/bump-version.sh` and follow `scripts/README-hybrid-release.md` when the user asks.
 
 ## Decided, do not reopen without new evidence

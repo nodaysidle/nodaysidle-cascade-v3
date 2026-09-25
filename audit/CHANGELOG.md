@@ -1,5 +1,15 @@
 # Audit changelog
 
+## Fourth GUI packet audit (2026-09-25)
+
+Packet `/Volumes/omarchyuser/projekti/renewalradar` (03:58): compiler-owned parts all correct. Provider
+gaps: trials counted in totals (the idea is silent on it), no feature to set the home currency, CSV
+import "replaces or merges", and a notification check "at least once per day". Replaying the Jev
+idea review on these features gave 0.79-0.97 faithful, so nothing was flagged; it stays advisory.
+Added a provider rule: one decided behavior per rule (user-facing options are fine), and every
+scheduled or repeated action gets an exact time or interval plus a duplicate guard. The user was
+advised to state the trial and home-currency rules in the idea.
+
 ## Jev idea review (2026-09-25)
 
 Added at the user's request after the third packet audit. The Jev atomic audit now receives the idea

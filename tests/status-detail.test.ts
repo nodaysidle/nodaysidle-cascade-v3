@@ -35,6 +35,8 @@ describe("provider instructions", () => {
     expect(instructions).not.toMatch(/tray menu lists|notification request with the item/)
     expect(instructions).toContain("Every acceptance signal checks only the behavior of its own feature")
     expect(instructions).toContain("Never add a feature only to use a surface value")
+    expect(instructions).toContain("Never leave a choice between two behaviors for the builder to make")
+    expect(instructions).toContain("Give every scheduled or repeated action an exact time or interval")
     expect(instructions).not.toContain("about or background page")
   })
 

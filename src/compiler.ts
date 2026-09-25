@@ -1139,6 +1139,18 @@ function buildOwnersAndContracts(
     ["Fix the first failing validation command, rebuild the artifact, and rerun every later release gate."],
   ))
 
+  contracts.push(contract(
+    "CON-RUNTIME-WIRING",
+    "packaging",
+    "Runtime wiring",
+    features.map(feature => feature.id),
+    "OWN-PACKAGING",
+    "The shipped app calls the real owners named in the contracts; test doubles never reach a production entry point.",
+    preset.wiringRules,
+    "A production entry point that uses a test double, or a platform owner the running app never calls, blocks completion.",
+    ["Replace the stand-in with the concrete owner, rerun the packaging focused test, and repeat the launch check."],
+  ))
+
   const beforePackaging = [...coreDrafts, ...integrationDrafts, ...featureDrafts]
   const dependencyIds = new Map(beforePackaging.map(draft => [draft.id, new Set(draft.dependencyIds)]))
   const addDependency = (ownerId: string, dependencyId: string) => {
@@ -1296,7 +1308,10 @@ function buildPhases(
       ...(draft.kind === "packaging" ? preset.packagingFiles(identity) : []),
     ])
     const registrationTarget = placement?.registrationFile ?? preset.registrationFile(draft.kind, identity)
-    const filesToModify = draft.kind === "packaging" ? [] : [registrationTarget]
+    // The packaging task verifies runtime wiring, so it may fix the composition roots it checks.
+    const filesToModify = draft.kind === "packaging"
+      ? unique([preset.registrationFile("feature", identity), preset.registrationFile("integration", identity), ...(preset.wiringManifestFiles ?? [])])
+      : [registrationTarget]
     const acceptanceCriteria = buildTaskAcceptanceCriteria(ownedAcceptance, ownedContracts, [files.focusedTestFile])
     const task: GraphTask = {
       id: taskId,

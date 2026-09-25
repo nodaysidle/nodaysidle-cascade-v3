@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { DOCUMENT_NAMES, compilePacket } from "../src/compiler"
-import { PRESET_IDS } from "../src/presets"
+import { PRESET_IDS, PRESETS } from "../src/presets"
 import type { SemanticBlueprint } from "../src/schema"
 import {
   docsPortalBlueprint,
@@ -74,6 +74,15 @@ describe("every idea compiles to an agent-ready packet in every preset", () => {
       expect(entry, service.name).toBeDefined()
       expect(packet.documents["TRD.md"]).toContain(entry!)
     }
+
+    const wiring = packet.graph.contracts.find(item => item.id === "CON-RUNTIME-WIRING")
+    expect(wiring?.ownerId).toBe("OWN-PACKAGING")
+    expect(wiring?.details).toEqual(PRESETS[presetId].wiringRules)
+    const packagingTask = packet.graph.phases.flatMap(phase => phase.tasks).find(task => task.ownerIds.includes("OWN-PACKAGING"))!
+    expect(packagingTask.contractIds).toContain("CON-RUNTIME-WIRING")
+    expect(packagingTask.filesToModify).toContain(PRESETS[presetId].registrationFile("feature", packet.graph.identity))
+    expect(packet.documents["AGENTS.md"]).toContain("Keep test doubles (in-memory stores, console-only output, fake platform calls) in test files only")
+    expect(packet.documents["AGENTS.md"]).toContain("Report PARTIAL, not DONE, while any production entry point uses a test double")
 
     if (presetId.startsWith("native-macos") && packet.documents["TRD.md"].includes("@Observable")) {
       expect(packet.documents["TRD.md"]).toContain("LSMinimumSystemVersion = 14.0")

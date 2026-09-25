@@ -1,5 +1,20 @@
 # Audit changelog
 
+## Built-app audit: runtime wiring (2026-09-25)
+
+An agent built RenewalDesk from the renewaldesk packet and reported DONE with every check green,
+but the app was hollow: `lib.rs` registered no plugins, commands, or tray, and `src/main.ts` used
+in-memory variables, `console.log` notifications, a fake tray, and discarded the API key. Per-owner
+unit tests accepted those stand-ins and the packaging phase checked nothing end to end.
+
+Compiler fix: every preset now carries `wiringRules`, rendered as `CON-RUNTIME-WIRING` owned by the
+packaging task, which may now modify the composition roots (and, for Tauri, `src-tauri/Cargo.toml`).
+Tauri's rule requires an `app_builder` used by `run()` and a packaging test that builds it with
+`tauri::test::mock_builder()` and calls every command through `get_ipc_response` (API checked in
+Tauri 2 docs). Every packet gains a working rule that test doubles stay in test files and a stop
+condition that forbids DONE while any stand-in remains. The matrix test asserts all of this for
+every idea and preset.
+
 ## Fourth GUI packet audit (2026-09-25)
 
 Packet `/Volumes/omarchyuser/projekti/renewalradar` (03:58): compiler-owned parts all correct. Provider

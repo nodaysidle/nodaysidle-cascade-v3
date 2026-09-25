@@ -52,6 +52,10 @@ The only stack-specific knowledge lives in `src/presets.ts` (plus `src/astroWeb.
 - Keep the compiler generic. Don't add vendor, domain, or product logic that exists only because
   one test idea needed it. Tests exist to check that packets are agent-ready; they are not the product.
   Prefer adding a case to `tests/idea-preset-matrix.test.ts` over a new per-idea test file.
+- Every packet's packaging task owns `CON-RUNTIME-WIRING` (per-preset `wiringRules` in
+  `src/presets.ts`): the shipped app must call the real owners, test doubles stay in test files, and
+  a hands-on launch check runs before completion. Per-owner unit tests alone let a build pass with
+  a hollow app.
 - Keep these product requirements: exactly five exported files; preview bytes equal export bytes;
   API keys memory-only, never logged, persisted, or exported; no provider retry or repair.
 - DeepSeek models: `deepseek-flash` (default) and `deepseek-v4-pro`. `deepseek-v4-flash` is a

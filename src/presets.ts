@@ -70,6 +70,9 @@ export interface PresetContract {
   readonly accessibilityRules: readonly string[]
   readonly validationCommands: readonly ((identity: ProjectIdentity) => string)[]
   readonly packagingRules: readonly string[]
+  // Checked by the packaging task so a build cannot pass with stand-ins behind a real-looking UI.
+  readonly wiringRules: readonly string[]
+  readonly wiringManifestFiles?: readonly string[]
   readonly installationDecision: (identity: ProjectIdentity) => string
   readonly signingDecision: (identity: ProjectIdentity) => string
   readonly outputArtifact: string
@@ -242,6 +245,11 @@ const swiftDesktop: PresetContract = {
   signingDecision: identity => `Sign ${identity.projectName}.app with an explicit Developer ID for distribution or ad-hoc identity '-' for local proof; codesign strict verification is mandatory.`,
   outputArtifact: "native macOS .app and DMG",
   artifactPath: identity => `dist/${identity.projectName}.app`,
+  wiringRules: [
+    "The composition root constructs every feature with the concrete platform owners named in the contracts; test doubles (in-memory stores, print-only notifications, fake credential or network clients) exist only under Tests/.",
+    "PackagingContractTests constructs the production composition root and asserts that every injected platform dependency is the concrete production type, not a test double.",
+    "Before completion, launch the installed app, complete one acceptance outcome per feature through the UI, quit, relaunch, and confirm that saved records and settings are still present.",
+  ],
   completionEvidence: ["Swift tests and release build exit successfully.", "The .app has the locked bundle ID and resources.", "codesign strict verification succeeds.", "LaunchServices starts the production process."],
 }
 
@@ -316,6 +324,13 @@ const tauriDesktop: PresetContract = {
   signingDecision: () => "Use Tauri platform signing: macOS codesign/notarization, Windows code signing, and verified Linux package checksums; local macOS proof may use ad-hoc signing.",
   outputArtifact: "DMG/MSI/AppImage platform bundles",
   artifactPath: identity => `src-tauri/target/release/bundle/${identity.slug}`,
+  wiringRules: [
+    "src-tauri/src/lib.rs defines a public app_builder function, generic over tauri::Runtime, that takes and returns a tauri::Builder, initializes every tauri-plugin crate listed in src-tauri/Cargo.toml and registers every #[tauri::command] with invoke_handler(tauri::generate_handler![...]); run() calls app_builder(tauri::Builder::default()) and adds the tray and run-event handling.",
+    "src/main.ts constructs every feature with adapters that call invoke() or the initialized plugin APIs; test doubles (in-memory stores, console-only notifications, fake tray or credential calls) exist only under tests/.",
+    "src-tauri/Cargo.toml declares tauri with the test feature under [dev-dependencies]; the packaging focused test builds app_builder(tauri::test::mock_builder()) and calls every registered command through tauri::test::get_ipc_response, failing if any command the frontend invokes is missing.",
+    "Before completion, launch the installed app, complete one acceptance outcome per feature through the UI, quit, relaunch, and confirm that saved records and settings are still present.",
+  ],
+  wiringManifestFiles: ["src-tauri/Cargo.toml"],
   completionEvidence: ["TypeScript, Vitest, Rust format, Clippy, and Cargo tests pass.", "Tauri builds platform bundles from the locked capabilities.", "The selected platform bundle installs and launches.", "Local data and temporary-resource cleanup survive restart smoke."],
 }
 
@@ -368,6 +383,11 @@ const astroWeb: PresetContract = {
   signingDecision: () => "No application code signature applies; deploy the verified production artifact over HTTPS with immutable asset hashes.",
   outputArtifact: "dist/ static site or explicit server adapter output",
   artifactPath: () => "dist/",
+  wiringRules: [
+    "Pages and components render data from the declared content collections, server endpoints, or browser stores named in the contracts; no page or component keeps sample records inline, and test fixtures exist only under tests/.",
+    "The packaging focused test builds the site and asserts that every declared route exists in the output and renders its declared data source.",
+    "Before completion, serve the production build, open every declared route, and complete one acceptance outcome per feature.",
+  ],
   completionEvidence: ["Type, content, unit, and production build checks pass.", "Accessibility has no critical findings.", "SEO metadata and internal links validate.", "The production performance budget passes."],
 }
 
@@ -420,6 +440,11 @@ const androidCompose: PresetContract = {
   signingDecision: identity => `Sign debug builds with the Gradle debug key and release builds with a protected release keystore for applicationId ${identity.packageName}; never commit keystore material.`,
   outputArtifact: "app-debug.apk",
   artifactPath: () => "app/build/outputs/apk/debug/app-debug.apk",
+  wiringRules: [
+    "App.kt is the composition root and provides the concrete repositories, services, and platform adapters named in the contracts; fakes and in-memory stores exist only under app/src/test and app/src/androidTest.",
+    "The packaging focused test constructs the production composition root and asserts that every provided dependency is the concrete production type, not a fake.",
+    "Before completion, install the APK, complete one acceptance outcome per feature, force-stop the app, relaunch, and confirm that saved records and settings are still present.",
+  ],
   completionEvidence: ["Unit, lint, Compose UI, and required instrumentation tests pass.", "assembleDebug produces the expected APK.", "The manifest contains only derived permissions.", "adb installs and launches the locked applicationId."],
 }
 

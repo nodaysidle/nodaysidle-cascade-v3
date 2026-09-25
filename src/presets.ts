@@ -321,7 +321,7 @@ const tauriDesktop: PresetContract = {
   ],
   packagingRules: ["Build the frontend with Vite and the native boundary with Cargo.", "Bundle macOS, Windows, and Linux targets with Tauri 2.", "Use least-privilege capabilities for every command and plugin.", "Verify the platform installer or bundle before launch smoke."],
   installationDecision: () => "Install the selected platform installer or bundle using the native DMG app copy, MSI installer, or verified Linux package flow; then launch the installed identity and preserve rollback evidence.",
-  signingDecision: () => "Use Tauri platform signing: macOS codesign/notarization, Windows code signing, and verified Linux package checksums; local macOS proof may use ad-hoc signing.",
+  signingDecision: () => "Use Tauri platform signing: macOS codesign/notarization, Windows code signing, and verified Linux package checksums. For local macOS proof without a signing identity, re-sign the built .app with codesign --force --deep --sign - before installing it, because the release bundle otherwise fails codesign --verify --deep --strict.",
   outputArtifact: "DMG/MSI/AppImage platform bundles",
   artifactPath: identity => `src-tauri/target/release/bundle/${identity.slug}`,
   wiringRules: [

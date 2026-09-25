@@ -6,6 +6,7 @@ One DeepSeek request supplies product meaning; TypeSafe Jev gates intake and int
 everything else (IDs, graph, file paths, phases, Markdown bytes) is local deterministic code.
 
 This repository is the compiler. It is not any app the compiler has produced.
+Open work, decided questions, and the packet and built-app audit procedures are in `ROADMAP.md`.
 
 ## The five presets
 

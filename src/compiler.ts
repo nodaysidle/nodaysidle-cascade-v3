@@ -245,10 +245,13 @@ export function slug(value: string): string {
   return normalized || `project-${fnv1a(value).toString(16).padStart(8, "0")}`
 }
 
+function camelWords(value: string): string {
+  return value.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+}
+
 // Split camelCase and acronym boundaries first so "ExchangeRateAPI" becomes ExchangeRateApi, not Exchangerateapi.
 function pascal(value: string): string {
-  const words = value.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
-  const result = slug(words).split("-").filter(Boolean).map(part => part[0]!.toUpperCase() + part.slice(1)).join("")
+  const result = slug(camelWords(value)).split("-").filter(Boolean).map(part => part[0]!.toUpperCase() + part.slice(1)).join("")
   return /^[A-Za-z]/.test(result) ? result : `Project${result}`
 }
 
@@ -596,9 +599,11 @@ function bundleSegment(part: string, fallback: string): string {
 
 function projectIdentity(projectName: string): ProjectIdentity {
   const projectSlug = slug(projectName)
-  const parts = projectSlug.split("-")
+  // Split camelCase for the bundle identity only, and never fall back to a trailing ".app":
+  // macOS tooling rejects identifiers that end with the bundle extension.
+  const parts = slug(camelWords(projectName)).split("-")
   const vendor = bundleSegment(parts[0] ?? "", "project")
-  const product = bundleSegment(parts.slice(1).join(""), "app")
+  const product = bundleSegment(parts.slice(1).join(""), vendor)
   const packageName = `com.${vendor}.${product}`
   return {
     projectName,

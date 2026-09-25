@@ -1,5 +1,17 @@
 # Audit changelog
 
+## ClipVault built-app audit (2026-09-25)
+
+The agent's build from `/Volumes/omarchyuser/projekti/clipvault` was genuinely wired (plugins,
+26 commands, Rust clipboard monitor, tray, prevent_exit) and reported PARTIAL honestly. Fixed in
+the app: the clipboard monitor now attributes each copy to the frontmost app with `lsappinfo`, so
+the exclusion list works (live-verified with Apple Passwords in front); `com.apple.Passwords` and
+`com.apple.keychainaccess` were added to the defaults and, additively, to the saved list; recording
+had been left paused by the agent's test and was resumed; the installed bundle was ad-hoc re-signed.
+Fixed in the compiler: bundle identities no longer fall back to a trailing `.app`
+(`ClipVault` → `com.clip.vault`), and the Tauri signing rule tells local builds to re-sign the
+bundle ad hoc before installing. Open work is tracked in `ROADMAP.md`.
+
 ## Local dry run: clipboard manager idea (2026-09-25)
 
 Compiled a hand-written blueprint for the clipboard-manager idea (no paid request) for all five

@@ -167,4 +167,14 @@ describe("explicit feature references", () => {
     expect(packet.graph.owners.map(owner => owner.name)).toContain("ExchangeRateApiIntegration")
     expect(text).not.toContain("Exchangerateapi")
   })
+
+  it("never generates a bundle identity ending in .app and tells Tauri builds to re-sign ad hoc", async () => {
+    const identity = async (productName: string) => (await compilePacket({ ...fileOrganizerBlueprint, productName }, "tauri2-rust-typescript-desktop")).graph.identity.bundleId
+
+    expect(await identity("ClipVault")).toBe("com.clip.vault")
+    expect(await identity("Notes")).toBe("com.notes.notes")
+    expect(await identity("Harbor Sort")).toBe("com.harbor.sort")
+    const packet = await compilePacket(fileOrganizerBlueprint, "tauri2-rust-typescript-desktop")
+    expect(Object.values(packet.documents).join("\n")).toContain("codesign --force --deep --sign -")
+  })
 })

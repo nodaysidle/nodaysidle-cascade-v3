@@ -10,6 +10,7 @@ import {
   JEV_VIABILITY_NOUL_ID,
   jevDataStorageTierNoulId,
   jevFeatureCapabilityNoulId,
+  jevFeatureIdeaFidelityNoulId,
   jevFeatureVerifiableNoulId,
   jevPlatformNeedNoulId,
   type JevProvider,
@@ -57,6 +58,9 @@ export const fixtureJevProvider: JevProvider = async request => {
         ...request.state.blueprint.features.flatMap((_, index) => [
           { kind: "boolean", id: jevFeatureVerifiableNoulId(index), pTrue: 1 },
           { kind: "choice", id: jevFeatureCapabilityNoulId(index), choice: "none", confidence: 1 },
+          ...(request.state.phase === "atomic-audit" && request.state.idea
+            ? [{ kind: "choice", id: jevFeatureIdeaFidelityNoulId(index), choice: "faithful", confidence: 1, probabilities: { faithful: 1, questionable: 0, wrong: 0 } }]
+            : []),
         ]),
         ...request.state.blueprint.dataObjects.map((item, index) => {
           const tier = item.sensitivity === "sensitive" && /\b(?:api|key|token|credential)\b/i.test(item.name)

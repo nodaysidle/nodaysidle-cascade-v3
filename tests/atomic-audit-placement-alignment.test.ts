@@ -64,6 +64,7 @@ describe("Atomic Audit Placement Alignment (H3)", () => {
       foreignStackLeakage: false,
       unverifiableAcceptance: false,
       featureAudits: [],
+      ideaReviewFeatures: [],
       dataAudits: [
         { dataIndex: 0, dataName: "API Key", storageTier: "userdefaults", tierConfidence: 0.9 },
         { dataIndex: 1, dataName: "Session Draft", storageTier: "sqlite", tierConfidence: 0.9 },

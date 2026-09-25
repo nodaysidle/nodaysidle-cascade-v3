@@ -318,6 +318,7 @@ export async function generatePacket(
       presetId: input.presetId,
       blueprint,
       atomicAuditor: input.atomicAuditor,
+      idea: input.idea,
     }, jevProvider)
     if (cancelled(input)) {
       const failure = { kind: "cancelled", classification: "cancelled" } as const

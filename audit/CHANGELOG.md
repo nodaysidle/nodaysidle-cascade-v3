@@ -1,5 +1,15 @@
 # Audit changelog
 
+## Jev idea review (2026-09-25)
+
+Added at the user's request after the third packet audit. The Jev atomic audit now receives the idea
+and asks, per feature, a three-level choice (faithful, questionable, wrong); the bridge keeps the
+option probabilities for that question only. Features with P(faithful) below 0.65 are listed in the
+status line and Technical details at Gate Clean. It does not block export: calibration against Jev
+jev-1.13 on the renewal-tracker cases gave wrong features 0.56 and 0.62 but also correct features
+0.48 and 0.60, so a blocking gate would stop correct paid runs. The review list is not written into
+the five documents.
+
 ## Round 2, third GUI packet audit (2026-09-25)
 
 Packet `/Volumes/omarchyuser/projekti/renewalradar` (02:22) confirmed the scope fixes: no invented

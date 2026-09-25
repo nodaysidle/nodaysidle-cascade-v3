@@ -59,7 +59,10 @@ const statusCopy: Readonly<Record<AppState["status"], { label: string; detail: s
   "jev-failure": { label: "Jev failure", detail: "The Jev decision request failed closed without a retry. Review safe details and retry.", tone: "error" },
 }
 
-export function statusDetailText(status: AppState["status"], issues: readonly SemanticIssue[]): string {
+export function statusDetailText(status: AppState["status"], issues: readonly SemanticIssue[], ideaReview: readonly string[] = []): string {
+  if (status === "gate-clean" && ideaReview.length) {
+    return `${statusCopy[status].detail} Jev suggests checking ${ideaReview.length === 1 ? "1 feature" : `${ideaReview.length} features`} against your idea before export: ${ideaReview.join(", ")}. See Technical details.`
+  }
   if (status === "blueprint-integrity-failed") {
     if (issues.some(issue => issue.rule === "jev.foreign-stack-leakage")) {
       return "Jev found a technology-stack conflict in the completed blueprint. Export remains locked."
@@ -341,6 +344,9 @@ export function mountApp(
     if (!state.issues.length && state.progress) details.push(["Stage", state.progress])
     if (state.jev?.presetMismatch) details.push(["Jev preset check", jevPresetMismatchDetail(state.jev.presetMismatch)])
     if (state.jev?.addedPlatformNeeds.length) details.push(["Jev healed platform needs", jevHealedNeedsDetail(state.jev.addedPlatformNeeds)])
+    for (const feature of state.jev?.atomicAudits?.ideaReviewFeatures ?? []) {
+      details.push(["Jev idea review", `${feature.featureName}: ${Math.round((feature.ideaFidelity ?? 0) * 100)}% likely faithful to your idea. Compare its PRD rules with your idea; this does not block export.`])
+    }
     if (state.failure?.wrapperOutputTypes?.length) {
       details.push(["Wrapper output types", state.failure.wrapperOutputTypes.join(", ")])
     }
@@ -385,7 +391,7 @@ export function mountApp(
     shell.dataset.state = state.status
     statusBadge.dataset.tone = copy.tone
     statusLabel.textContent = copy.label
-    statusDetail.textContent = statusDetailText(state.status, state.issues)
+    statusDetail.textContent = statusDetailText(state.status, state.issues, (state.jev?.atomicAudits?.ideaReviewFeatures ?? []).map(feature => feature.featureName))
     generateButton.textContent = statusActionLabel(state)
     generateButton.disabled = !canGenerate(state)
     cancelButton.disabled = state.status !== "generating"

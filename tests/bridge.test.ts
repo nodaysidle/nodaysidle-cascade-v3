@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { cancelProviderRequest, exportPacketTo, invokeBlueprintProvider, invokeJevDecision, type CommandInvoker } from "../src/bridge"
 import { compilePacket, packetForExport } from "../src/compiler"
-import { buildJevPreflightRequest } from "../src/jev"
+import { buildJevPreflightRequest, type JevRequest } from "../src/jev"
 import { DEFAULT_API_URL, type ProviderRequest } from "../src/pipeline"
 import { providerJsonSchema } from "../src/schema"
 import { fileOrganizerBlueprint } from "./fixtures/blueprints"
@@ -28,6 +28,29 @@ describe("Tauri IPC bridge", () => {
 
     await expect(invokeBlueprintProvider(request, invoke)).resolves.toBe('{"productName":"Harbor Sort"}')
     expect(calls).toEqual([{ command: "deepseek_complete", args: { request } }])
+  })
+
+  it("sends choice descriptions and keeps probabilities only for questions that ask for them", async () => {
+    const jevRequest: JevRequest = {
+      requestId: "request-bridge-fidelity",
+      apiKey: "memory-only-jev-key",
+      state: { phase: "intake", idea: "A file organizer." },
+      nouls: [
+        { kind: "choice", id: "scored", question: "How faithful?", options: ["faithful", "wrong"], descriptions: { faithful: "all rules fit", wrong: "a rule is wrong" }, keepProbabilities: true },
+        { kind: "choice", id: "plain", question: "Which tier?", options: ["a", "b"] },
+      ],
+    }
+    let sent: Record<string, unknown> | undefined
+    const invoke: CommandInvoker = async <T>(_command: string, args?: Record<string, unknown>) => {
+      sent = args
+      const probabilities = { faithful: 0.4, wrong: 0.6 }
+      return { model: "jev", answers: { scored: { type: "choice", choice: "wrong", confidence: 0.2, probabilities }, plain: { type: "choice", choice: "a", confidence: 0.9, probabilities: { a: 0.9, b: 0.1 } } } } as T
+    }
+
+    const outcomes = JSON.parse(await invokeJevDecision(jevRequest, invoke)).outcomes
+    expect(JSON.stringify(sent)).toContain("\"faithful\":\"all rules fit\"")
+    expect(outcomes[0]).toEqual({ kind: "choice", id: "scored", choice: "wrong", confidence: 0.2, probabilities: { faithful: 0.4, wrong: 0.6 } })
+    expect(outcomes[1]).toEqual({ kind: "choice", id: "plain", choice: "a", confidence: 0.9 })
   })
 
   it("adapts the internal Jev request to the TypeSafe decisions command once", async () => {

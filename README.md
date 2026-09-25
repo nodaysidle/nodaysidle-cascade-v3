@@ -71,7 +71,7 @@ You describe the product once. Cascade returns exactly **`PRD.md`**, **`ARD.md`*
 | **Astro web quality** | Content collections, routes, design tokens, seed guidance for static portfolios |
 | **Exact-five export** | Atomic write of five canonical files; SHA-256 hash equality with preview |
 | **Safe provider boundary** | Rust HTTPS client; memory-only API key; no retry, no repair pass, no persisted secrets |
-| **Jev guardrails** | Rejects non-product intake before DeepSeek, warns on preset conflict, heals missing platform needs, and blocks foreign-stack leakage and untestable acceptance signals |
+| **Jev guardrails** | Rejects non-product intake before DeepSeek, warns on preset conflict, heals missing platform needs, blocks foreign-stack leakage and untestable acceptance signals, and lists features that may not match your idea for review (never blocks) |
 | **Validation ledger** | Local proof of compiler gates, graph audits, and export eligibility in the UI |
 
 ## Privacy

@@ -66,6 +66,20 @@ export function jevPlatformNeedNoulId(need: JevPlatformNeed): string {
   return `${JEV_PLATFORM_NEED_NOUL_PREFIX}${need}`
 }
 
+// Advisory only: calibrated against Jev jev-1.13, P(faithful) separated wrong features from correct
+// ones too unreliably to block export, so low-scoring features are listed for the user to review.
+export const JEV_IDEA_FIDELITY_REVIEW_THRESHOLD = 0.65
+export const JEV_IDEA_FIDELITY_LEVELS = ["faithful", "questionable", "wrong"] as const
+const JEV_IDEA_FIDELITY_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  faithful: "every rule is faithful to the idea or is neutral extra detail",
+  questionable: "rules are faithful but one is questionable",
+  wrong: "at least one rule gives a result the idea's owner would call wrong",
+}
+
+export function jevFeatureIdeaFidelityNoulId(index: number): string {
+  return `feat_${index}_idea_fidelity`
+}
+
 export function jevFeatureVerifiableNoulId(index: number): string {
   return `feat_${index}_verifiable`
 }
@@ -91,6 +105,8 @@ export interface JevChoiceNoul {
   readonly id: string
   readonly question: string
   readonly options: readonly string[]
+  readonly descriptions?: Readonly<Record<string, string>>
+  readonly keepProbabilities?: boolean
 }
 
 export type JevNoul = JevBooleanNoul | JevChoiceNoul
@@ -117,6 +133,7 @@ export interface JevAtomicAuditState {
   readonly phase: "atomic-audit"
   readonly presetId: PresetId
   readonly blueprint: SemanticBlueprint
+  readonly idea?: string
 }
 
 export type JevRequestState = JevPreflightState | JevPostflightState | JevIntakeState | JevAtomicAuditState
@@ -143,6 +160,7 @@ export interface JevChoiceOutcome {
   readonly id: string
   readonly choice: string
   readonly confidence: number
+  readonly probabilities?: Readonly<Record<string, number>>
 }
 
 export type JevOutcome = JevBooleanOutcome | JevChoiceOutcome
@@ -217,6 +235,7 @@ export interface JevAtomicFeatureAudit {
   readonly verifiabilityScore: number
   readonly requiredCapability: JevCapabilityOption
   readonly capabilityConfidence: number
+  readonly ideaFidelity?: number
 }
 
 export interface JevAtomicDataAudit {
@@ -235,6 +254,7 @@ export interface JevAtomicAuditDecision {
   readonly dataAudits: readonly JevAtomicDataAudit[]
   readonly unverifiableFeatures: readonly JevAtomicFeatureAudit[]
   readonly featureIssues: readonly SemanticIssue[]
+  readonly ideaReviewFeatures: readonly JevAtomicFeatureAudit[]
 }
 
 export interface JevPostflightDecision {
@@ -287,6 +307,7 @@ export interface JevPostflightRequestInput {
   readonly presetId: PresetId
   readonly blueprint: SemanticBlueprint
   readonly atomicAuditor?: boolean
+  readonly idea?: string
 }
 
 export interface JevAtomicAuditRequestInput {
@@ -294,6 +315,7 @@ export interface JevAtomicAuditRequestInput {
   readonly apiKey: string
   readonly presetId: PresetId
   readonly blueprint: SemanticBlueprint
+  readonly idea?: string
 }
 
 export function buildJevAtomicAuditRequest(input: JevAtomicAuditRequestInput): JevRequest {
@@ -315,6 +337,16 @@ export function buildJevAtomicAuditRequest(input: JevAtomicAuditRequestInput): J
       // judge OS features by their names and block checkable notification or login signals.
       question: `Judge only the strings in \`blueprint.features[${index}].acceptanceSignals\`. Can an automated test assert every one of them by checking concrete values, app state, files, or the requests the app sends to operating-system APIs (a test double may stand in for the OS)? Answer false if any signal depends on a person's opinion or feeling.`,
     })
+    if (input.idea) {
+      nouls.push({
+        kind: "choice",
+        id: jevFeatureIdeaFidelityNoulId(index),
+        question: `How faithfully do the rules in \`blueprint.features[${index}]\` follow what \`idea\` says or clearly means?`,
+        options: JEV_IDEA_FIDELITY_LEVELS,
+        descriptions: JEV_IDEA_FIDELITY_DESCRIPTIONS,
+        keepProbabilities: true,
+      })
+    }
     nouls.push({
       kind: "choice",
       id: jevFeatureCapabilityNoulId(index),
@@ -335,7 +367,7 @@ export function buildJevAtomicAuditRequest(input: JevAtomicAuditRequestInput): J
   return {
     requestId: input.requestId,
     apiKey: input.apiKey,
-    state: { phase: "atomic-audit", presetId: input.presetId, blueprint: input.blueprint },
+    state: { phase: "atomic-audit", presetId: input.presetId, blueprint: input.blueprint, ...(input.idea ? { idea: input.idea } : {}) },
     nouls,
   }
 }
@@ -456,10 +488,16 @@ export function parseJevResponse(text: unknown, nouls: readonly JevNoul[]): JevR
       if (noul.kind !== "boolean" || !hasExactKeys(raw, ["kind", "id", "pTrue"]) || !validProbability(raw.pTrue)) return { ok: false }
       outcomes.push({ kind: "boolean", id, pTrue: raw.pTrue })
     } else if (kind === "choice") {
-      if (noul.kind !== "choice" || !hasExactKeys(raw, ["kind", "id", "choice", "confidence"])) return { ok: false }
-      const { choice, confidence } = raw
+      const withProbabilities = hasExactKeys(raw, ["kind", "id", "choice", "confidence", "probabilities"])
+      if (noul.kind !== "choice" || !(withProbabilities || hasExactKeys(raw, ["kind", "id", "choice", "confidence"]))) return { ok: false }
+      const { choice, confidence, probabilities } = raw
       if (typeof choice !== "string" || !noul.options.includes(choice) || !validProbability(confidence)) return { ok: false }
-      outcomes.push({ kind: "choice", id, choice, confidence })
+      if (!withProbabilities) {
+        outcomes.push({ kind: "choice", id, choice, confidence })
+      } else {
+        if (!plainRecord(probabilities) || !Object.entries(probabilities).every(([option, value]) => noul.options.includes(option) && validProbability(value))) return { ok: false }
+        outcomes.push({ kind: "choice", id, choice, confidence, probabilities: probabilities as Record<string, number> })
+      }
     } else {
       return { ok: false }
     }
@@ -536,6 +574,8 @@ export function evaluateJevAtomicAudit(outcomes: readonly JevOutcome[], blueprin
       ? (capOutcome.choice as JevCapabilityOption)
       : "none"
     const capabilityConfidence = capOutcome?.confidence ?? 0
+    const fidelityOutcome = choiceOf(outcomes, jevFeatureIdeaFidelityNoulId(index))
+    const ideaFidelity = fidelityOutcome?.probabilities?.faithful
     return {
       featureIndex: index,
       featureName: feature.name,
@@ -543,6 +583,7 @@ export function evaluateJevAtomicAudit(outcomes: readonly JevOutcome[], blueprin
       verifiabilityScore,
       requiredCapability,
       capabilityConfidence,
+      ...(ideaFidelity === undefined ? {} : { ideaFidelity }),
     }
   })
 
@@ -596,6 +637,7 @@ export function evaluateJevAtomicAudit(outcomes: readonly JevOutcome[], blueprin
     dataAudits,
     unverifiableFeatures,
     featureIssues,
+    ideaReviewFeatures: featureAudits.filter(f => f.ideaFidelity !== undefined && f.ideaFidelity < JEV_IDEA_FIDELITY_REVIEW_THRESHOLD),
   }
 }
 
@@ -689,6 +731,7 @@ export async function runJevPostflight(input: JevPostflightRequestInput, provide
       apiKey: input.apiKey,
       presetId: input.presetId,
       blueprint: input.blueprint,
+      ...(input.idea ? { idea: input.idea } : {}),
     }, provider)
     if (!auditRun.ok) return auditRun
     return {

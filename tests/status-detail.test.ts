@@ -17,6 +17,11 @@ describe("integrity status detail", () => {
     }
   })
 
+  it("names features Jev suggests checking against the idea on a gate-clean packet", () => {
+    expect(statusDetailText("gate-clean", [], ["Monthly totals"])).toContain("Jev suggests checking 1 feature against your idea before export: Monthly totals")
+    expect(statusDetailText("gate-clean", [])).not.toContain("Jev suggests")
+  })
+
   it("falls back to the generic integrity copy and leaves other statuses unchanged", () => {
     expect(statusDetailText("blueprint-integrity-failed", [])).toContain("integrity problem")
     expect(statusDetailText("gate-clean", [])).toContain("eligible for exact-five export")

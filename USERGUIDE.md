@@ -16,7 +16,7 @@ Jev first rejects non-product input before a paid DeepSeek request. A preset mis
 - **Intake rejected** — rewrite the input as one implementable software product.
 - **Jev failure** — the fast decision request failed closed; retry without changing keys unless the provider rejected them.
 - **Integrity blocked** — Jev found either a technology-stack conflict or features whose acceptance signals automated tests can't check. The headline says which; Technical details lists the fields. Retry, or describe those features as checkable outcomes.
-- **Gate Clean** — inspect all five previews, then export.
+- **Gate Clean** — inspect all five previews, then export. If the status line says Jev suggests checking features against your idea, compare those features' rules in PRD with your idea first; Technical details shows each score. This never blocks export, and Jev can flag correct features too.
 
 ## Export contract
 

@@ -8,6 +8,7 @@ import {
   JEV_PLATFORM_NEEDS,
   jevDataStorageTierNoulId,
   jevFeatureCapabilityNoulId,
+  jevFeatureIdeaFidelityNoulId,
   jevFeatureVerifiableNoulId,
   jevPlatformNeedNoulId,
   type JevOutcome,
@@ -256,9 +257,11 @@ describe("Opportunity 2: Jev Atomic Contract & Placement Auditor", () => {
             // Feature 0 verifiable
             { kind: "boolean", id: jevFeatureVerifiableNoulId(0), pTrue: 0.95 },
             { kind: "choice", id: jevFeatureCapabilityNoulId(0), choice: "none", confidence: 0.9 },
+            { kind: "choice", id: jevFeatureIdeaFidelityNoulId(0), choice: "faithful", confidence: 0.9, probabilities: { faithful: 0.9, questionable: 0.08, wrong: 0.02 } },
             // Feature 1 UNVERIFIABLE
             { kind: "boolean", id: jevFeatureVerifiableNoulId(1), pTrue: 0.1 },
             { kind: "choice", id: jevFeatureCapabilityNoulId(1), choice: "none", confidence: 0.9 },
+            { kind: "choice", id: jevFeatureIdeaFidelityNoulId(1), choice: "faithful", confidence: 0.9, probabilities: { faithful: 0.9, questionable: 0.08, wrong: 0.02 } },
             // Data
             { kind: "choice", id: jevDataStorageTierNoulId(0), choice: "userdefaults", confidence: 0.95 },
             { kind: "choice", id: jevDataStorageTierNoulId(1), choice: "sqlite", confidence: 0.95 },
@@ -318,8 +321,10 @@ describe("Opportunity 2: Jev Atomic Contract & Placement Auditor", () => {
             // Both features verifiable
             { kind: "boolean", id: jevFeatureVerifiableNoulId(0), pTrue: 0.95 },
             { kind: "choice", id: jevFeatureCapabilityNoulId(0), choice: "none", confidence: 0.9 },
+            { kind: "choice", id: jevFeatureIdeaFidelityNoulId(0), choice: "faithful", confidence: 0.9, probabilities: { faithful: 0.9, questionable: 0.08, wrong: 0.02 } },
             { kind: "boolean", id: jevFeatureVerifiableNoulId(1), pTrue: 0.95 },
             { kind: "choice", id: jevFeatureCapabilityNoulId(1), choice: "none", confidence: 0.9 },
+            { kind: "choice", id: jevFeatureIdeaFidelityNoulId(1), choice: "faithful", confidence: 0.9, probabilities: { faithful: 0.9, questionable: 0.08, wrong: 0.02 } },
             // Data
             { kind: "choice", id: jevDataStorageTierNoulId(0), choice: "userdefaults", confidence: 0.95 },
             { kind: "choice", id: jevDataStorageTierNoulId(1), choice: "sqlite", confidence: 0.95 },
@@ -353,3 +358,39 @@ describe("Opportunity 2: Jev Atomic Contract & Placement Auditor", () => {
     expect(result.jev?.atomicAudits?.dataAudits.length).toBe(3)
   })
 })
+
+describe("Jev idea review", () => {
+  const passingOutcomes = (blueprint: SemanticBlueprint, fidelity: readonly number[]): JevOutcome[] => [
+    ...JEV_PLATFORM_NEEDS.map(need => ({ kind: "boolean" as const, id: jevPlatformNeedNoulId(need), pTrue: blueprint.platformNeeds.includes(need) ? 0.95 : 0.05 })),
+    { kind: "boolean", id: JEV_FOREIGN_STACK_NOUL_ID, pTrue: 0.01 },
+    { kind: "boolean", id: JEV_ACCEPTANCE_VERIFIABILITY_NOUL_ID, pTrue: 0.95 },
+    ...blueprint.features.flatMap((_, index): JevOutcome[] => [
+      { kind: "boolean", id: jevFeatureVerifiableNoulId(index), pTrue: 0.95 },
+      { kind: "choice", id: jevFeatureCapabilityNoulId(index), choice: "none", confidence: 0.9 },
+      { kind: "choice", id: jevFeatureIdeaFidelityNoulId(index), choice: "faithful", confidence: 0.5, probabilities: { faithful: fidelity[index]!, questionable: 1 - fidelity[index]!, wrong: 0 } },
+    ]),
+    ...blueprint.dataObjects.map((_, index): JevOutcome => ({ kind: "choice", id: jevDataStorageTierNoulId(index), choice: "sqlite", confidence: 0.9 })),
+  ]
+
+  it("asks one idea-fidelity question per feature only when the idea is supplied", () => {
+    const blueprint = createSampleBlueprint()
+    const base = { requestId: "r", apiKey: "k", presetId: "native-macos-swiftui-desktop" as const, blueprint }
+    expect(buildJevAtomicAuditRequest(base).nouls.some(noul => noul.id === jevFeatureIdeaFidelityNoulId(0))).toBe(false)
+
+    const request = buildJevAtomicAuditRequest({ ...base, idea: "A file organizer." })
+    const question = request.nouls.find(noul => noul.id === jevFeatureIdeaFidelityNoulId(1))!
+    expect(request.state).toMatchObject({ phase: "atomic-audit", idea: "A file organizer." })
+    expect(question).toMatchObject({ kind: "choice", options: ["faithful", "questionable", "wrong"], keepProbabilities: true })
+    expect(question.question).toContain("`blueprint.features[1]`")
+  })
+
+  it("lists low-fidelity features for review without blocking export", () => {
+    const blueprint = createSampleBlueprint()
+    const decision = evaluateJevAtomicAudit(passingOutcomes(blueprint, [0.9, 0.5]), blueprint)
+
+    expect(decision.featureIssues).toEqual([])
+    expect(decision.ideaReviewFeatures.map(feature => feature.featureName)).toEqual([blueprint.features[1]!.name])
+    expect(decision.ideaReviewFeatures[0]!.ideaFidelity).toBe(0.5)
+  })
+})
+

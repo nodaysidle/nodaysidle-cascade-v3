@@ -27,7 +27,7 @@ function jevQuestions(request: JevRequest): Readonly<Record<string, unknown>> {
       : {
           type: "choice",
           instructions: noul.question,
-          criteria: Object.fromEntries(noul.options.map(option => [option, null])),
+          criteria: Object.fromEntries(noul.options.map(option => [option, noul.descriptions?.[option] ?? null])),
         },
   ]))
 }
@@ -46,7 +46,13 @@ function jevOutcomes(request: JevRequest, response: JevWireResponse): string {
       continue
     }
     if (noul.kind === "choice" && record.type === "choice") {
-      outcomes.push({ kind: "choice", id: noul.id, choice: record.choice, confidence: record.confidence })
+      outcomes.push({
+        kind: "choice",
+        id: noul.id,
+        choice: record.choice,
+        confidence: record.confidence,
+        ...(noul.keepProbabilities && record.probabilities && typeof record.probabilities === "object" ? { probabilities: record.probabilities } : {}),
+      })
     }
   }
   return JSON.stringify({ outcomes })

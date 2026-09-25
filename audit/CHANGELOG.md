@@ -1,5 +1,21 @@
 # Audit changelog
 
+## Round 2, second GUI packet audit (2026-09-25)
+
+Packet `/Volumes/omarchyuser/projekti/renewalwatch` confirmed the previous fixes (recovery kinds,
+JSON settings, SQLite transactions, separate background execution, credential wording). It showed
+three provider-content problems, fixed in the provider instructions with tests:
+
+- Acceptance examples in the OS-feature rule were copied verbatim into the wrong feature
+  (notifications owned a tray check built three phases later). The examples are removed, and a
+  rule now says each acceptance signal checks only its own feature.
+- The `surface` rule invited an invented About feature with a desktop "not-found page". Surface now
+  defaults to main, special values apply only when the idea asks for that page, and features must
+  never be added to fill a surface.
+- "Include every applicable platform need" invited an unrequested launch-at-login setting (seen in
+  two runs). Replaced with: list a need only when a stated feature uses it, and add no features,
+  settings, or needs the idea does not ask for. `tests/schema.test.ts` now pins the new wording.
+
 ## Round 2, GUI packet audit fixes (2026-09-24, evening)
 
 A live GUI run (subscription tracker, Tauri) exposed defects one stage at a time; each was fixed in

@@ -27,6 +27,10 @@ describe("provider instructions", () => {
   it("tells the provider to phrase operating-system features as checkable requests or state", () => {
     const instructions = buildBlueprintInstructions({ idea: "A reminder app." })
     expect(instructions).toContain("request the app makes or the app state a test can read")
+    expect(instructions).not.toMatch(/tray menu lists|notification request with the item/)
+    expect(instructions).toContain("Every acceptance signal checks only the behavior of its own feature")
+    expect(instructions).toContain("Never add a feature only to use a surface value")
+    expect(instructions).not.toContain("about or background page")
   })
 
   it("tells the provider that every declared data object and service must be used by a feature", () => {

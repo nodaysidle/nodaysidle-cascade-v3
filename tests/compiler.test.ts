@@ -185,6 +185,11 @@ describe("deterministic exact-five compiler", () => {
     const names = habit.kit.map(file => file.name)
     expect(names.some(name => name.endsWith("SQLiteDatabase.swift"))).toBe(true)
     expect(names.some(name => name.endsWith("AppFileStore.swift"))).toBe(false)
+    // Atomic records are SQLite transactions, not file swaps, so they ship no file writer.
+    const atomicRecords = structuredClone(habitTrackerBlueprint)
+    atomicRecords.dataObjects = atomicRecords.dataObjects.map(item => ({ ...item, writeMode: "atomic-replace" as const }))
+    const atomicKit = (await compilePacket(atomicRecords, "native-macos-swiftui-desktop")).kit.map(file => file.name)
+    expect(atomicKit.some(name => name.endsWith("AtomicFileWriter.swift"))).toBe(false)
     for (const presetId of PRESET_IDS.filter(id => !id.startsWith("native-macos"))) {
       expect((await compilePacket(scanDrawerBlueprint, presetId)).kit, presetId).toEqual([])
     }
@@ -202,6 +207,8 @@ describe("deterministic exact-five compiler", () => {
     expect(file(plain, "MenuBarController.swift")).toContain("NSApp.activate()")
     expect(file(plain, "Resources/Info.plist")).toContain("<key>LSUIElement</key>\n    <true/>")
     expect(file(plain, "LoginItem.swift")).toBeUndefined()
+    // Records are atomic through SQLite transactions, so no file writer is shipped for them.
+    expect(file(plain, "AtomicFileWriter.swift")).toBeUndefined()
     const created = plain.graph.phases.flatMap(phase => phase.tasks).flatMap(task => task.filesToCreate)
     for (const path of plain.graph.kitPaths) expect(created.filter(item => item === path), path).toHaveLength(1)
 

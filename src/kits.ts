@@ -29,7 +29,9 @@ function nativeMacKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint,
   const storage = new Set(blueprint.persistenceNeeds.map(need => need.storage))
   const usesRecords = storage.has("records")
   const usesAppFiles = storage.has("app-files")
-  const writesAtomically = blueprint.persistenceNeeds.some(need => need.writeMode === "atomic-replace" && !need.temporary)
+  // SQLite commits in transactions and UserDefaults per value, so the file writer is needed only when
+  // an atomic-replace object lands in a file.
+  const writesAtomically = blueprint.persistenceNeeds.some(need => need.writeMode === "atomic-replace" && (need.storage === "document" || need.storage === "app-files"))
   const needsMicrophone = blueprint.platformNeeds.includes("audio-input")
   const launchesAtLogin = blueprint.platformNeeds.includes("launch-at-login")
   const source = (name: string) => `Sources/${module}/${name}`

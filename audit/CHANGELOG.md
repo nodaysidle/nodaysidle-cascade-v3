@@ -1,5 +1,17 @@
 # Audit changelog
 
+## PinBoard regenerated packet audit (2026-09-26)
+
+The clipboard contract and the menu bar kit came through as intended, and the features were
+correct. Two small generic fixes:
+
+- The kit shipped AtomicFileWriter whenever any data was atomic-replace; SQLite commits in
+  transactions and UserDefaults per value, so it now ships only when an atomic-replace object lands
+  in a file (document or app-files).
+- Failures where the app simply carries on ("keeps watching", "saves the rest") were marked retry
+  two runs in a row, rendering "allow an explicit retry"; the prompt's fallback definition now
+  covers automatic continuation.
+
 ## PinBoard packet audit, native macOS menu bar (2026-09-26)
 
 The clipboard-history packet was clean except for the clipboard permission, whose wording came

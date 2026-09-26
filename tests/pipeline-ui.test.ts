@@ -94,6 +94,21 @@ describe("one-request provider-to-packet pipeline", () => {
     expect(compileCalls).toBe(0)
   })
 
+  it("returns the validated provider blueprint and saves it by default", async () => {
+    const { provider } = sequenceProvider([JSON.stringify(fileOrganizerBlueprint)])
+    const result = await generatePacket(input, provider)
+    expect(result.blueprint).toEqual(fileOrganizerBlueprint)
+
+    let state = createInitialState()
+    expect(state.saveBlueprint).toBe(true)
+    state = reduceAppState(state, { type: "save-blueprint-changed", value: false })
+    expect(state.saveBlueprint).toBe(false)
+    state = reduceAppState(state, { type: "generation-started", requestId: "r" })
+    state = reduceAppState(state, { type: "generation-succeeded", packet: result.packet!, blueprint: result.blueprint })
+    expect(state.blueprint).toEqual(fileOrganizerBlueprint)
+    expect(state.saveBlueprint).toBe(false)
+  })
+
   it("repairs a failed response once and reports what the repair fixed", async () => {
     const invalid = structuredClone(fileOrganizerBlueprint) as Partial<typeof fileOrganizerBlueprint>
     delete invalid.summary

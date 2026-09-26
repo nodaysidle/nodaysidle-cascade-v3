@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest"
 import { compilePacket } from "../src/compiler"
 import type { PresetId } from "../src/presets"
 import type { SemanticBlueprint } from "../src/schema"
-import { habitTrackerBlueprint, networkMonitorBlueprint, scanDrawerBlueprint } from "./fixtures/blueprints"
+import { forecastGlanceBlueprint, habitTrackerBlueprint, networkMonitorBlueprint, scanDrawerBlueprint } from "./fixtures/blueprints"
 
 const menuBarWithLogin: SemanticBlueprint = {
   ...networkMonitorBlueprint,
@@ -22,6 +22,7 @@ describeBuild("starter kits compile and pass their own tests", () => {
   it.each([
     ["desktop with records, app-files, and atomic documents", scanDrawerBlueprint, "native-macos-swiftui-desktop"],
     ["desktop with records only", habitTrackerBlueprint, "native-macos-swiftui-desktop"],
+    ["desktop with a keyed service in the login keychain", forecastGlanceBlueprint, "native-macos-swiftui-desktop"],
     ["menu bar with records and a login item", menuBarWithLogin, "native-macos-swiftui-menubar"],
   ] as const satisfies ReadonlyArray<readonly [string, SemanticBlueprint, PresetId]>)("native macOS kit: %s", async (_label, blueprint, presetId) => {
     const packet = await compilePacket(blueprint, presetId)

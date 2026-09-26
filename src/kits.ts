@@ -13,6 +13,19 @@ export const KIT_README = "README.md"
 
 type NativeVariant = "desktop" | "menubar"
 
+// Privacy usage strings for declared needs; macOS terminates an app that uses the camera, microphone,
+// or location without them. Shared by the kit Info.plist and the TRD packaging details.
+export function nativeUsageDescriptions(identity: ProjectIdentity, platformNeeds: readonly string[]): ReadonlyArray<readonly [string, string]> {
+  return [
+    ...(platformNeeds.includes("audio-input") ? [["NSMicrophoneUsageDescription", `${identity.projectName} uses the microphone only during a recording the user explicitly starts.`] as const] : []),
+    ...(platformNeeds.includes("camera") ? [["NSCameraUsageDescription", `${identity.projectName} uses the camera only during a capture the user explicitly starts.`] as const] : []),
+    ...(platformNeeds.includes("location") ? [
+      ["NSLocationUsageDescription", `${identity.projectName} uses your location only for the feature you are using.`] as const,
+      ["NSLocationWhenInUseUsageDescription", `${identity.projectName} uses your location only for the feature you are using.`] as const,
+    ] : []),
+  ]
+}
+
 export function presetKit(presetId: PresetId, identity: ProjectIdentity, blueprint: NormalizedBlueprint): readonly KitFile[] {
   if (presetId === "native-macos-swiftui-desktop") return nativeMacKit(identity, blueprint, "desktop")
   if (presetId === "native-macos-swiftui-menubar") return nativeMacKit(identity, blueprint, "menubar")
@@ -32,7 +45,9 @@ function nativeMacKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint,
   // SQLite commits in transactions and UserDefaults per value, so the file writer is needed only when
   // an atomic-replace object lands in a file.
   const writesAtomically = blueprint.persistenceNeeds.some(need => need.writeMode === "atomic-replace" && (need.storage === "document" || need.storage === "app-files"))
-  const needsMicrophone = blueprint.platformNeeds.includes("audio-input")
+  const usageDescriptions = nativeUsageDescriptions(identity, blueprint.platformNeeds)
+  const storesCredentials = blueprint.externalServices.some(service => service.credentialRequirement !== "none")
+    || blueprint.domainData.some(item => item.storage === "secret")
   const launchesAtLogin = blueprint.platformNeeds.includes("launch-at-login")
   const source = (name: string) => `Sources/${module}/${name}`
   const platform = (name: string) => `Sources/${module}/Platform/${name}`
@@ -54,9 +69,10 @@ function nativeMacKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint,
     ...(writesAtomically || usesAppFiles ? [{ path: platform("AtomicFileWriter.swift"), content: ATOMIC_FILE_WRITER_SWIFT }] : []),
     ...(usesAppFiles ? [{ path: platform("AppFileStore.swift"), content: appFileStoreSwift(identity) }] : []),
     ...(usesRecords ? [{ path: platform("SQLiteDatabase.swift"), content: sqliteDatabaseSwift(identity) }] : []),
-    { path: `Tests/${module}Tests/KitTests.swift`, content: kitTestsSwift(module, { usesRecords, usesAppFiles, writesAtomically }) },
+    ...(storesCredentials ? [{ path: platform("KeychainStore.swift"), content: keychainStoreSwift(identity) }] : []),
+    { path: `Tests/${module}Tests/KitTests.swift`, content: kitTestsSwift(module, { usesRecords, usesAppFiles, writesAtomically, storesCredentials }) },
     { path: "Scripts/package_app.sh", content: packageAppScript(identity) },
-    { path: "Resources/Info.plist", content: infoPlist(identity, needsMicrophone, variant === "menubar") },
+    { path: "Resources/Info.plist", content: infoPlist(identity, usageDescriptions, variant === "menubar") },
     { path: "Resources/App.entitlements", content: ENTITLEMENTS_PLIST },
   ]
   return [{ path: KIT_README, content: kitReadme(identity, files.map(file => file.path), variant) }, ...files]
@@ -81,12 +97,13 @@ function kitReadme(identity: ProjectIdentity, paths: readonly string[], variant:
         "- The app entry is a MenuBarExtra with a Settings scene and no Dock icon (LSUIElement); the AppDelegate owns MenuBarController so launch-time work starts in didFinishLaunching, before the menu is first opened.",
         "- Every feature reports a user-visible failure through MenuBarController.errors.report(_:), which the menu shows as an ErrorBanner; never swallow an error the PRD says the user sees.",
         "- SettingsButton activates the app before opening Settings, so the Settings window comes to the front.",
-        "- LoginItem, when present, is the only place that registers or unregisters the login item through SMAppService.mainApp.",
+        "- LoginItem, when present, is the only place that registers or unregisters the login item through SMAppService.mainApp; show the toggle as on only when the status is enabled, and when it requires approval, say so and offer LoginItem.openSystemSettings().",
       ]),
     "- AtomicFileWriter writes a temporary file in the destination's own folder and swaps it in whole.",
     "- AppFileStore keeps app-owned copies under Application Support with generated names; store only the returned file name.",
     "- SQLiteDatabase applies migrations in order and records the schema version in PRAGMA user_version; append new migrations, never edit applied ones.",
     "- Scripts/package_app.sh builds, signs, and verifies dist/; with --install it moves the old app to dist/rollback/ (never inside /Applications), installs, registers, and launches the bundle.",
+    "- KeychainStore, when present, is the only place secrets are stored: generic passwords in the login keychain under the bundle ID's credentials service.",
     "- KitTests covers the kit; keep it passing.",
     "",
   ].join("\n")
@@ -286,11 +303,21 @@ struct SettingsWindow: View {
 
 const LOGIN_ITEM_SWIFT = `import ServiceManagement
 
-// The only place that registers or unregisters the app as a login item.
+// The only place that registers or unregisters the app as a login item. Registration can end in
+// requiresApproval, which the user resolves in System Settings > Login Items; show the toggle as on
+// only when the status is enabled.
 @MainActor
 enum LoginItem {
+    static var status: SMAppService.Status {
+        SMAppService.mainApp.status
+    }
+
     static var isEnabled: Bool {
-        SMAppService.mainApp.status == .enabled
+        status == .enabled
+    }
+
+    static var needsApproval: Bool {
+        status == .requiresApproval
     }
 
     static func setEnabled(_ enabled: Bool) throws {
@@ -300,8 +327,72 @@ enum LoginItem {
             try SMAppService.mainApp.unregister()
         }
     }
+
+    static func openSystemSettings() {
+        SMAppService.openSystemSettingsLoginItems()
+    }
 }
 `
+
+function keychainStoreSwift(identity: ProjectIdentity): string {
+  return `import Foundation
+import Security
+
+struct KeychainError: Error, Equatable {
+    let status: OSStatus
+}
+
+// Secrets live only here, as generic passwords in the login keychain under ${identity.bundleId}.credentials.
+// The data protection keychain (kSecUseDataProtectionKeychain) needs a team-signed keychain entitlement
+// that the ad-hoc local build lacks, so it is not used. After each ad-hoc rebuild macOS may ask once
+// whether the app may read its item; that prompt is expected.
+struct KeychainStore: Sendable {
+    let service: String
+
+    init(service: String = "${identity.bundleId}.credentials") {
+        self.service = service
+    }
+
+    func save(_ secret: String, account: String) throws {
+        let query = baseQuery(account: account)
+        let data = Data(secret.utf8)
+        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if updateStatus == errSecItemNotFound {
+            var item = query
+            item[kSecValueData as String] = data
+            let addStatus = SecItemAdd(item as CFDictionary, nil)
+            guard addStatus == errSecSuccess else { throw KeychainError(status: addStatus) }
+        } else if updateStatus != errSecSuccess {
+            throw KeychainError(status: updateStatus)
+        }
+    }
+
+    func read(account: String) throws -> String? {
+        var query = baseQuery(account: account)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess, let data = result as? Data else { throw KeychainError(status: status) }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    func delete(account: String) throws {
+        let status = SecItemDelete(baseQuery(account: account) as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw KeychainError(status: status) }
+    }
+
+    private func baseQuery(account: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+    }
+}
+`
+}
 
 const ERROR_CENTER_SWIFT = `import SwiftUI
 
@@ -560,7 +651,7 @@ final class SQLiteDatabase {
 `
 }
 
-function kitTestsSwift(module: string, uses: { usesRecords: boolean; usesAppFiles: boolean; writesAtomically: boolean }): string {
+function kitTestsSwift(module: string, uses: { usesRecords: boolean; usesAppFiles: boolean; writesAtomically: boolean; storesCredentials: boolean }): string {
   const atomic = uses.writesAtomically || uses.usesAppFiles
   return `import Foundation
 import Testing
@@ -623,6 +714,17 @@ ${atomic ? `
             }
         }
         #expect(try database.query("SELECT COUNT(*) FROM items") == [[.integer(0)]])
+    }
+` : ""}${uses.storesCredentials ? `
+    @Test func keychainStoreSavesReplacesAndDeletesASecret() throws {
+        let store = KeychainStore(service: "kit-tests.\\(UUID().uuidString)")
+        defer { try? store.delete(account: "provider-api-key") }
+        #expect(try store.read(account: "provider-api-key") == nil)
+        try store.save("first-value", account: "provider-api-key")
+        try store.save("second-value", account: "provider-api-key")
+        #expect(try store.read(account: "provider-api-key") == "second-value")
+        try store.delete(account: "provider-api-key")
+        #expect(try store.read(account: "provider-api-key") == nil)
     }
 ` : ""}}
 `
@@ -691,7 +793,7 @@ fi
 `
 }
 
-function infoPlist(identity: ProjectIdentity, needsMicrophone: boolean, uiElement: boolean): string {
+function infoPlist(identity: ProjectIdentity, usageDescriptions: ReadonlyArray<readonly [string, string]>, uiElement: boolean): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -715,9 +817,9 @@ function infoPlist(identity: ProjectIdentity, needsMicrophone: boolean, uiElemen
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>LSUIElement</key>
-    <${uiElement ? "true" : "false"}/>${needsMicrophone ? `
-    <key>NSMicrophoneUsageDescription</key>
-    <string>${identity.projectName} uses the microphone only during a recording the user explicitly starts.</string>` : ""}
+    <${uiElement ? "true" : "false"}/>${usageDescriptions.map(([key, text]) => `
+    <key>${key}</key>
+    <string>${text}</string>`).join("")}
 </dict>
 </plist>
 `

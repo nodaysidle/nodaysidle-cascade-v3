@@ -3,7 +3,7 @@ import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREME
 import { PRESETS, USER_SELECTED_FILE_PLACEMENT, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
 import { renderPacket } from "./renderers"
 import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
-import { kitProjectPaths, presetKit } from "./kits"
+import { kitProjectPaths, nativeUsageDescriptions, presetKit } from "./kits"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
 
@@ -808,6 +808,7 @@ function credentialDetails(presetId: PresetId, identity: ProjectIdentity, servic
       "API key placement: macOS Keychain only; never UserDefaults, SQLite, files, logs, UI state, diagnostics, or generated output.",
       `Keychain service: ${identity.bundleId}.credentials`,
       `Keychain account: ${serviceSlug}-${kind}`,
+      "Keychain item: a kSecClassGenericPassword in the login keychain, without kSecUseDataProtectionKeychain, which needs a team-signed keychain entitlement the ad-hoc local build lacks (errSecMissingEntitlement).",
     ]
   }
   if (presetId === "astro-web") {
@@ -902,10 +903,8 @@ function joinWithAnd(items: readonly string[]): string {
   return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`
 }
 
-function nativePackagingDetails(preset: PresetContract, identity: ProjectIdentity, needsMicrophone = false): string[] {
-  const micDeclaration = needsMicrophone
-    ? `, NSMicrophoneUsageDescription = "${identity.projectName} uses the microphone only during a recording the user explicitly starts."`
-    : ""
+function nativePackagingDetails(preset: PresetContract, identity: ProjectIdentity, platformNeeds: readonly string[] = []): string[] {
+  const micDeclaration = nativeUsageDescriptions(identity, platformNeeds).map(([key, text]) => `, ${key} = "${text}"`).join("")
   return [
     `Bundle identity: CFBundleIdentifier = ${identity.bundleId}; CFBundleName = ${identity.projectName}; CFBundleExecutable = ${identity.moduleName}; CFBundleIconFile = AppIcon; CFBundlePackageType = APPL; CFBundleShortVersionString = 1.0.0; CFBundleVersion = 1.`,
     `Info.plist ownership: Resources/Info.plist declares CFBundleIdentifier, CFBundleExecutable, CFBundleIconFile, LSMinimumSystemVersion = 14.0 (matching Package.swift platforms: [.macOS(.v14)], the floor for @Observable), NSHighResolutionCapable = true${micDeclaration}, and LSUIElement = ${preset.id === "native-macos-swiftui-menubar" ? "true" : "false"}.`,
@@ -1199,7 +1198,7 @@ function buildOwnersAndContracts(
     features.map(feature => feature.id),
     "OWN-PACKAGING",
     preset.packagingRules.join(" "),
-    [...preset.packagingRules, ...(isNativeMacPreset(preset.id) ? nativePackagingDetails(preset, identity, blueprint.platformNeeds.includes("audio-input")) : []), `Installation: ${preset.installationDecision(identity)}`, `Output artifact: ${preset.outputArtifact}`],
+    [...preset.packagingRules, ...(isNativeMacPreset(preset.id) ? nativePackagingDetails(preset, identity, blueprint.platformNeeds) : []), `Installation: ${preset.installationDecision(identity)}`, `Output artifact: ${preset.outputArtifact}`],
     "A failed build, signature, package, install, or launch check blocks completion.",
     ["Fix the first failing validation command, rebuild the artifact, and rerun every later release gate."],
   ))
@@ -1628,6 +1627,14 @@ export function packetForExport(packet: CompiledPacket): readonly ExportFile[] {
     ...packet.kit,
   ]
 }
+
+// The validated provider blueprint, exported as blueprint.json so audits see exactly what was declared.
+export async function blueprintExportFile(blueprint: SemanticBlueprint): Promise<ExportFile> {
+  const content = `${JSON.stringify(blueprint, null, 2)}\n`
+  return { name: BLUEPRINT_FILE_NAME, content, sha256: await sha256(content) }
+}
+
+export const BLUEPRINT_FILE_NAME = "blueprint.json"
 
 export async function verifyPacketHashes(packet: CompiledPacket): Promise<boolean> {
   const current = await hashDocuments(packet.documents)

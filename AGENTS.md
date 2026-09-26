@@ -75,7 +75,8 @@ The only stack-specific knowledge lives in `src/presets.ts` (plus `src/astroWeb.
 - Prefer a kit over another prose rule when an agent keeps getting platform plumbing wrong: kit code
   is compiled and tested once (`npm run kit:check`), a sentence can be skipped.
 - Keep these product requirements: exactly five exported documents, followed only by kit files
-  under `kit/`; preview bytes equal export bytes;
+  under `kit/` and one `blueprint.json` (the validated provider blueprint, included unless the user
+  unticks it); preview bytes equal export bytes;
   API keys memory-only, never logged, persisted, or exported; no provider retry except one repair
   request that sends the failed checks and the previous response (secrets redacted) when the
   content fails validation, integrity, normalization, or the export gate (`src/pipeline.ts`).

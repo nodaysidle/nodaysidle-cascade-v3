@@ -115,6 +115,23 @@ describe("Tauri IPC bridge", () => {
     expect(calls).toEqual([{ command: "cancel_generation", args: { requestId: "request-bridge" } }])
   })
 
+  it("adds a hashed blueprint.json after the packet files when a blueprint is given", async () => {
+    const packet = await compilePacket(fileOrganizerBlueprint, "native-macos-swiftui-desktop")
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = []
+    const invoke: CommandInvoker = async <T>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args })
+      return "/tmp/harbor-sort" as T
+    }
+
+    await exportPacketTo("/tmp", packet, invoke, fileOrganizerBlueprint)
+    const files = calls[0]!.args!.files as Array<{ name: string; content: string; sha256: string }>
+    expect(files.slice(0, -1)).toEqual(packetForExport(packet))
+    const blueprint = files.at(-1)!
+    expect(blueprint.name).toBe("blueprint.json")
+    expect(JSON.parse(blueprint.content)).toEqual(fileOrganizerBlueprint)
+    expect(blueprint.sha256).toMatch(/^[0-9a-f]{64}$/)
+  })
+
   it("revalidates packet bytes before exact-five export", async () => {
     const packet = await compilePacket(fileOrganizerBlueprint, "native-macos-swiftui-desktop")
     const calls: Array<{ command: string; args?: Record<string, unknown> }> = []

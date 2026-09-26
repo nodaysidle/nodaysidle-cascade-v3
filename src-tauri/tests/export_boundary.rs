@@ -209,3 +209,25 @@ fn rejects_kit_files_outside_kit_hidden_traversing_duplicated_or_first() {
     kit_first.extend(files());
     assert!(validate_export_files(&kit_first).is_err());
 }
+
+#[test]
+fn writes_one_blueprint_json_after_the_documents() {
+    let root = tempfile::tempdir().unwrap();
+    let mut packet = files();
+    packet.push(kit_file("kit/README.md", "kit\n"));
+    packet.push(kit_file("blueprint.json", "{}\n"));
+    let destination = write_packet_atomic(root.path(), "with-blueprint", &packet).unwrap();
+    assert_eq!(
+        fs::read_to_string(destination.join("blueprint.json")).unwrap(),
+        "{}\n"
+    );
+
+    let mut twice = files();
+    twice.push(kit_file("blueprint.json", "{}\n"));
+    twice.push(kit_file("blueprint.json", "{}\n"));
+    assert!(validate_export_files(&twice).is_err());
+
+    let mut renamed = files();
+    renamed.push(kit_file("other.json", "{}\n"));
+    assert!(validate_export_files(&renamed).is_err());
+}

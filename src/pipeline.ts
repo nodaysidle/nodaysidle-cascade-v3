@@ -29,6 +29,7 @@ import {
   providerJsonSchema,
   redactSecretMaterial,
   splitIdeaSentences,
+  type SemanticBlueprint,
   type SemanticIssue,
 } from "./schema"
 
@@ -97,6 +98,8 @@ export interface GeneratePacketResult {
   readonly jev?: JevReport
   // Present when the first provider response failed and one repair request was sent: the checks it failed.
   readonly repairedIssues?: readonly SemanticIssue[]
+  // The validated provider blueprint that compiled (after any repair, before Jev healing), for export.
+  readonly blueprint?: SemanticBlueprint
 }
 
 const failureKinds = new Set<ProviderFailureKind>(["transport", "timeout", "http", "incomplete", "failed-response", "invalid-wrapper", "invalid-json", "invalid-request", "cancelled", "unknown"])
@@ -436,5 +439,5 @@ async function compileProviderText(
       ?? [{ path: "$packet", rule: "packet.gate-failure", message: "The rendered packet did not pass the local readiness gate." }]
     return failureResult("lint-failure", issues, undefined, jevReport)
   }
-  return { status: "gate-clean", exportable: true, issues: [], packet, ...(jevReport ? { jev: jevReport } : {}) }
+  return { status: "gate-clean", exportable: true, issues: [], packet, blueprint: parsed.blueprint, ...(jevReport ? { jev: jevReport } : {}) }
 }

@@ -195,6 +195,29 @@ describe("deterministic exact-five compiler", () => {
     }
   })
 
+  it("ships Keychain storage, HTTPS guidance, and privacy usage strings from declared fields", async () => {
+    const keyed = await compilePacket(forecastGlanceBlueprint, "native-macos-swiftui-desktop")
+    const keychain = keyed.kit.find(file => file.name.endsWith("KeychainStore.swift"))?.content
+    expect(keychain).toContain(`init(service: String = "${keyed.graph.identity.bundleId}.credentials")`)
+    expect(keychain).not.toMatch(/kSecUseDataProtectionKeychain as String/)
+    const trd = keyed.documents["TRD.md"]
+    expect(trd).toContain("Keychain item: a kSecClassGenericPassword in the login keychain, without kSecUseDataProtectionKeychain")
+    expect(trd).toContain("App Transport Security allows only HTTPS")
+    expect(trd).toContain("An ad-hoc rebuild is a new app to macOS privacy controls")
+    expect((await compilePacket(habitTrackerBlueprint, "native-macos-swiftui-desktop")).kit.some(file => file.name.endsWith("KeychainStore.swift"))).toBe(false)
+
+    const sensing = structuredClone(habitTrackerBlueprint)
+    sensing.platformNeeds = [...sensing.platformNeeds, "camera", "location"]
+    sensing.features[0]!.usesPlatformNeeds = [...sensing.features[0]!.usesPlatformNeeds, "camera", "location"]
+    const packet = await compilePacket(sensing, "native-macos-swiftui-desktop")
+    const plist = packet.kit.find(file => file.name === "kit/Resources/Info.plist")!.content
+    for (const key of ["NSCameraUsageDescription", "NSLocationUsageDescription", "NSLocationWhenInUseUsageDescription"]) {
+      expect(plist, key).toContain(`<key>${key}</key>`)
+      expect(packet.documents["TRD.md"], key).toContain(`${key} = "`)
+    }
+    expect(plist).not.toContain("NSMicrophoneUsageDescription")
+  })
+
   it("exports a menu bar kit with MenuBarExtra, no Dock icon, and a login item only when declared", async () => {
     const plain = await compilePacket(networkMonitorBlueprint, "native-macos-swiftui-menubar")
     const module = plain.graph.identity.moduleName
@@ -217,6 +240,9 @@ describe("deterministic exact-five compiler", () => {
     login.features[0]!.usesPlatformNeeds = [...login.features[0]!.usesPlatformNeeds, "launch-at-login"]
     const withLogin = await compilePacket(login, "native-macos-swiftui-menubar")
     expect(file(withLogin, "LoginItem.swift")).toContain("SMAppService.mainApp.register()")
+    expect(file(withLogin, "LoginItem.swift")).toContain("status == .requiresApproval")
+    expect(file(withLogin, "LoginItem.swift")).toContain("SMAppService.openSystemSettingsLoginItems()")
+    expect(withLogin.documents["TRD.md"]).toContain("requiresApproval means the user must approve the app in System Settings > Login Items")
     expect(withLogin.documents["TRD.md"]).toContain("`./Scripts/package_app.sh --install`")
   })
 })

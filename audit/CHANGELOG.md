@@ -1,5 +1,37 @@
 # Audit changelog
 
+## Blueprint export (2026-09-26)
+
+Audits kept guessing what the provider had declared (for example whether an importer carried a
+file flag without a document). Exports now include blueprint.json, the validated provider blueprint
+that compiled (after any repair, before Jev healing), unless the user unticks "Include
+blueprint.json". It holds no keys: the blueprint never carries them and intake rejects secret
+material. The Rust export accepts exactly one blueprint.json after the five documents, and a saved
+blueprint can later become a regression fixture as is.
+
+## Native macOS capability review (2026-09-26)
+
+A proactive pass over every native capability rule against Apple's current documentation, so new
+ideas stop discovering gaps one at a time. Changed only where an agent would otherwise build a
+broken app or guess:
+
+- Keychain: API keys are generic passwords in the login keychain, not the data protection keychain,
+  which needs a team-signed entitlement the ad-hoc build lacks (errSecMissingEntitlement). The kit
+  ships a tested KeychainStore whenever a credentialed service or secret is declared.
+- Launch at login: register() can leave the status at requiresApproval; the rule and the kit's
+  LoginItem show the toggle as on only when enabled and offer
+  SMAppService.openSystemSettingsLoginItems().
+- Camera and location usage strings join the microphone string in the kit Info.plist and the TRD
+  packaging detail from one shared source; macOS terminates an app that uses them without it.
+- Network: App Transport Security allows only HTTPS, so a declared http endpoint (such as a local
+  server) needs an NSAppTransportSecurity exception.
+- Packaging: an ad-hoc rebuild is a new app to macOS privacy controls, so its privacy and Keychain
+  prompts return and Accessibility must be re-granted; this is expected, not a defect.
+
+Reviewed and unchanged: microphone, camera, and location authorization calls; Accessibility trust;
+notifications; global hotkeys; background execution; file access and clipboard (already reviewed).
+kit:check now also builds a keyed desktop kit and round-trips a secret through the login keychain.
+
 ## PinBoard regenerated packet audit (2026-09-26)
 
 The clipboard contract and the menu bar kit came through as intended, and the features were

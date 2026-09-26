@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core"
-import { packetForExport, verifyPacketHashes, type CompiledPacket } from "./compiler"
+import { blueprintExportFile, packetForExport, verifyPacketHashes, type CompiledPacket } from "./compiler"
+import type { SemanticBlueprint } from "./schema"
 import type { JevRequest } from "./jev"
 import type { ProviderRequest } from "./pipeline"
 
@@ -84,6 +85,7 @@ export async function exportPacketTo(
   parent: string,
   packet: CompiledPacket,
   invokeCommand: CommandInvoker = tauriInvoker,
+  blueprint?: SemanticBlueprint,
 ): Promise<string> {
   if (!packet.exportable || !(await verifyPacketHashes(packet))) {
     throw { kind: "invalid-packet", classification: "preview-hash-mismatch" }
@@ -91,6 +93,6 @@ export async function exportPacketTo(
   return invokeCommand<string>("export_packet", {
     parent,
     slug: packet.projectSlug,
-    files: packetForExport(packet),
+    files: [...packetForExport(packet), ...(blueprint ? [await blueprintExportFile(blueprint)] : [])],
   })
 }

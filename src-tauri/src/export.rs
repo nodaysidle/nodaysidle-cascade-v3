@@ -15,6 +15,8 @@ const MAX_EXPORT_FILE_BYTES: usize = 2_000_000;
 const KIT_PREFIX: &str = "kit/";
 const MAX_KIT_FILES: usize = 64;
 const MAX_KIT_PATH_DEPTH: usize = 8;
+// The validated provider blueprint, exported next to the documents for audits.
+const BLUEPRINT_FILE_NAME: &str = "blueprint.json";
 #[cfg(target_os = "macos")]
 const RENAME_EXCL: u32 = 0x0000_0004;
 static STAGING_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -66,7 +68,8 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 pub fn validate_export_files(files: &[ExportFile]) -> Result<(), ExportFailure> {
-    if files.len() < DOCUMENT_NAMES.len() || files.len() > DOCUMENT_NAMES.len() + MAX_KIT_FILES {
+    if files.len() < DOCUMENT_NAMES.len() || files.len() > DOCUMENT_NAMES.len() + MAX_KIT_FILES + 1
+    {
         return Err(ExportFailure::invalid_packet());
     }
     for (file, expected_name) in files.iter().zip(DOCUMENT_NAMES) {
@@ -74,12 +77,10 @@ pub fn validate_export_files(files: &[ExportFile]) -> Result<(), ExportFailure> 
             return Err(ExportFailure::invalid_packet());
         }
     }
-    let mut kit_names = HashSet::new();
+    let mut extra_names = HashSet::new();
     for file in &files[DOCUMENT_NAMES.len()..] {
-        if !valid_kit_path(&file.name)
-            || !valid_content(file)
-            || !kit_names.insert(file.name.as_str())
-        {
+        let allowed_name = file.name == BLUEPRINT_FILE_NAME || valid_kit_path(&file.name);
+        if !allowed_name || !valid_content(file) || !extra_names.insert(file.name.as_str()) {
             return Err(ExportFailure::invalid_packet());
         }
     }

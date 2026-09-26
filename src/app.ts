@@ -53,7 +53,7 @@ const statusCopy: Readonly<Record<AppState["status"], { label: string; detail: s
   "local-compiler-failure": { label: "Compiler failure", detail: "A local mechanical invariant failed. No provider retry was attempted.", tone: "error" },
   "lint-failure": { label: "Gate blocked", detail: "The packet failed a local readiness rule and cannot be exported.", tone: "error" },
   "gate-clean": { label: "Gate Clean", detail: "Preview bytes are hashed and eligible for export of the five documents and any preset starter kit.", tone: "success" },
-  "export-success": { label: "Export complete", detail: "The five verified documents and any preset starter kit were written to a new folder.", tone: "success" },
+  "export-success": { label: "Export complete", detail: "The five verified documents, any preset starter kit, and blueprint.json when included were written to a new folder.", tone: "success" },
   cancelled: { label: "Cancelled", detail: "No packet was accepted and export remains locked.", tone: "neutral" },
   "intake-rejected": { label: "Intake rejected", detail: "Jev did not confirm this idea as viable, so no provider request was made.", tone: "error" },
   "blueprint-integrity-failed": { label: "Integrity blocked", detail: "Jev found an integrity problem in the completed blueprint. Export remains locked.", tone: "error" },
@@ -206,6 +206,7 @@ function appMarkup(): string {
           </div>
           <div class="document-actions">
             <button id="copy-document" class="button button-quiet" type="button" disabled>Copy current</button>
+            <label class="blueprint-option"><input id="save-blueprint" type="checkbox" checked> Include blueprint.json</label>
             <button id="export-packet" class="button button-accent" type="button" disabled>Export packet</button>
           </div>
         </div>
@@ -267,6 +268,8 @@ export function mountApp(
   const cancelButton = requiredElement<HTMLButtonElement>(root, "#cancel")
   const copyButton = requiredElement<HTMLButtonElement>(root, "#copy-document")
   const exportButton = requiredElement<HTMLButtonElement>(root, "#export-packet")
+  const saveBlueprintInput = requiredElement<HTMLInputElement>(root, "#save-blueprint")
+  saveBlueprintInput.addEventListener("change", () => dispatch({ type: "save-blueprint-changed", value: saveBlueprintInput.checked }))
   const statusBadge = requiredElement<HTMLElement>(root, "#status-badge")
   const statusLabel = requiredElement<HTMLElement>(root, "#status-label")
   const statusDetail = requiredElement<HTMLElement>(root, "#status-detail")
@@ -535,7 +538,7 @@ export function mountApp(
       onProgress: stage => dispatch({ type: "progressed", stage }),
     }, provider, undefined, activeJevProvider).then(result => {
       if (result.status === "gate-clean" && result.packet) {
-        dispatch({ type: "generation-succeeded", packet: result.packet, jev: result.jev, repairedIssues: result.repairedIssues })
+        dispatch({ type: "generation-succeeded", packet: result.packet, jev: result.jev, repairedIssues: result.repairedIssues, blueprint: result.blueprint })
         syncControls()
       } else {
         const status = result.status === "gate-clean" ? "local-compiler-failure" : result.status
@@ -584,7 +587,7 @@ export function mountApp(
 
   async function exportTo(parent: string): Promise<string> {
     if (!state.packet || !canExport(state)) throw { kind: "invalid-packet", classification: "export-locked" }
-    const path = await exportPacketTo(parent, state.packet)
+    const path = await exportPacketTo(parent, state.packet, undefined, state.saveBlueprint ? state.blueprint : undefined)
     dispatch({ type: "export-succeeded", path })
     announce("Packet exported.", "success")
     return path

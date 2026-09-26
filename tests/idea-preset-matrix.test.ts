@@ -157,6 +157,20 @@ describe("declared storage, recovery, and sentence form stay precise", () => {
     expect(packet.documents["PRD.md"]).toContain("- Choices: Sort order: Newest first, Oldest first; initially Newest first")
     expect(packet.documents["TRD.md"]).toContain("- Choices: Sort order: Newest first, Oldest first; initially Newest first")
 
+    // Native apps keep system views in-window, use the SwiftUI delegate adaptor, and keep one bundle per ID.
+    if (presetId.startsWith("native-macos")) {
+      expect(text).toContain("QLPreviewView from Quartz for a Quick Look preview")
+      expect(text).toContain("never substitute it by opening another app such as Finder or a browser")
+      expect(text).toContain("through @NSApplicationDelegateAdaptor; never assign NSApplication.shared.delegate")
+      expect(text).toContain(`dist/rollback/${packet.graph.identity.projectName}.app as the rollback copy (outside /Applications`)
+    }
+    if (presetId === "native-macos-swiftui-desktop") {
+      expect(text).toContain("keep File > New Window when replacing File-menu commands, and reopen the window when the Dock icon is clicked")
+    }
+    if (presetId === "tauri2-rust-typescript-desktop") {
+      expect(text).toContain("Keep the previous app as the rollback copy at src-tauri/target/rollback/, never inside /Applications")
+    }
+
     // A declared automatic fallback never sits next to a rule that forbids non-user retries.
     const fallback = packet.graph.contracts.find(item => item.id === "CON-TAG-FILTER-RECOVERY")!
     expect(fallback.recovery.join(" ")).toContain("Apply the stated fallback automatically")

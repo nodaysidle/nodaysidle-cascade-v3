@@ -232,7 +232,7 @@ const swiftDesktop: PresetContract = {
   ownerFiles: swiftOwnerFiles,
   registrationFile: (_kind, identity) => `Sources/${identity.moduleName}/AppState.swift`,
   runtimeMode: () => "native",
-  runtimeArchitecture: ["Use an @main SwiftUI App entry with WindowGroup; one @Observable @MainActor AppState owns presentation state, feature services are injected at the composition root, and AppKit adapters remain in Platform owners.", "Run I/O and provider work in cancellable async tasks or actors off the main actor and publish UI state on the main actor."],
+  runtimeArchitecture: ["Use an @main SwiftUI App entry with WindowGroup; one @Observable @MainActor AppState owns presentation state, feature services are injected at the composition root, and AppKit adapters remain in Platform owners.", "Run I/O and provider work in cancellable async tasks or actors off the main actor and publish UI state on the main actor.", "Show every system view the PRD places in the app inside the app's own window with the matching view, for example QLPreviewView from Quartz for a Quick Look preview, WKWebView for web content, or a MapKit Map for a map; never substitute it by opening another app such as Finder or a browser, or by showing a system panel that has no content."],
   integrationBoundary: "Use one actor-owned URLSession boundary with URLSession.data(for:) for HTTPS requests; encode and decode typed Codable DTOs, map failures before they reach UI state, and never expose raw response bodies.",
   recoveryRules: ["Represent operations as idle, active, succeeded, failed, or cancelled and preserve the last valid user state.", "Start a retry only from an explicit user action; a declared automatic fallback is not a retry. Cancel tasks and close streams, file handles, delegates, and temporary resources on every terminal path."],
   persistence: {
@@ -246,7 +246,7 @@ const swiftDesktop: PresetContract = {
   },
   credentialPlacement: "Store API keys in macOS Keychain only, with the project bundle ID as service and a deterministic provider-account name.",
   permissionPatterns: swiftPermissionPatterns,
-  lifecycleRules: ["Use WindowGroup as the Dock-first application entry.", "Cancel tasks and release AppKit delegates during application termination.", "Model window restoration only for product-owned state."],
+  lifecycleRules: ["Use WindowGroup as the Dock-first application entry.", "Receive AppKit application-delegate callbacks, such as termination, through @NSApplicationDelegateAdaptor; never assign NSApplication.shared.delegate, which replaces the delegate SwiftUI relies on.", "Keep a way to reopen the main window after it is closed: keep File > New Window when replacing File-menu commands, and reopen the window when the Dock icon is clicked.", "Cancel tasks and release AppKit delegates during application termination.", "Model window restoration only for product-owned state."],
   accessibilityRules: ["Require VoiceOver and keyboard operation for every control, expose stable accessibility labels, roles, values, and focus order, and verify with SwiftUI accessibility tests plus Accessibility Inspector."],
   validationCommands: [
     () => "swift test",
@@ -256,7 +256,7 @@ const swiftDesktop: PresetContract = {
     identity => `open \"dist/${identity.projectName}.app\"`,
   ],
   packagingRules: ["Scripts/package_app.sh is the sole packaging authority for release build, app assembly, resources, signing, strict verification, and DMG creation.", "Assemble one native arm64 macOS .app from the Swift Package Manager release executable, Info.plist, App.entitlements, and AppIcon.icns.", "Ad-hoc sign local builds or use an explicitly supplied Developer ID for distribution, then require codesign --verify --deep --strict.", "Register and launch the installed bundle through LaunchServices."],
-  installationDecision: identity => `Install the verified signed app at /Applications/${identity.projectName}.app after a scoped rollback copy, then register and launch that exact bundle through LaunchServices.`,
+  installationDecision: identity => `Move any existing /Applications/${identity.projectName}.app to dist/rollback/${identity.projectName}.app as the rollback copy (outside /Applications and never registered, so LaunchServices sees one bundle for the bundle ID), install the verified signed app at /Applications/${identity.projectName}.app, then register and launch that exact bundle through LaunchServices.`,
   signingDecision: identity => `Sign ${identity.projectName}.app with an explicit Developer ID for distribution or ad-hoc identity '-' for local proof; codesign strict verification is mandatory.`,
   outputArtifact: "native macOS .app and DMG",
   artifactPath: identity => `dist/${identity.projectName}.app`,
@@ -284,8 +284,8 @@ const swiftMenubar: PresetContract = {
     `Tests/${identity.moduleName}Tests/ContractTests.swift`,
   ],
   registrationFile: (_kind, identity) => `Sources/${identity.moduleName}/MenuBarController.swift`,
-  runtimeArchitecture: ["Use an @main SwiftUI App entry with MenuBarExtra and Settings; one @Observable @MainActor MenuBarController owns menu, settings, HUD, and feature presentation while AppKit adapters remain in Platform owners.", "Run capture and provider work in cancellable actors or async tasks, keep exactly one active recording state machine, and publish UI state on the main actor."],
-  lifecycleRules: ["Use MenuBarExtra as the primary application entry and LSUIElement for a menu-bar lifecycle.", "Open a dedicated settings window without changing the default activation policy.", "Use SMAppService for the explicit login-item setting.", "Release global hotkeys, event monitors, floating panels, and temporary resources during termination."],
+  runtimeArchitecture: ["Use an @main SwiftUI App entry with MenuBarExtra and Settings; one @Observable @MainActor MenuBarController owns menu, settings, HUD, and feature presentation while AppKit adapters remain in Platform owners.", "Run capture and provider work in cancellable actors or async tasks, keep exactly one active recording state machine, and publish UI state on the main actor.", "Show every system view the PRD places in the app inside the app's own window with the matching view, for example QLPreviewView from Quartz for a Quick Look preview, WKWebView for web content, or a MapKit Map for a map; never substitute it by opening another app such as Finder or a browser, or by showing a system panel that has no content."],
+  lifecycleRules: ["Use MenuBarExtra as the primary application entry and LSUIElement for a menu-bar lifecycle.", "Open a dedicated settings window without changing the default activation policy.", "Use SMAppService for the explicit login-item setting.", "Receive AppKit application-delegate callbacks, such as termination, through @NSApplicationDelegateAdaptor; never assign NSApplication.shared.delegate, which replaces the delegate SwiftUI relies on.", "Release global hotkeys, event monitors, floating panels, and temporary resources during termination."],
 }
 
 const tauriDesktop: PresetContract = {
@@ -338,7 +338,7 @@ const tauriDesktop: PresetContract = {
     () => "npm run tauri -- build --bundles app",
   ],
   packagingRules: ["Build the frontend with Vite and the native boundary with Cargo.", "Set tauri.conf.json productName to the locked project name.", "Local proof builds only the macOS .app with npm run tauri -- build --bundles app; the DMG, MSI, and AppImage bundles are a separate release step (npm run tauri -- build) and are never part of local proof, because DMG window styling fails in headless sessions.", "Use least-privilege capabilities for every command and plugin.", "Verify the platform installer or bundle before launch smoke."],
-  installationDecision: () => "For local macOS proof, copy the re-signed .app from the artifact path into /Applications; for release, install the DMG app copy, MSI installer, or verified Linux package; then launch the installed identity and preserve rollback evidence.",
+  installationDecision: () => "For local macOS proof, copy the re-signed .app from the artifact path into /Applications; for release, install the DMG app copy, MSI installer, or verified Linux package; then launch the installed identity. Keep the previous app as the rollback copy at src-tauri/target/rollback/, never inside /Applications, so the OS sees one app for the bundle identifier.",
   signingDecision: () => "Use Tauri platform signing: macOS codesign/notarization, Windows code signing, and verified Linux package checksums. For local macOS proof without a signing identity, re-sign the built .app with codesign --force --deep --sign - before installing it, because the release bundle otherwise fails codesign --verify --deep --strict.",
   outputArtifact: "macOS .app for local proof; DMG/MSI/AppImage platform bundles for release",
   artifactPath: identity => `src-tauri/target/release/bundle/macos/${identity.projectName}.app`,

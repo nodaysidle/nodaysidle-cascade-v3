@@ -1,5 +1,25 @@
 # Audit changelog
 
+## ReceiptShelf built-app audit (2026-09-26)
+
+The build was genuinely wired: errors were visible (one alert for every feature), SQLite carried
+PRAGMA user_version 1, validation passed, and the agent removed its samples. A hands-on run found
+what headless checks could not. Compiler changes:
+
+- Native macOS: every system view the PRD places in the app (Quick Look preview, web content,
+  map) is embedded in the app's own window; the app opened Finder and an empty Quick Look panel
+  instead.
+- Native macOS: AppKit delegate callbacks come through @NSApplicationDelegateAdaptor, never by
+  assigning NSApplication.shared.delegate, and the desktop preset keeps File > New Window and
+  Dock-click reopen; the app replaced SwiftUI's delegate and the New Window command, so a closed
+  window could not be reopened.
+- Native macOS and Tauri: the rollback copy lives outside /Applications (dist/rollback/,
+  src-tauri/target/rollback/); the agent left a second bundle with the same ID in /Applications.
+- Prompt: every feature that narrows what is shown states its initial selection and how the user
+  returns to seeing everything; the category sidebar had no way back to all receipts.
+
+Needs one live retry because the provider prompt changed.
+
 ## ReceiptShelf run with userFileAccess (2026-09-26)
 
 Best packet so far: file access traced to import and export from the required userFileAccess

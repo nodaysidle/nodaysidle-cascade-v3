@@ -67,6 +67,7 @@ describe("compact semantic provider boundary", () => {
     expect(instructions).toContain("(file access is not a platform need; userFileAccess states it)")
     expect(instructions).toContain("set userFileAccess to opens when the feature itself asks the user to choose a file or folder in an Open panel or to drop one on the window, saves when it asks the user to choose where to save a file in a Save panel")
     expect(instructions).toContain("Return ideaCoverage with exactly one entry for every numbered idea sentence below.")
+    expect(instructions).toContain("state what is selected initially and exactly how the user returns to seeing everything.")
     expect(instructions).toContain("Idea sentences:\n1. Build a focused local file organizer.")
     expect(instructions).toContain("Declare a document dataObject for every file the user chooses where to save, such as an export")
     expect(instructions).toContain("A feature that only works on loaded content lists a session dataObject for that content instead.")

@@ -94,8 +94,10 @@ describe("compact semantic provider boundary", () => {
   })
 
   it("tells the repair request where file access goes when a feature lists filesystem", () => {
-    const candidate = structuredClone(fileOrganizerBlueprint) as unknown as { features: Array<{ usesPlatformNeeds: string[] }> }
+    // The unclear case: filesystem listed on a feature that declares no file access.
+    const candidate = structuredClone(fileOrganizerBlueprint) as unknown as { features: Array<{ usesPlatformNeeds: string[]; userFileAccess: string }> }
     candidate.features[0]!.usesPlatformNeeds = ["filesystem"]
+    candidate.features[0]!.userFileAccess = "none"
     const result = parseBlueprintJson(JSON.stringify(candidate))
 
     if (result.ok || result.failure.kind !== "schema-invalid") throw new Error("expected schema-invalid")
@@ -104,6 +106,20 @@ describe("compact semantic provider boundary", () => {
     expect(issue?.message).toContain("Allowed values here: audio-input, camera, clipboard")
     expect(issue?.message).not.toMatch(/Allowed values here:[^.]*filesystem/)
     expect(issue?.message).toContain("set this feature's userFileAccess to opens, saves, or opens-and-saves instead")
+    expect(issue?.message).toContain("Found filesystem.")
+  })
+
+  it("drops filesystem from a feature that already declares its file access", () => {
+    const candidate = structuredClone(fileOrganizerBlueprint) as unknown as { features: Array<{ usesPlatformNeeds: string[]; userFileAccess: string }> }
+    const withFiles = candidate.features.findIndex(feature => feature.userFileAccess !== "none")
+    expect(withFiles).toBeGreaterThanOrEqual(0)
+    candidate.features[withFiles]!.usesPlatformNeeds = [...candidate.features[withFiles]!.usesPlatformNeeds, "filesystem"]
+    const result = parseBlueprintJson(JSON.stringify(candidate))
+
+    expect(result.ok, JSON.stringify(result.ok ? [] : result.failure.issues)).toBe(true)
+    if (!result.ok) return
+    expect(result.blueprint.features[withFiles]!.usesPlatformNeeds).not.toContain("filesystem")
+    expect(result.blueprint.features[withFiles]!.userFileAccess).not.toBe("none")
   })
 
   it("classifies invalid JSON without retaining provider text", () => {

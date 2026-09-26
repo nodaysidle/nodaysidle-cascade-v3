@@ -235,7 +235,7 @@ export function parseBlueprintJson(text: string): BlueprintParseResult {
     }
   }
 
-  const parsed = SemanticBlueprintSchema.safeParse(value)
+  const parsed = SemanticBlueprintSchema.safeParse(withoutRedundantFileNeeds(value))
   if (parsed.success) return { ok: true, blueprint: parsed.data }
 
   return {
@@ -245,7 +245,7 @@ export function parseBlueprintJson(text: string): BlueprintParseResult {
       issues: parsed.error.issues.map(issue => ({
         path: issuePath(issue.path),
         rule: `schema.${issue.code}`,
-        message: schemaIssueMessage(issue),
+        message: schemaIssueMessage(issue, value),
       })),
     },
   }
@@ -254,16 +254,42 @@ export function parseBlueprintJson(text: string): BlueprintParseResult {
 // The repair request passes these messages to the provider, so each one says what to change: the
 // allowed values of a closed field, and where file access belongs. The provider's own text is never
 // quoted, because the same message is shown in the app.
-function schemaIssueMessage(issue: z.core.$ZodIssue): string {
+function schemaIssueMessage(issue: z.core.$ZodIssue, response: unknown): string {
   const base = "The completed provider response does not match the compact semantic schema."
   if (issue.code === "invalid_value" && issue.values.length) {
-    const allowed = `Allowed values here: ${issue.values.map(value => String(value)).join(", ")}.`
+    // A short code word (not free text) is safe to name, and it makes the failure diagnosable.
+    const received = valueAtPath(response, issue.path)
+    const found = typeof received === "string" && /^[a-z0-9][a-z0-9-]{0,39}$/.test(received) ? ` Found ${received}.` : ""
+    const allowed = `${found.trim() ? `${found.trim()} ` : ""}Allowed values here: ${issue.values.map(value => String(value)).join(", ")}.`
     const featureNeed = issue.path.length >= 4 && issue.path[0] === "features" && issue.path[2] === "usesPlatformNeeds"
     return featureNeed
       ? `${base} ${allowed} File access is not a feature platform need: remove filesystem here and set this feature's userFileAccess to opens, saves, or opens-and-saves instead.`
       : `${base} ${allowed}`
   }
   return `${base} ${issue.message}`
+}
+
+function valueAtPath(value: unknown, path: readonly PropertyKey[]): unknown {
+  return path.reduce<unknown>((current, key) => (current && typeof current === "object" ? (current as Record<PropertyKey, unknown>)[key] : undefined), value)
+}
+
+// A feature that states its file access in userFileAccess and also lists filesystem among its
+// platform needs says the same thing twice; the extra entry is dropped instead of failing the whole
+// response. A feature that lists filesystem but declares no file access still fails, because its
+// intent is unclear.
+function withoutRedundantFileNeeds(value: unknown): unknown {
+  if (!value || typeof value !== "object" || !Array.isArray((value as { features?: unknown }).features)) return value
+  const root = value as { features: unknown[] }
+  return {
+    ...root,
+    features: root.features.map(feature => {
+      if (!feature || typeof feature !== "object") return feature
+      const item = feature as { usesPlatformNeeds?: unknown; userFileAccess?: unknown }
+      const declaresFiles = typeof item.userFileAccess === "string" && item.userFileAccess !== "none"
+      if (!declaresFiles || !Array.isArray(item.usesPlatformNeeds)) return feature
+      return { ...item, usesPlatformNeeds: item.usesPlatformNeeds.filter(need => need !== "filesystem") }
+    }),
+  }
 }
 
 function semanticStrings(value: unknown, path = ""): Array<{ path: string; value: string }> {

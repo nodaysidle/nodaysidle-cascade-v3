@@ -1,5 +1,16 @@
 # Audit changelog
 
+## PromptShelf regeneration failed after the repair (2026-09-26)
+
+The first response failed `schema.invalid_value` again; the one repair fixed it but rewrote the idea
+coverage and left 8 features mapped to no sentence (`semantic.feature-not-requested`), so the run
+stopped. A repair can break parts it was told to keep, so the first response now passes more often:
+a feature that lists `filesystem` in usesPlatformNeeds and already declares its file access in
+userFileAccess has the redundant entry dropped locally (file access comes only from userFileAccess
+and documents); a feature that lists it with no file access still fails with the actionable message.
+An invalid closed value that is a short code word is now named in the issue ("Found filesystem."),
+so the next failure is diagnosable; free text is still never quoted (`tests/schema.test.ts`).
+
 ## PromptShelf build audit (2026-09-26)
 
 The first Tauri build from a packet with the kit worked on the first try, verified live: add with

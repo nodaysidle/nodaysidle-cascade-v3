@@ -1,5 +1,6 @@
 import type { NormalizedBlueprint } from "./compiler"
 import type { PresetId, ProjectIdentity } from "./presets"
+import { tauriKitFiles, tauriKitReadme, tauriKitUses } from "./tauriKit"
 
 // A starter kit is tested code for the platform plumbing a preset's packet otherwise describes in
 // prose: the app entry, visible errors, storage helpers, and packaging. The agent copies it into the
@@ -29,6 +30,11 @@ export function nativeUsageDescriptions(identity: ProjectIdentity, platformNeeds
 export function presetKit(presetId: PresetId, identity: ProjectIdentity, blueprint: NormalizedBlueprint): readonly KitFile[] {
   if (presetId === "native-macos-swiftui-desktop") return nativeMacKit(identity, blueprint, "desktop")
   if (presetId === "native-macos-swiftui-menubar") return nativeMacKit(identity, blueprint, "menubar")
+  if (presetId === "tauri2-rust-typescript-desktop") {
+    const uses = tauriKitUses(blueprint, nativeUsageDescriptions(identity, blueprint.platformNeeds))
+    const files = tauriKitFiles(identity, uses)
+    return [{ path: KIT_README, content: tauriKitReadme(identity, files.map(file => file.path), uses) }, ...files]
+  }
   return []
 }
 

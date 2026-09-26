@@ -1,5 +1,40 @@
 # Audit changelog
 
+## Tauri starter kit and capability review (2026-09-26)
+
+The Tauri preset now ships a tested starter kit (`src/tauriKit.ts`), chosen from declared fields
+like the native kits: the app skeleton, command error type, error banner, install script, and kit
+tests always; settings (atomic JSON), records (rusqlite with `user_version`), the keychain vault
+(keyring 3.6 apple-native, login keychain), the tray, the Info.plist usage strings, and the
+clipboard, shortcut, autostart, notification, and dialog plugins only when declared. Cargo.toml,
+package.json, lib.rs, and the capability file are rendered from one plugin list, so a permission can
+never name a plugin the app does not initialize (the RenewalDesk defect). `npm run kit:check`
+renders a full and a bare kit and runs npm typecheck, test, and build, rustfmt, warning-free clippy,
+cargo test, and (full kit) the `.app` bundle build.
+
+The kit was first built as a throwaway app, installed, and looked at. That found traps every Tauri
+agent could hit, now in the kit and the rules:
+- `Builder::setup` replaces any earlier setup: a tray setup in `run()` silently dropped the stores
+  created in `app_builder`, and the app showed "state not managed". `run()` owns the only setup.
+- The mock runtime does not run setup, so state goes through `manage_state(app, folder)`; tests pass
+  a temporary folder and never touch real app data.
+- The packaging test must use the app's own generated context (real capabilities) and the devUrl
+  origin `http://localhost:1420`; any other origin is refused ("not allowed").
+- The error banner showed a raw runtime string; `errors.report()` now shows only Rust-written
+  messages.
+- Caret versions let Cargo mix tauri-runtime 2.12.0 into tauri 2.11.6 and the mock runtime no
+  longer compiled; the kit pins the tested set exactly, including Tauri's internal crates.
+- A shipped `rustfmt.toml` (`use_small_heuristics = "Max"`) and short template lines keep every kit
+  variant formatted for the packet's `cargo fmt --check`.
+
+Capability review against the current Tauri 2 docs (research agent, Context7): clipboard-manager and
+global-shortcut have no default permission set (copy-only gets `allow-write-text`); autostart uses
+`MacosLauncher::LaunchAgent` and `autostart:default`; notifications check and request permission from
+a user action; records use rusqlite, never tauri-plugin-sql (which exposes SQL to the frontend);
+usage strings go in `src-tauri/Info.plist`; install through `scripts/package_app.sh --install`, which
+waits for the old app to quit (the -600 error seen in the PinBoard build) and restores the previous
+copy if verification fails.
+
 ## Murmur build audit (2026-09-26)
 
 The agent build (OpenRouter, Deepgram, xAI; Right Option shortcut at the user's request) wires

@@ -21,6 +21,7 @@ import {
   landingPageBlueprint,
   networkMonitorBlueprint,
   scanDrawerBlueprint,
+  tauriEverythingBlueprint,
 } from "./fixtures/blueprints"
 
 function messyBlueprint() {
@@ -181,7 +182,7 @@ describe("deterministic exact-five compiler", () => {
     expect(packet.documents["TASKS.md"]).toContain("Before TASK-01, copy every file under kit/")
   })
 
-  it("sizes the kit from declared storage and has no kit for other presets", async () => {
+  it("sizes the kit from declared storage and has no kit for presets without one", async () => {
     const habit = await compilePacket(habitTrackerBlueprint, "native-macos-swiftui-desktop")
     const names = habit.kit.map(file => file.name)
     expect(names.some(name => name.endsWith("SQLiteDatabase.swift"))).toBe(true)
@@ -191,7 +192,7 @@ describe("deterministic exact-five compiler", () => {
     atomicRecords.dataObjects = atomicRecords.dataObjects.map(item => ({ ...item, writeMode: "atomic-replace" as const }))
     const atomicKit = (await compilePacket(atomicRecords, "native-macos-swiftui-desktop")).kit.map(file => file.name)
     expect(atomicKit.some(name => name.endsWith("AtomicFileWriter.swift"))).toBe(false)
-    for (const presetId of PRESET_IDS.filter(id => !id.startsWith("native-macos"))) {
+    for (const presetId of PRESET_IDS.filter(id => !id.startsWith("native-macos") && id !== "tauri2-rust-typescript-desktop")) {
       expect((await compilePacket(scanDrawerBlueprint, presetId)).kit, presetId).toEqual([])
     }
   })
@@ -257,6 +258,54 @@ describe("deterministic exact-five compiler", () => {
     expect(file(withLogin, "LoginItem.swift")).toContain("SMAppService.openSystemSettingsLoginItems()")
     expect(withLogin.documents["TRD.md"]).toContain("requiresApproval means the user must approve the app in System Settings > Login Items")
     expect(withLogin.documents["TRD.md"]).toContain("`./Scripts/package_app.sh --install`")
+  })
+})
+
+describe("Tauri starter kit", () => {
+  const tauri = "tauri2-rust-typescript-desktop" as const
+  const kitFile = (packet: Awaited<ReturnType<typeof compilePacket>>, path: string) => packet.kit.find(file => file.name === `kit/${path}`)?.content
+
+  it("ships each module and plugin only when declared, with one plugin list everywhere", async () => {
+    const full = await compilePacket(tauriEverythingBlueprint(), tauri)
+    for (const path of ["src-tauri/src/database.rs", "src-tauri/src/settings.rs", "src-tauri/src/vault.rs", "src-tauri/Info.plist", "scripts/package_app.sh", "src-tauri/rustfmt.toml"]) {
+      expect(kitFile(full, path), path).toBeDefined()
+    }
+    const permissions = JSON.parse(kitFile(full, "src-tauri/capabilities/default.json")!).permissions as string[]
+    expect(permissions).toEqual(["core:default", "clipboard-manager:allow-write-text", "global-shortcut:allow-register", "global-shortcut:allow-unregister", "global-shortcut:allow-is-registered", "autostart:default", "notification:default", "dialog:default"])
+    const cargo = kitFile(full, "src-tauri/Cargo.toml")!
+    const npm = JSON.parse(kitFile(full, "package.json")!).dependencies as Record<string, string>
+    const lib = kitFile(full, "src-tauri/src/lib.rs")!
+    for (const plugin of ["clipboard-manager", "global-shortcut", "autostart", "notification", "dialog"]) {
+      expect(cargo, plugin).toContain(`tauri-plugin-${plugin} = `)
+      expect(npm[`@tauri-apps/plugin-${plugin}`], plugin).toBeDefined()
+      expect(lib, plugin).toContain(`tauri_plugin_${plugin.replace(/-/g, "_")}::`)
+    }
+    expect(lib.match(/\.setup\(/g)).toHaveLength(1)
+    expect(lib).toContain("prevent_exit()")
+    expect(cargo).toContain(`features = ["tray-icon"]`)
+    expect(kitFile(full, "src-tauri/Info.plist")).toContain("<key>NSMicrophoneUsageDescription</key>")
+    expect(kitFile(full, "src-tauri/tests/kit_tests.rs")).toContain(`url: "http://localhost:1420"`)
+
+    const bare = await compilePacket(landingPageBlueprint, tauri)
+    expect(JSON.parse(kitFile(bare, "src-tauri/capabilities/default.json")!).permissions).toEqual(["core:default"])
+    for (const path of ["src-tauri/src/database.rs", "src-tauri/src/settings.rs", "src-tauri/src/vault.rs", "src-tauri/Info.plist"]) {
+      expect(kitFile(bare, path), path).toBeUndefined()
+    }
+    expect(kitFile(bare, "src-tauri/src/lib.rs")).not.toContain("prevent_exit")
+    expect(kitFile(bare, "src-tauri/src/lib.rs")).not.toContain(".plugin(")
+  })
+
+  it("gives every kit file one owning task and carries the verified wiring rules", async () => {
+    const packet = await compilePacket(tauriEverythingBlueprint(), tauri)
+    const created = packet.graph.phases.flatMap(phase => phase.tasks).flatMap(task => task.filesToCreate)
+    for (const path of packet.graph.kitPaths) expect(created.filter(file => file === path), path).toHaveLength(1)
+    expect(packet.documents["TASKS.md"]).toContain("Before TASK-01, copy every file under kit/")
+    const trd = packet.documents["TRD.md"]
+    expect(trd).toContain("Builder::setup replaces any earlier setup")
+    expect(trd).toContain("with the devUrl origin http://localhost:1420")
+    expect(trd).toContain("clipboard-manager:allow-write-text and never reads")
+    expect(trd).toContain("keyring crate (3.6, apple-native feature)")
+    expect(trd).toContain("scripts/package_app.sh --install")
   })
 })
 

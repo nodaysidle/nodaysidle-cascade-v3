@@ -283,6 +283,19 @@ export const scanDrawerBlueprint = blueprint({
   productConstraints: ["Never upload scans.", "Never modify the original file the user chose."],
 })
 
+// Every Tauri kit module and plugin at once: records, settings, a keyed service, file panels, the
+// tray, and the clipboard, shortcut, autostart, and notification plugins, plus a microphone string.
+export function tauriEverythingBlueprint(): SemanticBlueprint {
+  const everything = structuredClone(forecastGlanceBlueprint)
+  const extra = ["clipboard", "global-hotkey", "launch-at-login", "notifications", "background-execution", "audio-input"] as const
+  everything.platformNeeds = [...everything.platformNeeds, ...extra]
+  everything.features[0]!.usesPlatformNeeds = [...everything.features[0]!.usesPlatformNeeds, ...extra]
+  everything.features[2]!.userFileAccess = "opens"
+  everything.features[2]!.usesData = [...everything.features[2]!.usesData, "Glance preferences"]
+  everything.dataObjects = [...everything.dataObjects, { name: "Glance preferences", purpose: "The unit system and the selected place.", sensitivity: "internal", retentionIntent: "Keep until the user changes it.", storage: "settings", writeMode: "atomic-replace" }]
+  return everything
+}
+
 export const sharedOutcome = "Every saved change appears in the next export"
 
 export function sharedAcceptanceBlueprint(): SemanticBlueprint {

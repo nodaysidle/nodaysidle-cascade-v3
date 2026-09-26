@@ -23,7 +23,7 @@ build a working app from them.
 | --- | --- | --- | --- |
 | native-macos-swiftui-desktop | Yes | Done | ReceiptShelf built and verified working (kit kept, embedded preview, window reopen, errors visible, `user_version`, clean install). LogLens built earlier, before the kit. |
 | native-macos-swiftui-menubar | Yes | Done (shared with desktop) | Two live builds. PinBoard: behavior correct, menu fixed after the audit (kit now ships `MenuStyle.swift`, grouped Settings). Murmur: recording, xAI transcription, and auto-paste verified live by the user; Settings footers and modifier-only shortcuts fixed in the kit and rules. |
-| tauri2-rust-typescript-desktop | No | Not yet | RenewalDesk and ClipVault built before most of this work. |
+| tauri2-rust-typescript-desktop | Yes (`src/tauriKit.ts`) | Done 2026-09-26 | Kit prototyped as a real app (built, installed, looked at); RenewalDesk and ClipVault built before this work. **Live build next.** |
 | android-kotlin-compose | No | Not yet | Never built. |
 | astro-web | No | Not yet | Never built. |
 
@@ -39,13 +39,10 @@ build a working app from them.
    > Murmur — a minimal native macOS menu-bar speech-to-text app. The user presses a global keyboard shortcut (Option-Space by default, changeable in Settings) to start recording from the microphone and presses it again to stop; the menu-bar icon shows whether it is idle, recording, or transcribing. When recording stops, the app sends the audio to the speech-to-text provider selected in Settings and copies the returned text to the clipboard, and the menu shows the last transcript with a Copy Again button. Settings let the user choose the provider from OpenAI, Deepgram, ElevenLabs, and a local whisper.cpp server; the three cloud providers each need their own API key, entered in Settings and stored securely, while the local server needs only its address (http://localhost:8080 by default). Settings also hold the transcription language (Auto, English, German, Spanish, French; Auto by default) and a launch-at-login option, off by default. If the microphone is denied, a key is missing, or the provider returns an error, the menu shows what went wrong and nothing is copied. Recordings are kept in memory only and discarded after transcription; only the last transcript and the settings survive quit and relaunch. No accounts, no sync, no Dock icon, no window other than the menu and Settings.
 
    Audit the packet (use `blueprint.json` to see exactly what DeepSeek declared), then build it.
-2. **Tauri next, then Android, then Astro.** For each preset: capability review against current
-   docs, a starter kit in `src/kits.ts` checked by `npm run kit:check`, then one live idea built
-   and audited. Tauri open items to fold in:
-   - Capabilities must match initialized plugins: RenewalDesk granted `notification:default`,
-     `dialog:default`, `fs:default` for plugins it never initialized. Every capability permission
-     belongs to an initialized plugin, and every initialized plugin has least-privilege permissions.
-   - The Tauri kit needs a real reopen/rollback-safe install flow like the native script.
+2. **Tauri live build**: the user picks a Tauri idea, generates the packet, an agent builds it, and
+   the build is audited with screenshots. Then **Android, then Astro**, each the same way: prototype
+   the kit as a real throwaway app with pinned versions, port it into the compiler with a
+   `kit:check` case, update the rules, then one live build.
 3. **Regression fixtures from real blueprints.** Copy `blueprint.json` from apps that built well
    into `tests/fixtures/` and assert clean packets on their presets on every change.
 4. **Other open items.**

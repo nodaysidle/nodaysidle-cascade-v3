@@ -29,9 +29,8 @@ build a working app from them.
 
 ## Resume here, in order
 
-1. **Murmur, the speech-to-text menu bar app** (packet audited 2026-09-26: one compiler fix, the
-   clipboard rule no longer tells a copy-only app to watch the clipboard; regenerate or tell the
-   build agent before building) (next live test, `native-macos-swiftui-menubar`).
+1. **Murmur, the speech-to-text menu bar app** (packet regenerated and clean 2026-09-26 after the
+   copy-only clipboard fix; **next: agent build, then the built-app audit with screenshots**) (next live test, `native-macos-swiftui-menubar`).
    It exercises the reviewed but unproven capabilities: microphone, global hotkey, HTTPS providers
    plus a localhost server (ATS exception), Keychain keys, provider and language choice lists,
    clipboard write without watching, launch at login, session-only recordings. Prompt:

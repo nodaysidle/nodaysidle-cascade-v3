@@ -1328,7 +1328,7 @@ function buildPhases(
     focusedTests: [foundationTest],
     acceptanceIds: [],
     acceptanceCriteria: foundationCriteria,
-    prompt: `Create the ${preset.label} foundation with identity ${identity.bundleId}. Use only the locked stack and create every listed file before any later task modifies it.${isNativeMacPreset(preset.id) ? ` ${identity.moduleName}App.swift must strictly declare the @main App scene entry and delegate all application state and commands to AppState.swift.` : ""}${preset.id === "astro-web" ? " package.json must define npm run check, test, test:a11y, build, and audit:performance before any later validation gate." : ""} Add a contract test that fails on stack or identity drift.`,
+    prompt: `Create the ${preset.label} foundation with identity ${identity.bundleId}. Use only the locked stack and create every listed file before any later task modifies it.${isNativeMacPreset(preset.id) ? ` ${identity.moduleName}App.swift must strictly declare the @main App scene entry and delegate all application state and commands to ${preset.registrationFile("feature", identity).split("/").pop()}.` : ""}${preset.id === "astro-web" ? " package.json must define npm run check, test, test:a11y, build, and audit:performance before any later validation gate." : ""} Add a contract test that fails on stack or identity drift.`,
     validationCommands: [preset.validationCommands[0]!(identity)],
   }
   const phases: GraphPhase[] = [{ id: "PHASE-01-FOUNDATION", title: "Locked foundation", dependencies: [], tasks: [foundationTask] }]

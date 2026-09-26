@@ -17,8 +17,10 @@ export interface PresetSemanticInput {
 }
 
 // Every preset's CON-RUNTIME-WIRING carries these: a failure the PRD shows the user must be visible in
-// the running app, and the hands-on launch check must not leave its test data in the user's real state.
+// the running app, every screen must be usable as seen, not only reachable through accessibility or
+// storage, and the hands-on launch check must not leave its test data in the user's real state.
 const SHARED_WIRING_RULES = [
+  "The launch check looks at the app, not only its accessibility tree or stored data: with each list holding several entries, one of them longer than the view is wide, it takes a screenshot of every window, menu, panel, and page and confirms by looking at each one that every heading, row, and control lies fully inside the view, long text truncates or wraps inside it, and text is readable against its background. Clipped, overlapping, or off-screen content blocks completion. If no screenshot can be taken, the completion report says so and asks the user to look instead of reporting the screens as checked.",
   "Every failure behavior that shows the user a message is visible in the running app: a view renders the owning feature's error state, and no entry point silently discards an error that the PRD says the user sees. The launch check triggers one such failure per feature that has one and confirms the message appears.",
   "The launch check leaves no test data behind: it restores every setting it changed to its previous value and removes every record and file it created, and the completion report lists anything it could not remove.",
 ] as const

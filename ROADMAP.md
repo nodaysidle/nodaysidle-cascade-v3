@@ -22,17 +22,14 @@ build a working app from them.
 | Preset | Kit | Capability review | Live evidence |
 | --- | --- | --- | --- |
 | native-macos-swiftui-desktop | Yes | Done | ReceiptShelf built and verified working (kit kept, embedded preview, window reopen, errors visible, `user_version`, clean install). LogLens built earlier, before the kit. |
-| native-macos-swiftui-menubar | Yes | Done (shared with desktop) | PinBoard packet clean; **agent build in progress**. |
+| native-macos-swiftui-menubar | Yes | Done (shared with desktop) | PinBoard built; behavior correct, but the menu was clipped and amateur-looking until post-audit fixes (kit now ships `MenuStyle.swift` and a grouped Settings form). Its launch check never looked at the screen. |
 | tauri2-rust-typescript-desktop | No | Not yet | RenewalDesk and ClipVault built before most of this work. |
 | android-kotlin-compose | No | Not yet | Never built. |
 | astro-web | No | Not yet | Never built. |
 
 ## Resume here, in order
 
-1. **Audit the PinBoard build** (`/Volumes/omarchyuser/projekti/pinboard`) with the built-app
-   checklist below. Its packet predates the capability review, so its `LoginItem` does not handle
-   `requiresApproval` yet; note it, do not fix the app.
-2. **Murmur, the speech-to-text menu bar app** (next live test, `native-macos-swiftui-menubar`).
+1. **Murmur, the speech-to-text menu bar app** (next live test, `native-macos-swiftui-menubar`).
    It exercises the reviewed but unproven capabilities: microphone, global hotkey, HTTPS providers
    plus a localhost server (ATS exception), Keychain keys, provider and language choice lists,
    clipboard write without watching, launch at login, session-only recordings. Prompt:
@@ -40,16 +37,16 @@ build a working app from them.
    > Murmur — a minimal native macOS menu-bar speech-to-text app. The user presses a global keyboard shortcut (Option-Space by default, changeable in Settings) to start recording from the microphone and presses it again to stop; the menu-bar icon shows whether it is idle, recording, or transcribing. When recording stops, the app sends the audio to the speech-to-text provider selected in Settings and copies the returned text to the clipboard, and the menu shows the last transcript with a Copy Again button. Settings let the user choose the provider from OpenAI, Deepgram, ElevenLabs, and a local whisper.cpp server; the three cloud providers each need their own API key, entered in Settings and stored securely, while the local server needs only its address (http://localhost:8080 by default). Settings also hold the transcription language (Auto, English, German, Spanish, French; Auto by default) and a launch-at-login option, off by default. If the microphone is denied, a key is missing, or the provider returns an error, the menu shows what went wrong and nothing is copied. Recordings are kept in memory only and discarded after transcription; only the last transcript and the settings survive quit and relaunch. No accounts, no sync, no Dock icon, no window other than the menu and Settings.
 
    Audit the packet (use `blueprint.json` to see exactly what DeepSeek declared), then build it.
-3. **Tauri next, then Android, then Astro.** For each preset: capability review against current
+2. **Tauri next, then Android, then Astro.** For each preset: capability review against current
    docs, a starter kit in `src/kits.ts` checked by `npm run kit:check`, then one live idea built
    and audited. Tauri open items to fold in:
    - Capabilities must match initialized plugins: RenewalDesk granted `notification:default`,
      `dialog:default`, `fs:default` for plugins it never initialized. Every capability permission
      belongs to an initialized plugin, and every initialized plugin has least-privilege permissions.
    - The Tauri kit needs a real reopen/rollback-safe install flow like the native script.
-4. **Regression fixtures from real blueprints.** Copy `blueprint.json` from apps that built well
+3. **Regression fixtures from real blueprints.** Copy `blueprint.json` from apps that built well
    into `tests/fixtures/` and assert clean packets on their presets on every change.
-5. **Other open items.**
+4. **Other open items.**
    - Cross-feature state in focused tests (seen 4 times): add a generic packet rule that a focused
      test may set another feature's state through the data owner, so phase order never blocks it.
    - Distribution signing: with a Developer ID, notarization needs the hardened runtime
@@ -70,6 +67,9 @@ build a working app from them.
 
 ## Done on 2026-09-25 and 2026-09-26 (details in `audit/CHANGELOG.md`)
 
+- **PinBoard audited.** Behavior passed but the menu was clipped and unusable, missed by agent and
+  audit alike; the launch check now requires looking at screenshots. Foundation task names the
+  preset's state owner and the kit README names only shipped helpers.
 - **Provider step became structured.** One fact per field, asked as a required answer:
   `userFileAccess` per feature, `choiceLists` (every option plus the initial one), `ideaCoverage`
   (every numbered idea sentence maps to features, product, non-goal, or constraint; unrequested
@@ -146,7 +146,9 @@ build a working app from them.
    (`swift test --scratch-path /private/tmp/...`, `CARGO_TARGET_DIR=/private/tmp/...`).
 4. Check the installed bundle: `codesign --verify --deep --strict`, bundle ID, arm64, icon, and that
    `/Applications` holds one bundle per ID.
-5. Test live behavior. The terminal has Accessibility access, so `osascript` UI scripting works
+5. Look at every window and menu with long real content (screenshot, or ask the user to look);
+   clipped or unreadable screens fail the audit even when every behavior passes. Opening is not
+   working. Then test live behavior. The terminal has Accessibility access, so `osascript` UI scripting works
    (a menu bar item is `menu bar 2` of the process). The user runs AeroSpace, so `frontmost` and
    window focus are not reliable signals. Also use `pbcopy`, `sqlite3` on the app-data store, and
    quit and relaunch. Test strings must not look like secrets.

@@ -63,6 +63,7 @@ function nativeMacKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint,
         { path: source(`${module}App.swift`), content: menuBarAppSwift(identity) },
         { path: source("MenuBarController.swift"), content: menuBarControllerSwift(identity) },
         { path: source("SettingsWindow.swift"), content: SETTINGS_WINDOW_SWIFT },
+        { path: source("MenuStyle.swift"), content: MENU_STYLE_SWIFT },
       ]),
     { path: platform("ErrorCenter.swift"), content: ERROR_CENTER_SWIFT },
     ...(variant === "menubar" && launchesAtLogin ? [{ path: platform("LoginItem.swift"), content: LOGIN_ITEM_SWIFT }] : []),
@@ -79,6 +80,8 @@ function nativeMacKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint,
 }
 
 function kitReadme(identity: ProjectIdentity, paths: readonly string[], variant: NativeVariant): string {
+  // Describe only helpers this kit ships, so the README never names a file the agent cannot find.
+  const ships = (file: string, line: string) => paths.some(path => path.endsWith(`/${file}`)) ? [line] : []
   return [
     `# ${identity.projectName} starter kit`,
     "",
@@ -97,13 +100,15 @@ function kitReadme(identity: ProjectIdentity, paths: readonly string[], variant:
         "- The app entry is a MenuBarExtra with a Settings scene and no Dock icon (LSUIElement); the AppDelegate owns MenuBarController so launch-time work starts in didFinishLaunching, before the menu is first opened.",
         "- Every feature reports a user-visible failure through MenuBarController.errors.report(_:), which the menu shows as an ErrorBanner; never swallow an error the PRD says the user sees.",
         "- SettingsButton activates the app before opening Settings, so the Settings window comes to the front.",
+        "- The menu looks like a menu: list rows and commands use MenuRowButtonStyle or MenuCommand (hover highlight, one line truncated to the menu width), row actions are MenuIconButton symbols on the row's trailing edge, and the menu never shows bordered push buttons or AppKit NSButton wrappers. The menu sizes to its content: an empty list is one centered symbol and a line saying how to fill it, never a fixed-height gap, and a command with nothing to act on is disabled.",
+        "- Settings is a grouped Form sized to its content: put controls in Sections with a short footer that explains each one; the window never shows empty space.",
         "- LoginItem, when present, is the only place that registers or unregisters the login item through SMAppService.mainApp; show the toggle as on only when the status is enabled, and when it requires approval, say so and offer LoginItem.openSystemSettings().",
       ]),
-    "- AtomicFileWriter writes a temporary file in the destination's own folder and swaps it in whole.",
-    "- AppFileStore keeps app-owned copies under Application Support with generated names; store only the returned file name.",
-    "- SQLiteDatabase applies migrations in order and records the schema version in PRAGMA user_version; append new migrations, never edit applied ones.",
+    ...ships("AtomicFileWriter.swift", "- AtomicFileWriter writes a temporary file in the destination's own folder and swaps it in whole."),
+    ...ships("AppFileStore.swift", "- AppFileStore keeps app-owned copies under Application Support with generated names; store only the returned file name."),
+    ...ships("SQLiteDatabase.swift", "- SQLiteDatabase applies migrations in order and records the schema version in PRAGMA user_version; append new migrations, never edit applied ones."),
     "- Scripts/package_app.sh builds, signs, and verifies dist/; with --install it moves the old app to dist/rollback/ (never inside /Applications), installs, registers, and launches the bundle.",
-    "- KeychainStore, when present, is the only place secrets are stored: generic passwords in the login keychain under the bundle ID's credentials service.",
+    ...ships("KeychainStore.swift", "- KeychainStore is the only place secrets are stored: generic passwords in the login keychain under the bundle ID's credentials service."),
     "- KitTests covers the kit; keep it passing.",
     "",
   ].join("\n")
@@ -215,6 +220,7 @@ struct ${identity.moduleName}App: App {
             SettingsWindow()
                 .environment(appDelegate.controller)
         }
+        .windowResizability(.contentSize)
     }
 }
 
@@ -251,17 +257,21 @@ final class MenuBarController {
         MenuBarController(errors: ErrorCenter())
     }
 
+    // Feature content goes between the dividers: rows use MenuRowButtonStyle, row actions MenuIconButton.
     var menuContent: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ErrorBanner(center: errors)
+        VStack(alignment: .leading, spacing: 2) {
             Text("${identity.projectName}")
                 .font(.headline)
-            Divider()
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+            ErrorBanner(center: errors)
+                .padding(.horizontal, 8)
+            Divider().padding(.vertical, 4)
             SettingsButton()
-            Button("Quit ${identity.projectName}") { NSApp.terminate(nil) }
+            MenuCommand(title: "Quit ${identity.projectName}", key: "q") { NSApp.terminate(nil) }
         }
-        .padding(12)
-        .frame(width: 300)
+        .padding(6)
+        .frame(width: 320)
     }
 
     /// Starts the work the app does from launch, such as watching a system source.
@@ -276,7 +286,7 @@ struct SettingsButton: View {
     @Environment(\\.openSettings) private var openSettings
 
     var body: some View {
-        Button("Settings…") {
+        MenuCommand(title: "Settings…", key: ",") {
             NSApp.activate()
             openSettings()
         }
@@ -285,6 +295,79 @@ struct SettingsButton: View {
 `
 }
 
+// Native-looking parts for a .window menu. Default Buttons there render as bordered push buttons,
+// which make a menu look like a form; these look and behave like menu items.
+const MENU_STYLE_SWIFT = `import SwiftUI
+
+/// A full-width menu row: one line truncated to the menu width, highlighted on hover like a menu item.
+struct MenuRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        MenuRow(configuration: configuration)
+    }
+
+    private struct MenuRow: View {
+        let configuration: ButtonStyleConfiguration
+        @Environment(\\.isEnabled) private var isEnabled
+        @State private var hovering = false
+
+        var body: some View {
+            configuration.label
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .contentShape(.rect)
+                .background(Color.primary.opacity(hovering && isEnabled ? 0.1 : 0), in: .rect(cornerRadius: 6))
+                .opacity(isEnabled ? (configuration.isPressed ? 0.6 : 1) : 0.4)
+                .onHover { hovering = $0 }
+        }
+    }
+}
+
+/// A menu command such as Settings… or Quit, with its keyboard shortcut shown on the trailing edge.
+struct MenuCommand: View {
+    let title: String
+    var key: KeyEquivalent?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Text(title)
+                Spacer(minLength: 8)
+                if let key {
+                    Text("⌘\\(String(key.character).uppercased())")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .buttonStyle(MenuRowButtonStyle())
+        .keyboardShortcut(key.map { KeyboardShortcut($0) })
+    }
+}
+
+/// A small symbol button for a secondary action inside a row (pin, delete); its label is the tooltip
+/// and the VoiceOver name.
+struct MenuIconButton: View {
+    let symbol: String
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .frame(width: 22, height: 22)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .help(label)
+        .accessibilityLabel(label)
+    }
+}
+`
+
 const SETTINGS_WINDOW_SWIFT = `import SwiftUI
 
 // Feature tasks add their settings controls here.
@@ -292,11 +375,14 @@ struct SettingsWindow: View {
     @Environment(MenuBarController.self) private var controller
 
     var body: some View {
+        // Group controls in Sections; the window takes the form's height, so it never shows empty space.
         Form {
             ErrorBanner(center: controller.errors)
         }
-        .padding(20)
-        .frame(width: 380)
+        .formStyle(.grouped)
+        .scrollDisabled(true)
+        .frame(width: 420)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 `

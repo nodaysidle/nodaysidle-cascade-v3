@@ -1,5 +1,43 @@
 # Audit changelog
 
+## PinBoard build audit (2026-09-26)
+
+The first menu bar build from a kit (`native-macos-swiftui-menubar`) behaved correctly but was
+unusable: the agent wrapped each entry in an NSButton, whose full-title width (754 pt for a long
+clipboard entry) widened the 360 pt menu, so the header, the row text, and Pin and Delete were
+clipped. The agent's launch check and this audit both drove the app through accessibility and
+SQLite and never looked at it. Every preset's CON-RUNTIME-WIRING now requires the launch check to
+screenshot every screen with a long entry and confirm nothing is clipped, or to say it could not
+(`tests/idea-preset-matrix.test.ts`). The app was patched (`sizeThatFits` caps the row at the
+offered width) and reinstalled. Even unclipped, the menu looked amateur: every row and command was a
+bordered pill, Pin and Delete doubled each row, the empty list left a fixed-height gap under a
+top-left message, Clear Unpinned stayed active with nothing to clear, and Settings was a large empty
+window with one checkbox. The root cause was the kit: its menu template had only default Buttons
+(bordered push buttons in a `.window` menu) and an unstyled Form. The menu bar kit now ships
+`MenuStyle.swift` (MenuRowButtonStyle with hover highlight and one truncated line, MenuCommand with
+its shortcut shown, MenuIconButton for row actions), uses them in its template, sizes Settings to a
+grouped Form (`.windowResizability(.contentSize)`), and its README requires a centered empty state
+and disabled commands with nothing to act on. PinBoard was rebuilt on the same parts. The composition root
+wires real owners; storage helpers, LoginItem, Package.swift, Info.plist, entitlements, and the
+packaging script are byte-identical to the kit; the app entry, ErrorCenter (Retry added), and
+SettingsWindow are extended, not replaced. 62 Swift tests pass, the release build is warning-free,
+one signed arm64 bundle per ID runs from /Applications, the SQLite store has `user_version` 1 and no
+leftover test triggers. Live behavior: capture, newest-first with pinned first, first line only, copy back
+of the full text with no new row, pin, delete, and persistence across relaunch all worked.
+
+Two compiler defects made the agent guess, both fixed with assertions in `tests/compiler.test.ts`:
+
+- The foundation task told both native presets to delegate state to `AppState.swift`; the menu bar
+  preset's state owner is `MenuBarController.swift`. The file name now comes from the preset's
+  `registrationFile`.
+- The kit README described AtomicFileWriter, AppFileStore, SQLiteDatabase, and KeychainStore even
+  when the kit omitted them. It now describes only helpers the kit ships.
+
+Not fixed (known, or idea): the packet predates the `requiresApproval` review, so the app's
+LoginItem lacks it and `applyStoredValue` re-registers at launch whenever the stored setting and
+the service status differ. The agent left `/private/tmp/pinboard-kit.txt`, `pinboard-now.txt`, and
+`PinBoard.iconset` behind (outside the project; harmless).
+
 ## Blueprint export (2026-09-26)
 
 Audits kept guessing what the provider had declared (for example whether an importer carried a

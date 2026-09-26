@@ -172,6 +172,7 @@ describe("deterministic exact-five compiler", () => {
     expect(app).toContain("@NSApplicationDelegateAdaptor(AppDelegate.self)")
     expect(app).not.toContain("NSApplication.shared.delegate =")
     expect(app).not.toContain("CommandGroup(replacing: .newItem)")
+    expect(packet.documents["TASKS.md"]).toContain("delegate all application state and commands to AppState.swift.")
 
     // Every kit source file is owned by exactly one task, so "create only" lists stay exact.
     const created = packet.graph.phases.flatMap(phase => phase.tasks).flatMap(task => task.filesToCreate)
@@ -228,10 +229,21 @@ describe("deterministic exact-five compiler", () => {
     expect(file(plain, `${module}App.swift`)).toContain("controller.didFinishLaunching()")
     expect(file(plain, "MenuBarController.swift")).toContain("ErrorBanner(center: errors)")
     expect(file(plain, "MenuBarController.swift")).toContain("NSApp.activate()")
+    expect(file(plain, "MenuStyle.swift")).toContain("struct MenuRowButtonStyle: ButtonStyle")
+    expect(file(plain, "MenuBarController.swift")).toContain("MenuCommand(title: \"Quit ")
+    expect(file(plain, "SettingsWindow.swift")).toContain(".formStyle(.grouped)")
+    expect(file(plain, `${module}App.swift`)).toContain(".windowResizability(.contentSize)")
     expect(file(plain, "Resources/Info.plist")).toContain("<key>LSUIElement</key>\n    <true/>")
     expect(file(plain, "LoginItem.swift")).toBeUndefined()
     // Records are atomic through SQLite transactions, so no file writer is shipped for them.
     expect(file(plain, "AtomicFileWriter.swift")).toBeUndefined()
+    // The README and the foundation task name only files this kit ships.
+    const readme = plain.kit.find(item => item.name === "kit/README.md")!.content
+    expect(readme).not.toContain("AppFileStore")
+    expect(readme).not.toContain("AtomicFileWriter")
+    expect(readme).not.toContain("KeychainStore")
+    expect(plain.documents["TASKS.md"]).toContain("delegate all application state and commands to MenuBarController.swift.")
+    expect(plain.documents["TASKS.md"]).not.toContain("AppState.swift")
     const created = plain.graph.phases.flatMap(phase => phase.tasks).flatMap(task => task.filesToCreate)
     for (const path of plain.graph.kitPaths) expect(created.filter(item => item === path), path).toHaveLength(1)
 

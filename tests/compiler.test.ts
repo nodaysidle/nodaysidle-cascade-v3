@@ -230,6 +230,7 @@ describe("deterministic exact-five compiler", () => {
     expect(file(plain, "MenuBarController.swift")).toContain("ErrorBanner(center: errors)")
     expect(file(plain, "MenuBarController.swift")).toContain("NSApp.activate()")
     expect(file(plain, "MenuStyle.swift")).toContain("struct MenuRowButtonStyle: ButtonStyle")
+    expect(file(plain, "MenuStyle.swift")).toContain("struct SettingsFooter: View")
     expect(file(plain, "MenuBarController.swift")).toContain("MenuCommand(title: \"Quit ")
     expect(file(plain, "SettingsWindow.swift")).toContain(".formStyle(.grouped)")
     expect(file(plain, `${module}App.swift`)).toContain(".windowResizability(.contentSize)")

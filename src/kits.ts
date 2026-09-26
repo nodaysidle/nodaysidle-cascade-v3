@@ -101,7 +101,7 @@ function kitReadme(identity: ProjectIdentity, paths: readonly string[], variant:
         "- Every feature reports a user-visible failure through MenuBarController.errors.report(_:), which the menu shows as an ErrorBanner; never swallow an error the PRD says the user sees.",
         "- SettingsButton activates the app before opening Settings, so the Settings window comes to the front.",
         "- The menu looks like a menu: list rows and commands use MenuRowButtonStyle or MenuCommand (hover highlight, one line truncated to the menu width), row actions are MenuIconButton symbols on the row's trailing edge, and the menu never shows bordered push buttons or AppKit NSButton wrappers. The menu sizes to its content: an empty list is one centered symbol and a line saying how to fill it, never a fixed-height gap, and a command with nothing to act on is disabled.",
-        "- Settings is a grouped Form sized to its content: put controls in Sections with a short footer that explains each one; the window never shows empty space.",
+        "- Settings is a grouped Form sized to its content: put controls in Sections, each with a SettingsFooter (never a plain footer Text, which macOS aligns right) that explains it in one or two sentences; the window never shows empty space.",
         "- LoginItem, when present, is the only place that registers or unregisters the login item through SMAppService.mainApp; show the toggle as on only when the status is enabled, and when it requires approval, say so and offer LoginItem.openSystemSettings().",
       ]),
     ...ships("AtomicFileWriter.swift", "- AtomicFileWriter writes a temporary file in the destination's own folder and swaps it in whole."),
@@ -364,6 +364,20 @@ struct MenuIconButton: View {
         .foregroundStyle(.secondary)
         .help(label)
         .accessibilityLabel(label)
+    }
+}
+
+/// A Section footer for the grouped Settings form. macOS aligns footer text, and its wrapped lines, to the trailing
+/// edge; this keeps it leading, like System Settings.
+struct SettingsFooter: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 `

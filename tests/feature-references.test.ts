@@ -102,6 +102,19 @@ describe("explicit feature references", () => {
     }
   })
 
+  it("tells native global shortcuts how to handle a modifier key on its own", () => {
+    for (const presetId of ["native-macos-swiftui-desktop", "native-macos-swiftui-menubar"] as const) {
+      const blueprint = structuredClone(fileOrganizerBlueprint)
+      blueprint.platformNeeds = [...blueprint.platformNeeds, "global-hotkey"]
+      blueprint.features[0]!.usesPlatformNeeds = ["global-hotkey"]
+      const contract = compileProjectGraph(normalizeBlueprint(blueprint, presetId), presetId)
+        .contracts.find(item => item.id === "CON-PERMISSION-GLOBAL-INPUT")!
+      const text = [contract.decision, ...contract.details].join(" ")
+      expect(text).toContain("RegisterEventHotKey cannot bind a modifier key on its own")
+      expect(text).toContain("act on a clean tap, pressed and released with no other key or modifier in between")
+    }
+  })
+
   it("keeps file access when the provider omits filesystem from the product-level needs", () => {
     const blueprint = { ...structuredClone(fileOrganizerBlueprint), platformNeeds: ["local-storage" as const] }
     const graph = compileProjectGraph(normalizeBlueprint(blueprint, PRESET), PRESET)

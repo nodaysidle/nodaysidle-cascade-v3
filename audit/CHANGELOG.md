@@ -1,5 +1,30 @@
 # Audit changelog
 
+## Murmur build audit (2026-09-26)
+
+The agent build (OpenRouter, Deepgram, xAI; Right Option shortcut at the user's request) wires
+real owners, keeps the kit storage, Keychain, login item, packaging, and plist files unchanged,
+passes 55 tests and a warning-free release build, and installs one signed arm64 bundle. The menu,
+seen in a screenshot, is clean: status, a centered "Press Right ⌥" hint, Copy Again disabled until
+there is a transcript, and Settings and Quit with their shortcuts.
+
+Fixed in the app (user request or defect): the transcript is now pasted at the cursor by posting
+⌘V to the focused app (Accessibility access; without it the menu says the text is on the clipboard
+and how to allow pasting); Right Option toggled recording on every key-down, so typing ⌥L for @
+started a recording, and now acts only on a clean tap. 57 tests pass.
+
+Compiler (preset-level), each with a test:
+- Settings footers were right-aligned in every section: macOS aligns grouped-form footer text and
+  its wrapped lines to the trailing edge. The menu bar kit ships `SettingsFooter` (leading,
+  footnote, secondary) and its README requires it.
+- The native global-input rule named only Carbon RegisterEventHotKey, which cannot bind a lone
+  modifier. It now says to watch flagsChanged and keyDown with NSEvent monitors (Accessibility)
+  and act on a clean tap so the key still types characters.
+
+Open: Launch at Login was on after the build (stored setting 1); the agent's launch check should
+restore it, unless the user turned it on. A live recording, transcription, and paste needs the
+user's provider key and Accessibility access for the rebuilt app.
+
 ## Murmur packet audit (2026-09-26)
 
 The Murmur packet (`native-macos-swiftui-menubar`, exported after the restyled app was installed)

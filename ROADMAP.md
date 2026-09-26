@@ -29,8 +29,9 @@ build a working app from them.
 
 ## Resume here, in order
 
-1. **Murmur, the speech-to-text menu bar app** (packet regenerated and clean 2026-09-26 after the
-   copy-only clipboard fix; **next: agent build, then the built-app audit with screenshots**) (next live test, `native-macos-swiftui-menubar`).
+1. **Murmur, the speech-to-text menu bar app** (built and audited 2026-09-26: auto-paste and a
+   Right Option tap added at the user's request; kit gained `SettingsFooter`; **next: the user's
+   live recording test with a provider key**) (next live test, `native-macos-swiftui-menubar`).
    It exercises the reviewed but unproven capabilities: microphone, global hotkey, HTTPS providers
    plus a localhost server (ATS exception), Keychain keys, provider and language choice lists,
    clipboard write without watching, launch at login, session-only recordings. Prompt:

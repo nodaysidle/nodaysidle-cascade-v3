@@ -149,7 +149,7 @@ build a working app from them.
 5. Look at every window and menu with long real content (screenshot, or ask the user to look);
    clipped or unreadable screens fail the audit even when every behavior passes. Opening is not
    working. Then test live behavior. The terminal has Accessibility access, so `osascript` UI scripting works
-   (a menu bar item is `menu bar 2` of the process). The user runs AeroSpace, so `frontmost` and
+   (a menu bar item is `menu bar 2` of the process). The user runs AeroSpork, so `frontmost` and
    window focus are not reliable signals. Also use `pbcopy`, `sqlite3` on the app-data store, and
    quit and relaunch. Test strings must not look like secrets.
 6. Remove any data your own checks created, and check what the agent's run left behind.

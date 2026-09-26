@@ -99,15 +99,17 @@ function appMarkup(): string {
         </header>
 
         <form id="generator-form" novalidate>
-          <div class="field-group">
-            <label for="preset">Technology preset</label>
-            <select id="preset" name="preset">${options(PRESET_IDS, id => PRESETS[id as keyof typeof PRESETS].label)}</select>
-            <p class="field-help">Preset rules are local, deterministic, and isolated.</p>
-          </div>
+          <div class="field-stack">
+            <div class="field-group">
+              <label for="preset">Technology preset</label>
+              <select id="preset" name="preset" aria-describedby="preset-help">${options(PRESET_IDS, id => PRESETS[id as keyof typeof PRESETS].label)}</select>
+              <p id="preset-help" class="visually-hidden">Preset rules are local, deterministic, and isolated.</p>
+            </div>
 
-          <div class="field-group">
-            <label for="model">DeepSeek model</label>
-            <select id="model" name="model">${options(PROVIDER_MODELS.map(model => model.id), id => PROVIDER_MODELS.find(model => model.id === id)!.label)}</select>
+            <div class="field-group">
+              <label for="model">DeepSeek model</label>
+              <select id="model" name="model">${options(PROVIDER_MODELS.map(model => model.id), id => PROVIDER_MODELS.find(model => model.id === id)!.label)}</select>
+            </div>
           </div>
 
           <div class="field-group">
@@ -115,22 +117,21 @@ function appMarkup(): string {
             <input id="api-url" name="api-url" type="url" inputmode="url" autocomplete="off" spellcheck="false" />
           </div>
 
-          <div class="field-group">
-            <div class="field-label-row">
-              <label for="api-key">DeepSeek API key</label>
-              <span class="memory-chip">MEMORY ONLY</span>
-            </div>
-            <input id="api-key" name="api-key" type="password" autocomplete="off" spellcheck="false" aria-describedby="api-key-help" />
-            <p id="api-key-help" class="field-help">Never saved, logged, exported, or placed in the request body.</p>
-          </div>
+          <div class="key-block">
+            <div class="field-pair">
+              <div class="field-group">
+                <label for="api-key">DeepSeek API key</label>
+                <input id="api-key" name="api-key" type="password" autocomplete="off" spellcheck="false" aria-describedby="api-key-help" />
+                <p id="api-key-help" class="visually-hidden">Never saved, logged, exported, or placed in the request body.</p>
+              </div>
 
-          <div class="field-group">
-            <div class="field-label-row">
-              <label for="jev-api-key">TypeSafe / Jev API key</label>
-              <span class="memory-chip">MEMORY ONLY</span>
+              <div class="field-group">
+                <label for="jev-api-key">TypeSafe / Jev API key</label>
+                <input id="jev-api-key" name="jev-api-key" type="password" autocomplete="off" spellcheck="false" aria-describedby="jev-api-key-help" />
+                <p id="jev-api-key-help" class="visually-hidden">Used for in-memory TypeSafe Jev decisions; never saved, logged, or exported.</p>
+              </div>
             </div>
-            <input id="jev-api-key" name="jev-api-key" type="password" autocomplete="off" spellcheck="false" aria-describedby="jev-api-key-help" />
-            <p id="jev-api-key-help" class="field-help">Used for in-memory TypeSafe Jev decisions; never saved, logged, or exported.</p>
+            <p class="key-note" aria-hidden="true"><span class="memory-chip">MEMORY ONLY</span> Keys are never saved, logged, exported, or placed in the request body.</p>
           </div>
 
           <div class="field-group idea-field">
@@ -169,15 +170,6 @@ function appMarkup(): string {
           </div>
         </form>
 
-        <section class="progress-card" aria-labelledby="progress-heading">
-          <div class="section-heading-row">
-            <h2 id="progress-heading">Pipeline</h2>
-            <span id="progress-count">0 / ${progressStages.length}</span>
-          </div>
-          <ol id="progress-list" class="progress-list">
-            ${progressStages.map((stage, index) => `<li data-stage="${stage.id}"><span>${String(index + 1).padStart(2, "0")}</span><b>${stage.label}</b></li>`).join("")}
-          </ol>
-        </section>
       </aside>
 
       <section class="workspace" aria-label="Compiled packet">
@@ -199,6 +191,16 @@ function appMarkup(): string {
             <dl id="technical-list"></dl>
           </details>
         </div>
+
+        <section class="progress-card" aria-labelledby="progress-heading">
+          <div class="progress-head">
+            <h2 id="progress-heading">Pipeline</h2>
+            <span id="progress-count">0 / ${progressStages.length}</span>
+          </div>
+          <ol id="progress-list" class="progress-list">
+            ${progressStages.map((stage, index) => `<li data-stage="${stage.id}" title="${stage.label}"><span>${String(index + 1).padStart(2, "0")}</span><b>${stage.label}</b></li>`).join("")}
+          </ol>
+        </section>
 
         <div class="document-bar">
           <div id="document-tabs" class="document-tabs" role="tablist" aria-label="Packet documents">

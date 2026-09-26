@@ -62,7 +62,7 @@ describe("compact semantic provider boundary", () => {
     expect(instructions).toContain("Do not choose or recommend a technology stack")
     expect(instructions).toContain("Do not provide IDs, file paths, test paths, commands")
     expect(instructions).toContain("List a platform need only when a stated feature uses it")
-    expect(instructions).toContain("When a feature offers a fixed set of choices, such as currencies, units, or levels, list every choice and state which one is selected initially.")
+    expect(instructions).toContain("put each fixed set of options the user picks from in that feature (such as currencies, units, sort orders, or levels) in choiceLists with its name, every option, and the option selected initially.")
     expect(instructions).toContain("state the same rule in both features. Never let two features describe the same record field differently.")
     expect(instructions).toContain("(file access is not a platform need; userFileAccess states it)")
     expect(instructions).toContain("set userFileAccess to opens when the feature itself asks the user to choose a file or folder in an Open panel or to drop one on the window, saves when it asks the user to choose where to save a file in a Save panel")
@@ -228,6 +228,20 @@ describe("hard semantic blockers", () => {
     expect(SemanticBlueprintSchema.safeParse(unanswered).success).toBe(false)
   })
 
+  it("rejects a choice list whose initial choice is not an option or whose options differ between features", () => {
+    const candidate = structuredClone(fileOrganizerBlueprint)
+    candidate.features[0]!.choiceLists = [{ name: "Currency", options: ["USD", "EUR"], initial: "GBP" }]
+    candidate.features[1]!.choiceLists = [{ name: "currency", options: ["USD", "EUR", "JPY"], initial: "USD" }]
+
+    expect(auditSemanticIntake(candidate)).toEqual([
+      { path: "features[0].choiceLists[0]", rule: "semantic.choice-initial-not-option", message: "Choice list 'Currency' in 'Folder scan' starts at 'GBP', which is not one of its options." },
+      { path: "features[1].choiceLists[0]", rule: "semantic.choice-list-mismatch", message: "Choice list 'currency' has different options in 'Folder scan' and 'Move preview'." },
+    ])
+
+    candidate.features[0]!.choiceLists = [{ name: "Currency", options: ["EUR", "USD", "JPY"], initial: "EUR" }]
+    expect(auditSemanticIntake(candidate)).toEqual([])
+  })
+
   it("rejects a feature that saves a user-chosen file without a document dataObject", () => {
     const candidate = structuredClone(fileOrganizerBlueprint)
     candidate.features[2]!.userFileAccess = "saves"
@@ -272,6 +286,7 @@ describe("hard semantic blockers", () => {
       usesData: [],
       usesServices: [],
       userFileAccess: "none",
+      choiceLists: [],
     }]
 
     expect(SemanticBlueprintSchema.safeParse(candidate).success).toBe(true)

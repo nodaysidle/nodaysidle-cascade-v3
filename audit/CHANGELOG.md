@@ -1,5 +1,22 @@
 # Audit changelog
 
+## ReceiptShelf run with userFileAccess (2026-09-26)
+
+Best packet so far: file access traced to import and export from the required userFileAccess
+answer, coverage produced every idea part including an "All" sidebar entry, and storage, wiring,
+and recovery were correct. Two compiler changes:
+
+- The currency list was left unstated two runs in a row despite the prose rule, so fixed option
+  sets are now a required per-feature `choiceLists` field (name, every option, initial option),
+  rendered as `Choices:` lines in PRD and TRD. Intake rejects an initial choice outside the options
+  and a shared list whose options differ between features.
+- Jev no longer heals `filesystem` into the product-level needs; it changed nothing and showed a
+  confusing note. Removing it exposed a real bug that the healing had masked: the filesystem
+  permission was dropped when the provider's product-level list omitted `filesystem`, even though
+  features linked it. File access now counts as a product need whenever a feature links it.
+
+Needs one live retry because the provider schema and prompt changed.
+
 ## ReceiptShelf run with coverage and repair (2026-09-26)
 
 With DeepSeek Pro, the first response failed a check and the repair request fixed it; coverage

@@ -25,6 +25,7 @@ const portfolioBlueprint: SemanticBlueprint = {
       usesData: ["Project catalog entry"],
       usesServices: [],
       userFileAccess: "none",
+      choiceLists: [],
     },
     {
       name: "Project detail page",
@@ -39,6 +40,7 @@ const portfolioBlueprint: SemanticBlueprint = {
       usesData: ["Project catalog entry"],
       usesServices: ["GitHub"],
       userFileAccess: "none",
+      choiceLists: [],
     },
     {
       name: "About page",
@@ -53,6 +55,7 @@ const portfolioBlueprint: SemanticBlueprint = {
       usesData: [],
       usesServices: [],
       userFileAccess: "none",
+      choiceLists: [],
     },
   ],
   dataObjects: [
@@ -131,6 +134,7 @@ describe("astro markdown quality improvements", () => {
       requiredCapabilities: [],
       resourceIds: [],
       requiredOwnerIds: [],
+      choices: [],
       surface: "main",
     }, "projects")
     expect(gridPlacement).toEqual({ kind: "component", registrationFile: "src/pages/index.astro" })

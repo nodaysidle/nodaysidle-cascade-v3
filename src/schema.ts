@@ -25,6 +25,14 @@ export const PlatformNeedSchema = z.enum([
 // so the provider has no second place to state it and the two can never disagree.
 export const FeaturePlatformNeedSchema = PlatformNeedSchema.exclude(["filesystem"])
 
+// A fixed set of options the user picks from, asked as a required field so the options and the
+// initial choice are never left for the builder to invent.
+const ChoiceListSchema = z.strictObject({
+  name: shortMeaning,
+  options: z.array(shortMeaning).min(2).max(24),
+  initial: shortMeaning,
+})
+
 export const FeatureRecoverySchema = z.enum(["retry", "fallback", "exit"])
 export const FeatureSurfaceSchema = z.enum(["main", "item-page", "about-page", "not-found-page"])
 
@@ -41,6 +49,7 @@ const FeatureSchema = z.strictObject({
   usesData: z.array(shortMeaning).max(8),
   usesServices: z.array(shortMeaning).max(8),
   userFileAccess: z.enum(["none", "opens", "saves", "opens-and-saves"]),
+  choiceLists: z.array(ChoiceListSchema).max(4),
 })
 
 export const DataStorageSchema = z.enum(["settings", "records", "document", "app-files", "secret", "temporary", "session"])
@@ -318,6 +327,28 @@ function featureProse(feature: SemanticBlueprint["features"][number]): string[] 
   return [feature.name, feature.userOutcome, feature.trigger, feature.behavior, feature.failureOutcome, ...feature.acceptanceSignals]
 }
 
+// The initial choice must be an option, and a list two features share must have the same options.
+function choiceListIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
+  const issues: SemanticIssue[] = []
+  const byName = new Map<string, { readonly feature: string; readonly options: string }>()
+  blueprint.features.forEach((feature, featureIndex) => {
+    feature.choiceLists.forEach((list, listIndex) => {
+      const path = `features[${featureIndex}].choiceLists[${listIndex}]`
+      const options = list.options.map(referenceKey)
+      if (!options.includes(referenceKey(list.initial))) {
+        issues.push({ path, rule: "semantic.choice-initial-not-option", message: `Choice list '${list.name}' in '${feature.name}' starts at '${list.initial}', which is not one of its options.` })
+      }
+      const signature = [...new Set(options)].sort().join("|")
+      const earlier = byName.get(referenceKey(list.name))
+      if (earlier && earlier.options !== signature) {
+        issues.push({ path, rule: "semantic.choice-list-mismatch", message: `Choice list '${list.name}' has different options in '${earlier.feature}' and '${feature.name}'.` })
+      }
+      if (!earlier) byName.set(referenceKey(list.name), { feature: feature.name, options: signature })
+    })
+  })
+  return issues
+}
+
 // A saved file needs a declared document so its placement and atomic-write rule come from a field.
 function savedFileDocumentIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
   const documents = new Set(blueprint.dataObjects.filter(item => item.storage === "document").map(item => referenceKey(item.name)))
@@ -332,7 +363,7 @@ function savedFileDocumentIssues(blueprint: SemanticBlueprint): SemanticIssue[] 
 }
 
 export function auditSemanticIntake(blueprint: SemanticBlueprint): SemanticIssue[] {
-  const issues: SemanticIssue[] = [...featureReferenceIssues(blueprint), ...savedFileDocumentIssues(blueprint)]
+  const issues: SemanticIssue[] = [...featureReferenceIssues(blueprint), ...savedFileDocumentIssues(blueprint), ...choiceListIssues(blueprint)]
   if (unusableMeaning.test(blueprint.productName)) {
     issues.push({ path: "productName", rule: "semantic.unusable-product", message: "The product name does not contain usable product meaning." })
   }
@@ -407,7 +438,7 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "Every feature acceptance signal must describe a concrete, mechanically verifiable condition (such as state transitions, UI element visibility, disk persistence, error code handling, or measured response under an explicit numerical threshold) that automated unit or integration tests can assert without human subjective impression. Never use subjective or hyperbolic phrases such as 'feels smooth', 'zero latency', 'instantaneous', or 'aesthetic appeal'.",
     "For features that depend on the operating system or device (notifications, reminders, tray or menu bar presence, background operation, permissions, hardware access, launch at login), write acceptance signals as the request the app makes or the app state a test can read, never as what the user sees or notices, and name the concrete request, value, or state.",
     "When a behavior, failure outcome, or acceptance signal depends on a default, interval, or limit, state its concrete value (for example a font family and point size, or a duration in milliseconds). Never write 'documented defaults' or an interval without its value.",
-    "When a feature offers a fixed set of choices, such as currencies, units, or levels, list every choice and state which one is selected initially. Never write 'a fixed list' or 'supported values' without the values.",
+    "For every feature, put each fixed set of options the user picks from in that feature (such as currencies, units, sort orders, or levels) in choiceLists with its name, every option, and the option selected initially. Use an empty array only when the feature offers no fixed options. When two features offer the same list, give it the same name and the same options. Never write 'a fixed list' or 'supported values' without the values.",
     "When one feature's behavior sets or changes what another feature's records contain, such as a default applied when a record is created, state the same rule in both features. Never let two features describe the same record field differently.",
     "State one decided behavior for every rule. Never leave a choice between two behaviors for the builder to make (for example 'retries or skips'); pick one. Options that the user chooses between, such as a list of billing cycles, are fine. Give every scheduled or repeated action an exact time or interval and state how it avoids acting twice for the same item.",
     "Use no more than twelve features and no more than eight values in each prose list. List a platform need only when a stated feature uses it. Do not add features, settings, or platform needs that the idea does not ask for.",

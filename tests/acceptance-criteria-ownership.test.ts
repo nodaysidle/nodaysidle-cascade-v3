@@ -29,6 +29,7 @@ export function astroOwnershipBlueprint(
         usesData: [],
         usesServices: [],
         userFileAccess: "none",
+        choiceLists: [],
       },
       {
         name: featureNames[1],
@@ -43,6 +44,7 @@ export function astroOwnershipBlueprint(
         usesData: [],
         usesServices: [],
         userFileAccess: "none",
+        choiceLists: [],
       },
     ],
     dataObjects: [],

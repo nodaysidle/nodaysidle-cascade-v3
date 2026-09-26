@@ -541,7 +541,9 @@ export function healBlueprintPlatformNeeds(
 ): { readonly blueprint: SemanticBlueprint; readonly addedPlatformNeeds: readonly JevPlatformNeed[] } {
   const declared = new Set<PlatformNeed>(blueprint.platformNeeds)
   const inferred = new Set<JevPlatformNeed>(inferredNeeds)
-  const addedPlatformNeeds = JEV_PLATFORM_NEEDS.filter(need => inferred.has(need) && !declared.has(need))
+  // File access comes only from each feature's userFileAccess and declared documents, so a healed
+  // product-level filesystem need would change nothing and is not added.
+  const addedPlatformNeeds = JEV_PLATFORM_NEEDS.filter(need => need !== "filesystem" && inferred.has(need) && !declared.has(need))
   return {
     blueprint: { ...blueprint, platformNeeds: [...blueprint.platformNeeds, ...addedPlatformNeeds] },
     addedPlatformNeeds,

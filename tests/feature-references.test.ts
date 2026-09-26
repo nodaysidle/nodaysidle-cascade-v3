@@ -83,6 +83,13 @@ describe("explicit feature references", () => {
     expect(permissionFeatures()).toEqual(["FEAT-REVERSIBLE-BATCH"])
   })
 
+  it("keeps file access when the provider omits filesystem from the product-level needs", () => {
+    const blueprint = { ...structuredClone(fileOrganizerBlueprint), platformNeeds: ["local-storage" as const] }
+    const graph = compileProjectGraph(normalizeBlueprint(blueprint, PRESET), PRESET)
+
+    expect(graph.contracts.find(contract => contract.id === "CON-PERMISSION-FILESYSTEM")?.featureIds).toEqual(["FEAT-FOLDER-SCAN", "FEAT-MOVE-PREVIEW", "FEAT-REVERSIBLE-BATCH"])
+  })
+
   it("links data and services only to the features that list them", () => {
     const graph = compileProjectGraph(normalizeBlueprint(forecastGlanceBlueprint, PRESET), PRESET)
     const featureIds = (id: string) => graph.contracts.find(contract => contract.id === id)?.featureIds

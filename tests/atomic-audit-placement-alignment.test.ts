@@ -25,6 +25,7 @@ describe("Atomic Audit Placement Alignment (H3)", () => {
           usesData: ["API Key", "Session Draft", "Reading History"],
           usesServices: [],
           userFileAccess: "none",
+          choiceLists: [],
         },
       ],
       // [0] API Key (credential -> filtered out of persistenceNeeds)

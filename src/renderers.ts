@@ -80,6 +80,7 @@ function renderFeature(feature: GraphFeature): string {
     `- Behavior: ${feature.behavior}`,
     `- Inputs: ${feature.inputs.join("; ")}`,
     `- Outputs: ${feature.outputs.join("; ")}`,
+    ...feature.choices.map(choice => `- Choices: ${choice}`),
     `- Acceptance outcomes: ${feature.acceptanceOutcomes.join("; ")}`,
     `- Failure behavior: ${feature.failureBehavior}`,
     `- Recovery: ${feature.recoveryExpectations.join("; ")}`,

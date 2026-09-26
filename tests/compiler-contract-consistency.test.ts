@@ -23,6 +23,7 @@ const blueprint: SemanticBlueprint = {
       usesData: ["Editor Buffer", "Typography Preferences"],
       usesServices: [],
       userFileAccess: "none",
+      choiceLists: [],
     },
     {
       name: "Save Note",
@@ -37,6 +38,7 @@ const blueprint: SemanticBlueprint = {
       usesData: ["Note File"],
       usesServices: [],
       userFileAccess: "none",
+      choiceLists: [],
     },
     {
       name: "Close Record",
@@ -51,6 +53,7 @@ const blueprint: SemanticBlueprint = {
       usesData: ["Editor Buffer"],
       usesServices: [],
       userFileAccess: "none",
+      choiceLists: [],
     },
     {
       name: "Find Notes",
@@ -65,6 +68,7 @@ const blueprint: SemanticBlueprint = {
       usesData: ["Search Index"],
       usesServices: [],
       userFileAccess: "none",
+      choiceLists: [],
     },
   ],
   dataObjects: [
@@ -152,6 +156,7 @@ describe("compiler contract consistency", () => {
           usesData: ["Note File", "Temporary Write File"],
           usesServices: [],
           userFileAccess: "none",
+          choiceLists: [],
         },
         {
           name: "Background Write",
@@ -166,6 +171,7 @@ describe("compiler contract consistency", () => {
           usesData: ["Note File", "Temporary Write File"],
           usesServices: [],
           userFileAccess: "none",
+          choiceLists: [],
         },
         {
           name: "Open Note",
@@ -180,6 +186,7 @@ describe("compiler contract consistency", () => {
           usesData: ["Note File"],
           usesServices: [],
           userFileAccess: "none",
+          choiceLists: [],
         },
         {
           name: "Workspace Search",
@@ -194,6 +201,7 @@ describe("compiler contract consistency", () => {
           usesData: ["Workspace Folder Reference"],
           usesServices: [],
           userFileAccess: "none",
+          choiceLists: [],
         },
         {
           name: "Settings Window",
@@ -208,6 +216,7 @@ describe("compiler contract consistency", () => {
           usesData: ["Keybinding Preferences"],
           usesServices: [],
           userFileAccess: "none",
+          choiceLists: [],
         },
       ],
       dataObjects: [
@@ -279,6 +288,7 @@ describe("compiler contract consistency", () => {
           usesData: ["Note File", "Temporary Write File"],
           usesServices: [],
           userFileAccess: "none",
+          choiceLists: [],
         },
         {
           name: "Background Write",
@@ -293,6 +303,7 @@ describe("compiler contract consistency", () => {
           usesData: ["Note File", "Temporary Write File"],
           usesServices: [],
           userFileAccess: "none",
+          choiceLists: [],
         },
         {
           name: "Open Note",
@@ -307,6 +318,7 @@ describe("compiler contract consistency", () => {
           usesData: ["Note File"],
           usesServices: [],
           userFileAccess: "none",
+          choiceLists: [],
         },
         {
           name: "Workspace Search",
@@ -321,6 +333,7 @@ describe("compiler contract consistency", () => {
           usesData: ["Workspace Folder Reference"],
           usesServices: [],
           userFileAccess: "none",
+          choiceLists: [],
         },
         {
           name: "Settings Window",
@@ -335,6 +348,7 @@ describe("compiler contract consistency", () => {
           usesData: ["Typography Preferences"],
           usesServices: [],
           userFileAccess: "none",
+          choiceLists: [],
         },
       ],
       dataObjects: [
@@ -399,6 +413,7 @@ describe("compiler contract consistency", () => {
           usesData: ["Note File", "Temporary Save File"],
           usesServices: [],
           userFileAccess: "none",
+          choiceLists: [],
         },
         {
           name: "Workspace Search",
@@ -413,6 +428,7 @@ describe("compiler contract consistency", () => {
           usesData: ["Workspace Search Index"],
           usesServices: [],
           userFileAccess: "none",
+          choiceLists: [],
         },
       ],
       dataObjects: [

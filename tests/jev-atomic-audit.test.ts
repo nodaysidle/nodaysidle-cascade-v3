@@ -32,6 +32,7 @@ function createSampleBlueprint(): SemanticBlueprint {
         usesData: ["UserPreferences", "TemporaryScanBuffer", "SelectedFolder"],
         usesServices: [],
         userFileAccess: "none",
+        choiceLists: [],
         failureOutcome: "Empty preview with error notification.",
         failureRecovery: "retry",
         surface: "main",
@@ -46,6 +47,7 @@ function createSampleBlueprint(): SemanticBlueprint {
         usesData: ["FileAuditHistory"],
         usesServices: [],
         userFileAccess: "none",
+        choiceLists: [],
         failureOutcome: "No suggestions.",
         failureRecovery: "retry",
         surface: "main",
@@ -187,13 +189,13 @@ describe("Opportunity 2: Jev Atomic Contract & Placement Auditor", () => {
     ]
 
     const decision = evaluateJevAtomicAudit(outcomes, blueprint)
-    expect(decision.addedPlatformNeeds).toContain("filesystem")
+    expect(decision.addedPlatformNeeds).not.toContain("filesystem")
     // File access comes only from declared documents, so Jev never heals filesystem onto a feature.
     expect(decision.blueprint.features[0]!.usesPlatformNeeds).not.toContain("filesystem")
     expect(decision.blueprint.features[1]!.usesPlatformNeeds).not.toContain("filesystem")
 
     const normalized = normalizeBlueprint(decision.blueprint, "native-macos-swiftui-desktop", decision)
-    expect(normalized.platformNeeds).toContain("filesystem")
+    expect(normalized.platformNeeds).not.toContain("filesystem")
     // File access follows declared documents, so a healed filesystem flag alone links no permission.
     expect(normalized.permissionNeeds.map(need => need.capability)).not.toContain("filesystem")
     const graph = compileProjectGraph(normalized, "native-macos-swiftui-desktop")

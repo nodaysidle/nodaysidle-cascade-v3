@@ -38,6 +38,7 @@ const messyProviderBlueprint = {
       usesData: ["Selected folder"],
       usesServices: [],
       userFileAccess: "none",
+      choiceLists: [],
     },
     {
       name: "Reversible Batch",
@@ -52,6 +53,7 @@ const messyProviderBlueprint = {
       usesData: ["Move journal", "Selected folder"],
       usesServices: [],
       userFileAccess: "none",
+      choiceLists: [],
     },
   ],
   dataObjects: [

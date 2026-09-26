@@ -16,6 +16,7 @@ interface FeatureUses {
   readonly recovery?: FeatureRecovery
   readonly surface?: FeatureSurface
   readonly files?: Feature["userFileAccess"]
+  readonly choices?: Feature["choiceLists"]
 }
 
 function feature(name: string, userOutcome: string, behavior: string, acceptance: string, uses: FeatureUses = {}): Feature {
@@ -32,6 +33,7 @@ function feature(name: string, userOutcome: string, behavior: string, acceptance
     usesData: [...(uses.data ?? [])],
     usesServices: [...(uses.services ?? [])],
     userFileAccess: uses.files ?? "none",
+    choiceLists: [...(uses.choices ?? [])],
   }
 }
 
@@ -267,7 +269,7 @@ export const scanDrawerBlueprint = blueprint({
   features: [
     feature("Scan import", "Add scanned files to the library", "The app copies each chosen PDF, PNG, or JPEG into its own library folder under a generated file name and creates a scan record that points to the copy.", "After importing one PDF, the library folder contains exactly one new file with the same bytes.", { data: ["Stored scans", "Scan index", "Chosen scan file"], files: "opens" }),
     feature("Scan removal", "Remove a scan and its copy", "On confirmation, the app deletes the scan record and removes its copied file from the library folder.", "After removal, no file exists at the removed scan's copied path.", { data: ["Stored scans", "Scan index"] }),
-    feature("Tag filter", "Narrow the list to one tag", "Selecting a tag shows only scans with that tag; if the saved tag list cannot be read, the list shows every scan.", "With scans tagged Home and Work, selecting Home shows only the Home scans.", { data: ["Scan index", "Drawer preferences"], recovery: "fallback" }),
+    feature("Tag filter", "Narrow the list to one tag", "Selecting a tag shows only scans with that tag; if the saved tag list cannot be read, the list shows every scan.", "With scans tagged Home and Work, selecting Home shows only the Home scans.", { data: ["Scan index", "Drawer preferences"], recovery: "fallback", choices: [{ name: "Sort order", options: ["Newest first", "Oldest first"], initial: "Newest first" }] }),
     feature("Scan list export", "Save the visible scans as a CSV file", "The app writes one CSV row per visible scan to the location the user chooses in the Save panel.", "After export, the chosen file has one header row and one row per visible scan.", { data: ["Scan index", "Exported scan list"], files: "saves" }),
   ],
   dataObjects: [

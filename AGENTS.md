@@ -35,6 +35,9 @@ The only stack-specific knowledge lives in `src/presets.ts` (plus `src/astroWeb.
   saves, opens-and-saves: does it show an Open or Save panel or accept drops), and the filesystem
   permission links to features that answer other than none or use a `document` (reopen by saved
   path). Intake rejects a saving feature without a `document`.
+- Each feature lists its fixed option sets in the required `choiceLists` (name, every option, the
+  initial option), rendered as `Choices:` lines in PRD and TRD. Intake rejects an initial choice
+  that is not an option and a shared list whose options differ between features.
 - The blueprint's `ideaCoverage` maps every numbered sentence of the user's idea (split
   deterministically by `splitIdeaSentences`) to the features, product statement, non-goal, or
   constraint that covers it. Intake rejects a missing or featureless sentence and any feature no

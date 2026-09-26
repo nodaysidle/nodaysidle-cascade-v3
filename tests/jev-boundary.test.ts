@@ -110,6 +110,9 @@ const allSevenInferred: Partial<Record<JevPlatformNeed, number>> = Object.fromEn
   JEV_PLATFORM_NEEDS.map(need => [need, 0.9]),
 )
 
+// File access comes from userFileAccess and documents, so Jev never heals filesystem at the product level.
+const HEALABLE_NEEDS = JEV_PLATFORM_NEEDS.filter(need => need !== "filesystem")
+
 function withDeclaredNeeds(platformNeeds: JevPlatformNeed[]): SemanticBlueprint {
   const blueprint = structuredClone(fileOrganizerBlueprint)
   return { ...blueprint, platformNeeds, features: blueprint.features.map(feature => ({ ...feature, usesPlatformNeeds: [] })) }
@@ -264,10 +267,11 @@ describe("Jev postflight boundary", () => {
 
     expect(result.status).toBe("gate-clean")
     expect(captured).toHaveLength(1)
-    expect(captured[0]!.blueprint.platformNeeds).toEqual([...JEV_PLATFORM_NEEDS])
+    // Filesystem is present because the fixture's features open a folder, not because Jev healed it.
+    expect(captured[0]!.blueprint.platformNeeds).toEqual([...HEALABLE_NEEDS, "filesystem"])
     // Healed needs never link permissions; file access comes only from the fixture's declared document.
     expect(captured[0]!.blueprint.permissionNeeds.map(need => need.capability)).toEqual(["filesystem"])
-    expect(result.jev?.addedPlatformNeeds).toEqual([...JEV_PLATFORM_NEEDS])
+    expect(result.jev?.addedPlatformNeeds).toEqual(HEALABLE_NEEDS)
     expect(blueprint).toEqual(snapshot)
   })
 
@@ -334,7 +338,7 @@ describe("Jev postflight boundary", () => {
       jevSequence([preflightJson(0.9), postflightJson(atThreshold)]).provider,
     )
     expect(healed.status).toBe("gate-clean")
-    expect(healed.jev?.addedPlatformNeeds).toEqual([...JEV_PLATFORM_NEEDS])
+    expect(healed.jev?.addedPlatformNeeds).toEqual(HEALABLE_NEEDS)
 
     const belowThreshold: Partial<Record<JevPlatformNeed, number>> = Object.fromEntries(
       JEV_PLATFORM_NEEDS.map(need => [need, JEV_INTEGRITY_THRESHOLD - 0.01]),
@@ -345,7 +349,7 @@ describe("Jev postflight boundary", () => {
     const result = await generatePacket(input, provider, captureCompiler(captured), jevProvider)
 
     expect(result.status).toBe("gate-clean")
-    expect(captured[0]!.blueprint.platformNeeds).toEqual([])
+    expect(captured[0]!.blueprint.platformNeeds).toEqual(["filesystem"])
     expect(result.jev?.addedPlatformNeeds).toEqual([])
     const expected = await compilePacket(emptyNeedsBlueprint, selectedPreset)
     expect(result.packet?.documents).toEqual(expected.documents)

@@ -34,6 +34,7 @@ export interface NormalizedBlueprint {
     readonly providedCapabilities: readonly string[]
     readonly requiredCapabilities: readonly string[]
     readonly resourceIds: readonly string[]
+    readonly choices: readonly string[]
     readonly surface: FeatureSurface
   }[]
   readonly externalServices: readonly {
@@ -107,6 +108,7 @@ export interface GraphFeature {
   readonly requiredCapabilities: readonly string[]
   readonly resourceIds: readonly string[]
   readonly requiredOwnerIds: readonly string[]
+  readonly choices: readonly string[]
   readonly surface: FeatureSurface
 }
 
@@ -473,6 +475,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       usesData: unique(featureDataUses(source, feature).map(name => dataNameByKey.get(referenceKey(name))!)),
       usesServices: unique(feature.usesServices.map(name => serviceNameByKey.get(referenceKey(name))!)),
       userFileAccess: feature.userFileAccess,
+      choices: feature.choiceLists.map(list => `${cleanMeaning(list.name)}: ${cleanList(list.options).join(", ")}; initially ${cleanMeaning(list.initial)}`),
       surface: feature.surface,
     }
   }))
@@ -512,9 +515,12 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       usesServices,
     ),
   }))
+  // File access is derived per feature, so it counts as a product need whenever a feature links it,
+  // even when the provider's product-level list omits it.
   const rawPlatformNeeds = unique([
     ...source.platformNeeds,
     ...baseFeatures.flatMap(feature => feature.usesPlatformNeeds),
+    ...(features.some(feature => feature.resourceIds.includes(permissionResourceId("filesystem"))) ? ["filesystem" as const] : []),
     ...(atomicAudits?.addedPlatformNeeds ?? []),
   ])
   const permissionCapabilities = unique(rawPlatformNeeds.flatMap(need => permissionByNeed[need] ? [permissionByNeed[need]!] : []))
@@ -980,7 +986,7 @@ function buildOwnersAndContracts(
   const contracts: GraphContract[] = []
   for (const feature of features) {
     const key = feature.id.replace(/^FEAT-/, "")
-    const interfaceDetails = [`Inputs: ${feature.inputs.join("; ")}`, `Outputs: ${feature.outputs.join("; ")}`]
+    const interfaceDetails = [`Inputs: ${feature.inputs.join("; ")}`, `Outputs: ${feature.outputs.join("; ")}`, ...feature.choices.map(choice => `Choices: ${choice}`)]
     contracts.push(contract(
       `CON-${key}-INTERFACE`,
       "interface",
@@ -1444,6 +1450,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
       requiredCapabilities: feature.requiredCapabilities,
       resourceIds: feature.resourceIds,
       requiredOwnerIds: [],
+      choices: feature.choices,
       surface: feature.surface,
     }
   }))

@@ -153,6 +153,10 @@ describe("declared storage, recovery, and sentence form stay precise", () => {
       expect(index.details.find(detail => detail.startsWith("Placement:"))).toContain("PRAGMA user_version stores the schema version")
     }
 
+    // Declared choice lists reach the agent with every option and the initial choice.
+    expect(packet.documents["PRD.md"]).toContain("- Choices: Sort order: Newest first, Oldest first; initially Newest first")
+    expect(packet.documents["TRD.md"]).toContain("- Choices: Sort order: Newest first, Oldest first; initially Newest first")
+
     // A declared automatic fallback never sits next to a rule that forbids non-user retries.
     const fallback = packet.graph.contracts.find(item => item.id === "CON-TAG-FILTER-RECOVERY")!
     expect(fallback.recovery.join(" ")).toContain("Apply the stated fallback automatically")

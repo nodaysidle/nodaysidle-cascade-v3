@@ -22,16 +22,16 @@ build a working app from them.
 | Preset | Kit | Capability review | Live evidence |
 | --- | --- | --- | --- |
 | native-macos-swiftui-desktop | Yes | Done | ReceiptShelf built and verified working (kit kept, embedded preview, window reopen, errors visible, `user_version`, clean install). LogLens built earlier, before the kit. |
-| native-macos-swiftui-menubar | Yes | Done (shared with desktop) | PinBoard built; behavior correct, but the menu was clipped and amateur-looking until post-audit fixes (kit now ships `MenuStyle.swift` and a grouped Settings form). Its launch check never looked at the screen. |
+| native-macos-swiftui-menubar | Yes | Done (shared with desktop) | Two live builds. PinBoard: behavior correct, menu fixed after the audit (kit now ships `MenuStyle.swift`, grouped Settings). Murmur: recording, xAI transcription, and auto-paste verified live by the user; Settings footers and modifier-only shortcuts fixed in the kit and rules. |
 | tauri2-rust-typescript-desktop | No | Not yet | RenewalDesk and ClipVault built before most of this work. |
 | android-kotlin-compose | No | Not yet | Never built. |
 | astro-web | No | Not yet | Never built. |
 
 ## Resume here, in order
 
-1. **Murmur, the speech-to-text menu bar app** (built and audited 2026-09-26: auto-paste and a
-   Right Option tap added at the user's request; kit gained `SettingsFooter`; **next: the user's
-   live recording test with a provider key**) (next live test, `native-macos-swiftui-menubar`).
+1. **Murmur** is done (2026-09-26): the user verified recording, xAI transcription, and auto-paste
+   live. DeepSeek cleanup and a dictionary were added to the app on request; they are app
+   features, not compiler work. (next live test, `native-macos-swiftui-menubar`).
    It exercises the reviewed but unproven capabilities: microphone, global hotkey, HTTPS providers
    plus a localhost server (ATS exception), Keychain keys, provider and language choice lists,
    clipboard write without watching, launch at login, session-only recordings. Prompt:

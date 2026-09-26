@@ -21,6 +21,10 @@ Compiler (preset-level), each with a test:
   modifier. It now says to watch flagsChanged and keyDown with NSEvent monitors (Accessibility)
   and act on a clean tap so the key still types characters.
 
+Live: the user recorded, transcribed with xAI, and got the text auto-pasted at the cursor. On
+request the app also gained deepseek-flash cleanup (Responses API; any failure pastes the recognized
+text) and a dictionary (DeepSeek keeps the spellings, xAI gets keyterm hints); 63 tests pass.
+
 Open: Launch at Login was on after the build (stored setting 1); the agent's launch check should
 restore it, unless the user turned it on. A live recording, transcription, and paste needs the
 user's provider key and Accessibility access for the rebuilt app.

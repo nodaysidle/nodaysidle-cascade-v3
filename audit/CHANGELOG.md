@@ -1,5 +1,20 @@
 # Audit changelog
 
+## ReceiptShelf built with the starter kit (2026-09-26)
+
+First complete build: the agent copied the kit, kept its behavior (delegate adaptor, New Window,
+one error alert extended with Retry, unchanged storage helpers and packaging script), embedded a
+QLPreviewView, drove one acceptance and one visible failure per feature through UI scripting, and
+left no test data. Live checks confirmed File > New Window and Dock reopen with no windows open.
+Two compiler changes:
+
+- The desktop validation no longer opens dist/<Name>.app, which registered a second bundle with
+  the same ID so open -b started the wrong copy; it launches through package_app.sh --install, and
+  the kit script unregisters the dist/ bundle after installing.
+- Native release builds must be warning-free (-Xswiftc -warnings-as-errors); the agent's build had
+  Swift 6 Sendable warnings. kit:check now also syntax-checks the packaging script and builds the
+  kit in release with warnings as errors.
+
 ## Packet diet and native macOS starter kit (2026-09-26)
 
 Two days of builds showed the remaining defects were in agent code (silent errors, Finder instead

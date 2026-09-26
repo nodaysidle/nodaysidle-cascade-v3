@@ -248,12 +248,14 @@ const swiftDesktop: PresetContract = {
   permissionPatterns: swiftPermissionPatterns,
   lifecycleRules: ["Use WindowGroup as the Dock-first application entry.", "Receive AppKit application-delegate callbacks, such as termination, through @NSApplicationDelegateAdaptor; never assign NSApplication.shared.delegate, which replaces the delegate SwiftUI relies on.", "Keep a way to reopen the main window after it is closed: keep File > New Window when replacing File-menu commands, and reopen the window when the Dock icon is clicked.", "Cancel tasks and release AppKit delegates during application termination.", "Model window restoration only for product-owned state."],
   accessibilityRules: ["Require VoiceOver and keyboard operation for every control, expose stable accessibility labels, roles, values, and focus order, and verify with SwiftUI accessibility tests plus Accessibility Inspector."],
+  // Launch only the installed bundle: opening the dist/ copy registers a second bundle with the same
+  // ID, and open -b may then start the wrong one.
   validationCommands: [
     () => "swift test",
-    () => "swift build -c release",
+    () => "swift build -c release -Xswiftc -warnings-as-errors",
     () => "./Scripts/package_app.sh",
     identity => `codesign --verify --deep --strict \"dist/${identity.projectName}.app\"`,
-    identity => `open \"dist/${identity.projectName}.app\"`,
+    () => "./Scripts/package_app.sh --install",
   ],
   packagingRules: ["Scripts/package_app.sh is the sole packaging authority for release build, app assembly, resources, signing, strict verification, and DMG creation.", "Assemble one native arm64 macOS .app from the Swift Package Manager release executable, Info.plist, App.entitlements, and AppIcon.icns.", "Ad-hoc sign local builds or use an explicitly supplied Developer ID for distribution, then require codesign --verify --deep --strict.", "Register and launch the installed bundle through LaunchServices."],
   installationDecision: identity => `Move any existing /Applications/${identity.projectName}.app to dist/rollback/${identity.projectName}.app as the rollback copy (outside /Applications and never registered, so LaunchServices sees one bundle for the bundle ID), install the verified signed app at /Applications/${identity.projectName}.app, then register and launch that exact bundle through LaunchServices.`,
@@ -273,6 +275,14 @@ const swiftMenubar: PresetContract = {
   ...swiftDesktop,
   id: "native-macos-swiftui-menubar",
   label: "Native macOS SwiftUI Menu Bar",
+  // No starter kit yet, so the agent's packaging script has no --install step to launch through.
+  validationCommands: [
+    () => "swift test",
+    () => "swift build -c release -Xswiftc -warnings-as-errors",
+    () => "./Scripts/package_app.sh",
+    identity => `codesign --verify --deep --strict \"dist/${identity.projectName}.app\"`,
+    identity => `open \"dist/${identity.projectName}.app\"`,
+  ],
   implementationMarker: "MenuBarExtra",
   allowedTechnologies: ["Swift 6", "SwiftUI", "MenuBarExtra", "AppKit bridges for hotkeys, event monitoring, floating panels, activation policy, and permissions", "Swift Package Manager", "Swift Testing", "Keychain", "UserDefaults", "SQLite3", "Application Support", "SMAppService"],
   forbiddenTechnologies: ["Dock-first architecture unless semantics require a Dock window", "iOS", "Catalyst", "Flutter", "Tauri", "Electron"],

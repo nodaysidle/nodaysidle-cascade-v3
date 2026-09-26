@@ -512,6 +512,8 @@ if [ "$install" = true ]; then
   fi
   cp -R "$APP" "$INSTALLED"
   codesign --verify --deep --strict "$INSTALLED"
+  # Only the installed bundle stays registered, so open -b always starts it.
+  "$LSREGISTER" -u "$APP" >/dev/null 2>&1 || true
   "$LSREGISTER" -f "$INSTALLED"
   open -b "$BUNDLE_ID"
 fi

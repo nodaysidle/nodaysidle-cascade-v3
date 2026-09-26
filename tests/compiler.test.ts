@@ -162,6 +162,12 @@ describe("deterministic exact-five compiler", () => {
       expect(file.sha256).toMatch(/^[0-9a-f]{64}$/)
       expect(file.content).not.toMatch(/\$\{identity|undefined/)
     }
+    const script = files.find(file => file.name === "kit/Scripts/package_app.sh")!.content
+    expect(script).toContain('"$LSREGISTER" -u "$APP"')
+    const trd = packet.documents["TRD.md"]
+    expect(trd).toContain("`swift build -c release -Xswiftc -warnings-as-errors`")
+    expect(trd).toContain("`./Scripts/package_app.sh --install`")
+    expect(trd).not.toContain("`open \"dist/")
     const app = files.find(file => file.name.endsWith(`${module}App.swift`))!.content
     expect(app).toContain("@NSApplicationDelegateAdaptor(AppDelegate.self)")
     expect(app).not.toContain("NSApplication.shared.delegate =")

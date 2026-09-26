@@ -23,9 +23,14 @@ describeBuild("starter kits compile and pass their own tests", () => {
         mkdirSync(dirname(path), { recursive: true })
         writeFileSync(path, file.content)
       }
+      const syntax = spawnSync("bash", ["-n", "Scripts/package_app.sh"], { cwd: root, encoding: "utf8" })
+      expect(syntax.status, syntax.stderr).toBe(0)
       const result = spawnSync("swift", ["test"], { cwd: root, encoding: "utf8" })
       expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0)
       expect(result.stdout + result.stderr).not.toMatch(/warning:/)
+      // The packet requires a warning-free release build, so the kit must meet it too.
+      const release = spawnSync("swift", ["build", "-c", "release", "-Xswiftc", "-warnings-as-errors"], { cwd: root, encoding: "utf8" })
+      expect(release.status, `${release.stdout}\n${release.stderr}`).toBe(0)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

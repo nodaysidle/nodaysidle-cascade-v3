@@ -1,5 +1,15 @@
 # Audit changelog
 
+## PromptShelf generation stopped at blueprint validation (2026-09-26)
+
+The first Tauri live idea (PromptShelf) failed `features[4].usesPlatformNeeds[0]`
+(`schema.invalid_value`) twice: the one repair request only repeated "does not match the compact
+semantic schema", so DeepSeek could not tell what to change (most likely `filesystem` on the
+import/export feature, which belongs in `userFileAccess`). Schema issue messages now list the allowed
+values of a closed field and, for a feature platform need, say to set `userFileAccess` instead;
+other issues append Zod's own description. Provider text is still never quoted, because the same
+message is shown in the app (`tests/schema.test.ts`).
+
 ## Tauri starter kit and capability review (2026-09-26)
 
 The Tauri preset now ships a tested starter kit (`src/tauriKit.ts`), chosen from declared fields

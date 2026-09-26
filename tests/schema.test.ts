@@ -93,6 +93,19 @@ describe("compact semantic provider boundary", () => {
     }))
   })
 
+  it("tells the repair request where file access goes when a feature lists filesystem", () => {
+    const candidate = structuredClone(fileOrganizerBlueprint) as unknown as { features: Array<{ usesPlatformNeeds: string[] }> }
+    candidate.features[0]!.usesPlatformNeeds = ["filesystem"]
+    const result = parseBlueprintJson(JSON.stringify(candidate))
+
+    if (result.ok || result.failure.kind !== "schema-invalid") throw new Error("expected schema-invalid")
+    const issue = result.failure.issues.find(item => item.path === "features[0].usesPlatformNeeds[0]")
+    expect(issue?.rule).toBe("schema.invalid_value")
+    expect(issue?.message).toContain("Allowed values here: audio-input, camera, clipboard")
+    expect(issue?.message).not.toMatch(/Allowed values here:[^.]*filesystem/)
+    expect(issue?.message).toContain("set this feature's userFileAccess to opens, saves, or opens-and-saves instead")
+  })
+
   it("classifies invalid JSON without retaining provider text", () => {
     const result = parseBlueprintJson('{"productName":"PRIVATE_PROVIDER_SENTINEL"')
 

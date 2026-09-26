@@ -245,10 +245,25 @@ export function parseBlueprintJson(text: string): BlueprintParseResult {
       issues: parsed.error.issues.map(issue => ({
         path: issuePath(issue.path),
         rule: `schema.${issue.code}`,
-        message: "The completed provider response does not match the compact semantic schema.",
+        message: schemaIssueMessage(issue),
       })),
     },
   }
+}
+
+// The repair request passes these messages to the provider, so each one says what to change: the
+// allowed values of a closed field, and where file access belongs. The provider's own text is never
+// quoted, because the same message is shown in the app.
+function schemaIssueMessage(issue: z.core.$ZodIssue): string {
+  const base = "The completed provider response does not match the compact semantic schema."
+  if (issue.code === "invalid_value" && issue.values.length) {
+    const allowed = `Allowed values here: ${issue.values.map(value => String(value)).join(", ")}.`
+    const featureNeed = issue.path.length >= 4 && issue.path[0] === "features" && issue.path[2] === "usesPlatformNeeds"
+    return featureNeed
+      ? `${base} ${allowed} File access is not a feature platform need: remove filesystem here and set this feature's userFileAccess to opens, saves, or opens-and-saves instead.`
+      : `${base} ${allowed}`
+  }
+  return `${base} ${issue.message}`
 }
 
 function semanticStrings(value: unknown, path = ""): Array<{ path: string; value: string }> {

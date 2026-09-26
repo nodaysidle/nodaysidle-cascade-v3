@@ -29,7 +29,7 @@ function createSampleBlueprint(): SemanticBlueprint {
         userOutcome: "Preview panel displays the file metadata and thumbnail.",
         acceptanceSignals: ["Preview updates within 50ms of selection", "Error state rendered if file unreadable"],
         usesPlatformNeeds: ["filesystem"],
-        usesData: ["UserPreferences", "TemporaryScanBuffer"],
+        usesData: ["UserPreferences", "TemporaryScanBuffer", "SelectedFolder"],
         usesServices: [],
         failureOutcome: "Empty preview with error notification.",
         failureRecovery: "retry",
@@ -69,6 +69,13 @@ function createSampleBlueprint(): SemanticBlueprint {
         purpose: "Transient memory/disk buffer while scanning directories",
         retentionIntent: "Deleted immediately upon scan completion",
         storage: "temporary", writeMode: "direct",
+        sensitivity: "personal" as const,
+      },
+      {
+        name: "SelectedFolder",
+        purpose: "The folder the user chooses whose files are previewed",
+        retentionIntent: "Owned by the user; the app keeps no copy",
+        storage: "document", writeMode: "direct",
         sensitivity: "personal" as const,
       },
     ],
@@ -151,7 +158,9 @@ describe("Opportunity 2: Jev Atomic Contract & Placement Auditor", () => {
     const blueprint = {
       ...base,
       platformNeeds: base.platformNeeds.filter(p => p !== "filesystem"),
-      features: base.features.map(feature => ({ ...feature, usesPlatformNeeds: feature.usesPlatformNeeds.filter(p => p !== "filesystem") })),
+      // Without a document, a healed filesystem flag is the only file-access signal left.
+      features: base.features.map(feature => ({ ...feature, usesPlatformNeeds: feature.usesPlatformNeeds.filter(p => p !== "filesystem"), usesData: feature.usesData.filter(name => name !== "SelectedFolder") })),
+      dataObjects: base.dataObjects.filter(item => item.name !== "SelectedFolder"),
     }
 
     const outcomes: JevOutcome[] = [
@@ -267,6 +276,7 @@ describe("Opportunity 2: Jev Atomic Contract & Placement Auditor", () => {
             { kind: "choice", id: jevDataStorageTierNoulId(0), choice: "userdefaults", confidence: 0.95 },
             { kind: "choice", id: jevDataStorageTierNoulId(1), choice: "sqlite", confidence: 0.95 },
             { kind: "choice", id: jevDataStorageTierNoulId(2), choice: "ephemeral", confidence: 0.95 },
+            { kind: "choice", id: jevDataStorageTierNoulId(3), choice: "filesystem", confidence: 0.95 },
           ],
         })
       }
@@ -330,6 +340,7 @@ describe("Opportunity 2: Jev Atomic Contract & Placement Auditor", () => {
             { kind: "choice", id: jevDataStorageTierNoulId(0), choice: "userdefaults", confidence: 0.95 },
             { kind: "choice", id: jevDataStorageTierNoulId(1), choice: "sqlite", confidence: 0.95 },
             { kind: "choice", id: jevDataStorageTierNoulId(2), choice: "ephemeral", confidence: 0.95 },
+            { kind: "choice", id: jevDataStorageTierNoulId(3), choice: "filesystem", confidence: 0.95 },
           ],
         })
       }
@@ -356,7 +367,7 @@ describe("Opportunity 2: Jev Atomic Contract & Placement Auditor", () => {
     expect(result.exportable).toBe(true)
     expect(result.jev?.atomicAudits).toBeDefined()
     expect(result.jev?.atomicAudits?.featureAudits.length).toBe(2)
-    expect(result.jev?.atomicAudits?.dataAudits.length).toBe(3)
+    expect(result.jev?.atomicAudits?.dataAudits.length).toBe(4)
   })
 })
 

@@ -1,5 +1,14 @@
 # Audit changelog
 
+## ReceiptShelf fourth retry audit (2026-09-26)
+
+The fixed-choice and shared-field prompt rules worked live: the currency list and initial default
+were spelled out, and import and settings agreed on a new receipt's currency. But DeepSeek declared
+no document for the files the user imports, so import had no file access. Intake now rejects
+provider output where a feature lists `filesystem` without a `document`
+(`semantic.filesystem-without-document`). It runs on provider output before Jev heals platform
+needs. A feature that drops both the flag and the document still cannot be detected.
+
 ## ReceiptShelf third retry audit (2026-09-26)
 
 File access traced only to import and export: DeepSeek declared the chosen receipt as an

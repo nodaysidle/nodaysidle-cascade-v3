@@ -142,7 +142,7 @@ describe("compact semantic provider boundary", () => {
   it("accepts empty optional arrays and legitimate placeholder wording", () => {
     const candidate = {
       ...fileOrganizerBlueprint,
-      features: fileOrganizerBlueprint.features.map(feature => ({ ...feature, usesData: [] })),
+      features: fileOrganizerBlueprint.features.map(feature => ({ ...feature, usesData: [], usesPlatformNeeds: [] })),
       nonGoals: [],
       dataObjects: [],
       externalServices: [],
@@ -158,6 +158,20 @@ describe("compact semantic provider boundary", () => {
 })
 
 describe("hard semantic blockers", () => {
+  it("rejects a feature that lists filesystem without a document dataObject", () => {
+    const candidate = structuredClone(fileOrganizerBlueprint)
+    candidate.features[1]!.usesData = ["Organization rules"]
+
+    expect(auditSemanticIntake(candidate)).toEqual([{
+      path: "features[1].usesPlatformNeeds",
+      rule: "semantic.filesystem-without-document",
+      message: "Feature 'Move preview' lists filesystem but no document dataObject for the file or folder the user chooses.",
+    }])
+
+    candidate.features[1]!.usesPlatformNeeds = []
+    expect(auditSemanticIntake(candidate)).toEqual([])
+  })
+
   it("blocks actual secret material by exact path without exposing it", () => {
     const candidate = structuredClone(fileOrganizerBlueprint)
     candidate.features[0]!.behavior = "Send the request with sk-abcdefghijklmnopqrstuvwxyz012345."

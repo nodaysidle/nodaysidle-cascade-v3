@@ -296,8 +296,23 @@ function featureProse(feature: SemanticBlueprint["features"][number]): string[] 
   return [feature.name, feature.userOutcome, feature.trigger, feature.behavior, feature.failureOutcome, ...feature.acceptanceSignals]
 }
 
+// File access is granted only through a declared document, so a provider feature that flags filesystem
+// without listing a document has an undeclared user-chosen file. This runs on provider output only,
+// before Jev may heal platform needs.
+function filesystemDocumentIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
+  const documents = new Set(blueprint.dataObjects.filter(item => item.storage === "document").map(item => referenceKey(item.name)))
+  return blueprint.features.flatMap((feature, index) =>
+    feature.usesPlatformNeeds.includes("filesystem") && !feature.usesData.some(name => documents.has(referenceKey(name)))
+      ? [{
+        path: `features[${index}].usesPlatformNeeds`,
+        rule: "semantic.filesystem-without-document",
+        message: `Feature '${feature.name}' lists filesystem but no document dataObject for the file or folder the user chooses.`,
+      }]
+      : [])
+}
+
 export function auditSemanticIntake(blueprint: SemanticBlueprint): SemanticIssue[] {
-  const issues: SemanticIssue[] = [...featureReferenceIssues(blueprint)]
+  const issues: SemanticIssue[] = [...featureReferenceIssues(blueprint), ...filesystemDocumentIssues(blueprint)]
   if (unusableMeaning.test(blueprint.productName)) {
     issues.push({ path: "productName", rule: "semantic.unusable-product", message: "The product name does not contain usable product meaning." })
   }

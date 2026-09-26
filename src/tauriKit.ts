@@ -129,12 +129,12 @@ export function tauriKitReadme(identity: ProjectIdentity, paths: readonly string
     "- src-tauri/tests/kit_tests.rs builds app_builder(mock_builder()) with the app's own context() and calls commands through get_ipc_response from the devUrl origin (http://localhost:1420); a request from any other origin is refused. Keep this test passing as commands are added.",
     "- Every command returns Result<T, AppError>; AppError carries a message written for the user, and the frontend shows it through errors.report(). errors.show() is for messages the frontend writes itself. Never show a raw runtime error.",
     "- src-tauri/capabilities/default.json lists only core:default and the permissions of the plugins lib.rs initializes. Add a permission only with the plugin feature that needs it.",
-    "- Its windows array starts as [\"main\"]. When a feature opens another window, give it a fixed label and add that label there, or Tauri refuses every command the window calls.",
+    "- Its windows array starts as [\"main\"]. When a feature opens another window, give it a fixed label and add that label there, or Tauri refuses every command the window calls. Create that window fresh each time it opens (close it, never just hide it), so it always loads current data.",
     ...(uses.settings ? ["- settings.rs replaces settings.json whole: a temporary file in the same folder, synced, then renamed."] : []),
     ...(uses.records ? ["- database.rs applies MIGRATIONS in order and records the schema version in PRAGMA user_version; append new migrations, never edit a shipped one."] : []),
     ...(uses.services ? ["- src-tauri/Cargo.toml already has reqwest (json) for the declared services; integration owners use one reqwest::Client and add no HTTP crate of their own."] : []),
     ...(uses.secrets ? ["- vault.rs is the only place secrets are stored: generic passwords in the login keychain under the bundle ID's credentials service. Tests use MemoryStore, never the keychain."] : []),
-    ...(uses.tray ? ["- The tray keeps the app running: closing the window hides it, Show brings it back, and Quit (or quitting from outside) exits. RunEvent::ExitRequested with no exit code is prevented; an explicit exit code is not."] : []),
+    ...(uses.tray ? ["- The tray keeps the app running: closing the main window hides it, Show brings it back, and Quit (or quitting from outside) exits. RunEvent::ExitRequested with no exit code is prevented; an explicit exit code is not. Only the main window hides: every other window closes for real, so it is created fresh and loads current data each time it opens instead of showing a stale list."] : []),
     ...(uses.usageDescriptions.length ? ["- src-tauri/Info.plist holds the privacy usage strings; Tauri merges it into the bundle's Info.plist."] : []),
     "- scripts/package_app.sh builds only the .app (no DMG), signs it ad hoc, and verifies it; with --install it waits for the running app to quit, moves the installed copy to src-tauri/target/rollback/ (never inside /Applications), installs, restores the previous copy if verification fails, registers, and launches by bundle ID. The first run generates src-tauri/icons from app-icon.svg.",
     "- Versions are exact (= in Cargo.toml, no ^ in package.json) because they are tested together; keep src-tauri/Cargo.lock and package-lock.json from the first build, and change a version only on purpose, never by a broad update.",
@@ -784,9 +784,12 @@ pub fn run() {
             Ok(())
         })${uses.tray ? `
         .on_window_event(|window, event| {
+            // Only the main window hides; any other window closes, so it opens fresh with current data.
             if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
             }
         })` : ""}
         .build(context())

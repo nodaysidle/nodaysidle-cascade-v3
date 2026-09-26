@@ -18,8 +18,12 @@ The kit now ships reqwest =0.12.28 (json) when a service is declared (`tests/com
 Not a compiler issue: the agent reported AGENTS.md listing 15 phases; it lists all 17.
 Polish (roadmap list): Settings' Back button stretches across the window, a key-status line sits
 between groups, tags lost their chip style, and the search field shows WebKit's autofill suggestion.
-Open: Escape in the picker (the agent's synthetic key did not close it) and a real export and import
-need the user's check.
+The user verified export and import live. The quick picker then still listed the agent's deleted
+zz-test prompts: the kit's close handler hid every window, so the picker was only ever hidden and
+kept its first list. The kit now hides only the main window; every other window closes for real and
+is created fresh with current data, and the Tauri window rule and kit README say so. A relaunch
+showed the user's single prompt. Open: Escape in the picker (the agent's synthetic key did not close
+it) needs the user's check.
 
 ## PromptShelf regeneration failed after the repair (2026-09-26)
 

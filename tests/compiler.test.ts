@@ -284,6 +284,8 @@ describe("Tauri starter kit", () => {
     expect(cargo).toContain(`reqwest = { version = "=0.12.28", features = ["json"] }`)
     expect(lib.match(/\.setup\(/g)).toHaveLength(1)
     expect(lib).toContain("prevent_exit()")
+    // Only the main window hides on close; a picker closes and reopens fresh (PromptShelf showed a stale list).
+    expect(lib).toContain(`if window.label() == "main" {`)
     expect(cargo).toContain(`features = ["tray-icon"]`)
     expect(kitFile(full, "src-tauri/Info.plist")).toContain("<key>NSMicrophoneUsageDescription</key>")
     expect(kitFile(full, "src-tauri/tests/kit_tests.rs")).toContain(`url: "http://localhost:1420"`)
@@ -314,6 +316,7 @@ describe("Tauri starter kit", () => {
     expect(trd).toContain("scripts/package_app.sh --install")
     // A second window (a picker) missing from the capability windows has every command refused.
     expect(trd).toContain("listed in the windows array of src-tauri/capabilities/default.json")
+    expect(trd).toContain("every other window closes for real and is created fresh the next time it opens")
     expect(packet.kit.find(file => file.name === "kit/README.md")!.content).toContain("add that label there")
   })
 })

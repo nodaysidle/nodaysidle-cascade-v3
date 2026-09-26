@@ -1,5 +1,23 @@
 # Audit changelog
 
+## Packet diet and native macOS starter kit (2026-09-26)
+
+Two days of builds showed the remaining defects were in agent code (silent errors, Finder instead
+of an in-app preview, a replaced app delegate, test data left behind), each answered by one more
+prose rule in a packet that had grown to 392 KB, 60% of it the same traceability index restated in
+all five documents. Two changes:
+
+- Packet diet: every document carries one short index (IDs and links only), and a contract's full
+  decision lives only in TRD; the audit checks decision text there. Test packets shrank from about
+  171 KB to 100 KB; ReceiptShelf-sized packets should drop from 392 KB to roughly a third.
+- Starter kit: the native macOS desktop preset exports tested code under kit/ (app entry with
+  NSApplicationDelegateAdaptor and reopenable window, one error alert, AtomicFileWriter,
+  AppFileStore, SQLiteDatabase with PRAGMA user_version migrations, package_app.sh with the
+  rollback outside /Applications, Info.plist, entitlements, KitTests), chosen from declared storage.
+  Kit files join the foundation task; AGENTS.md and TASKS.md tell the agent to copy the kit before
+  TASK-01. The Rust export accepts up to 64 kit files after the five documents, only under kit/.
+  `npm run kit:check` renders the kits and runs `swift test`.
+
 ## ReceiptShelf built-app audit (2026-09-26)
 
 The build was genuinely wired: errors were visible (one alert for every feature), SQLite carried

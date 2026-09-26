@@ -13,7 +13,8 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "install:app": "bash scripts/install-app.sh",
-    "tauri:build:smoke": "VITE_CASCADE_SMOKE=1 tauri build --features fixture-smoke --bundles app"
+    "tauri:build:smoke": "VITE_CASCADE_SMOKE=1 tauri build --features fixture-smoke --bundles app",
+    "kit:check": "CASCADE_KIT_BUILD=1 vitest run tests/kit-build.test.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1",

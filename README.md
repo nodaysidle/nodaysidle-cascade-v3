@@ -194,6 +194,7 @@ idea + locked preset + model + two memory-only keys
 - `src/schema.ts` — compact provider schema
 - `src/compiler.ts` + `src/presets.ts` + `src/astroWeb.ts` — graph and preset policy
 - `src/renderers.ts` — immutable markdown bytes
+- `src/kits.ts` — starter-kit templates exported under `kit/` (checked with `npm run kit:check`)
 - `src/audit.ts` — mechanical and agent-readiness gates
 - `src-tauri/src/provider.rs` — HTTPS boundary, cancellation, safe errors
 - `src/jev.ts` + `src-tauri/src/jev.rs` — closed Jev decisions and fixed TypeSafe Decisions boundary

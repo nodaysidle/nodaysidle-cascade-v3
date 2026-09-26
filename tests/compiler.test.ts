@@ -20,6 +20,7 @@ import {
   knowledgeManagerBlueprint,
   landingPageBlueprint,
   networkMonitorBlueprint,
+  scanDrawerBlueprint,
 } from "./fixtures/blueprints"
 
 function messyBlueprint() {
@@ -131,9 +132,55 @@ describe("deterministic exact-five compiler", () => {
     const files = packetForExport(packet)
 
     expect(files.map(file => file.name)).toEqual(DOCUMENT_NAMES)
-    for (const file of files) {
-      expect(file.content).toBe(packet.documents[file.name])
-      expect(file.sha256).toBe(packet.hashes[file.name])
+    for (const [index, name] of DOCUMENT_NAMES.entries()) {
+      expect(files[index]!.content).toBe(packet.documents[name])
+      expect(files[index]!.sha256).toBe(packet.hashes[name])
+    }
+  })
+
+  it("exports the native macOS desktop starter kit after the five documents, hashed and owned by tasks", async () => {
+    const packet = await compilePacket(scanDrawerBlueprint, "native-macos-swiftui-desktop")
+    const files = packetForExport(packet)
+    const module = packet.graph.identity.moduleName
+
+    expect(files.slice(0, 5).map(file => file.name)).toEqual(DOCUMENT_NAMES)
+    expect(files.slice(5).map(file => file.name)).toEqual([
+      "kit/README.md",
+      "kit/Package.swift",
+      `kit/Sources/${module}/${module}App.swift`,
+      `kit/Sources/${module}/AppState.swift`,
+      `kit/Sources/${module}/Platform/ErrorCenter.swift`,
+      `kit/Sources/${module}/Platform/AtomicFileWriter.swift`,
+      `kit/Sources/${module}/Platform/AppFileStore.swift`,
+      `kit/Sources/${module}/Platform/SQLiteDatabase.swift`,
+      `kit/Tests/${module}Tests/KitTests.swift`,
+      "kit/Scripts/package_app.sh",
+      "kit/Resources/Info.plist",
+      "kit/Resources/App.entitlements",
+    ])
+    for (const file of files.slice(5)) {
+      expect(file.sha256).toMatch(/^[0-9a-f]{64}$/)
+      expect(file.content).not.toMatch(/\$\{identity|undefined/)
+    }
+    const app = files.find(file => file.name.endsWith(`${module}App.swift`))!.content
+    expect(app).toContain("@NSApplicationDelegateAdaptor(AppDelegate.self)")
+    expect(app).not.toContain("NSApplication.shared.delegate =")
+    expect(app).not.toContain("CommandGroup(replacing: .newItem)")
+
+    // Every kit source file is owned by exactly one task, so "create only" lists stay exact.
+    const created = packet.graph.phases.flatMap(phase => phase.tasks).flatMap(task => task.filesToCreate)
+    for (const path of packet.graph.kitPaths) expect(created.filter(file => file === path), path).toHaveLength(1)
+    expect(packet.documents["AGENTS.md"]).toContain("Before TASK-01, copy every file under kit/")
+    expect(packet.documents["TASKS.md"]).toContain("Before TASK-01, copy every file under kit/")
+  })
+
+  it("sizes the kit from declared storage and has no kit for other presets", async () => {
+    const habit = await compilePacket(habitTrackerBlueprint, "native-macos-swiftui-desktop")
+    const names = habit.kit.map(file => file.name)
+    expect(names.some(name => name.endsWith("SQLiteDatabase.swift"))).toBe(true)
+    expect(names.some(name => name.endsWith("AppFileStore.swift"))).toBe(false)
+    for (const presetId of PRESET_IDS.filter(id => id !== "native-macos-swiftui-desktop")) {
+      expect((await compilePacket(scanDrawerBlueprint, presetId)).kit, presetId).toEqual([])
     }
   })
 })

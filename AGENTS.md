@@ -1,7 +1,8 @@
 # NODAYSIDLE Cascade V3
 
-A macOS Tauri 2 app that compiles one software idea plus one locked stack preset into exactly
-five Markdown files (PRD, ARD, TRD, TASKS, AGENTS) that a coding agent can build from.
+A macOS Tauri 2 app that compiles one software idea plus one locked stack preset into five
+Markdown files (PRD, ARD, TRD, TASKS, AGENTS) that a coding agent can build from, plus a tested
+starter kit under `kit/` for presets that have one (`src/kits.ts`).
 One DeepSeek request supplies product meaning, with at most one repair request when its content
 fails a deterministic check; TypeSafe Jev gates intake and integrity;
 everything else (IDs, graph, file paths, phases, Markdown bytes) is local deterministic code.
@@ -25,6 +26,8 @@ The only stack-specific knowledge lives in `src/presets.ts` (plus `src/astroWeb.
 - `src/pipeline.ts`: generate flow (Jev intake, DeepSeek, Jev integrity, normalize, compile)
 - `src/compiler.ts`: normalization, project graph, contracts, placement
 - `src/renderers.ts`: Markdown bytes · `src/audit.ts`: gates that block export · `src/jev.ts`: Jev decisions
+- `src/kits.ts`: starter-kit templates (native macOS desktop so far), rendered from identity and
+  declared storage; kit files join the foundation task so "create only" lists stay exact
 - `src-tauri/src/provider.rs`, `jev.rs`: HTTPS boundaries · `export.rs`: atomic export
 
 ## How the compiler links things
@@ -69,7 +72,10 @@ The only stack-specific knowledge lives in `src/presets.ts` (plus `src/astroWeb.
   `src/presets.ts`): the shipped app must call the real owners, test doubles stay in test files, and
   a hands-on launch check runs before completion. Per-owner unit tests alone let a build pass with
   a hollow app.
-- Keep these product requirements: exactly five exported files; preview bytes equal export bytes;
+- Prefer a kit over another prose rule when an agent keeps getting platform plumbing wrong: kit code
+  is compiled and tested once (`npm run kit:check`), a sentence can be skipped.
+- Keep these product requirements: exactly five exported documents, followed only by kit files
+  under `kit/`; preview bytes equal export bytes;
   API keys memory-only, never logged, persisted, or exported; no provider retry except one repair
   request that sends the failed checks and the previous response (secrets redacted) when the
   content fails validation, integrity, normalization, or the export gate (`src/pipeline.ts`).
@@ -84,6 +90,8 @@ cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
+
+A change to `src/kits.ts` also needs `npm run kit:check` (renders each kit and runs `swift test`).
 
 A change to the provider schema or `buildBlueprintInstructions` also needs one live probe
 (`npm run probe:live`, default `deepseek-flash`). It is a paid request with the user's key, so ask

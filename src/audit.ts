@@ -536,7 +536,8 @@ export function auditPacket(
     }
   }
   for (const item of graph.contracts) {
-    const detailDocuments = ["TRD.md", "TASKS.md"] as const
+    // A contract's full decision lives once, in TRD; TASKS points to it by ID.
+    const detailDocuments = ["TRD.md"] as const
     for (const detail of [item.decision, ...item.details, item.failureBehavior, ...item.recovery]) {
       for (const name of detailDocuments) {
         if (!documents[name]?.includes(detail)) failures.push(failure("trace.missing-reference", name, `${name} is missing the rendered decision for ${item.id}.`))
@@ -546,7 +547,7 @@ export function auditPacket(
 
   const packetCredentialContracts = graph.contracts.filter(contract => contract.kind === "credential" || (["data", "persistence"] as const).includes(contract.kind as "data" | "persistence") && credentialLike(`${contract.id} ${contract.name}`))
   const packetPersistenceContracts = graph.contracts.filter(contract => contract.kind === "persistence")
-  const placementDocuments = ["TRD.md", "TASKS.md"] as const
+  const placementDocuments = ["TRD.md"] as const
   for (const name of DOCUMENT_NAMES) {
     const markdown = documents[name] ?? ""
     for (const pattern of DANGEROUS_INSTRUCTION_PATTERNS) {

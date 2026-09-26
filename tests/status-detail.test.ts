@@ -24,7 +24,7 @@ describe("integrity status detail", () => {
 
   it("falls back to the generic integrity copy and leaves other statuses unchanged", () => {
     expect(statusDetailText("blueprint-integrity-failed", [])).toContain("integrity problem")
-    expect(statusDetailText("gate-clean", [])).toContain("eligible for exact-five export")
+    expect(statusDetailText("gate-clean", [])).toContain("eligible for export of the five documents and any preset starter kit")
   })
 })
 

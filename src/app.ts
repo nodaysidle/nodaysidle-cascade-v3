@@ -52,8 +52,8 @@ const statusCopy: Readonly<Record<AppState["status"], { label: string; detail: s
   "local-normalization-failed": { label: "Normalization blocked", detail: "Product meaning could not be converted safely. Export remains locked.", tone: "error" },
   "local-compiler-failure": { label: "Compiler failure", detail: "A local mechanical invariant failed. No provider retry was attempted.", tone: "error" },
   "lint-failure": { label: "Gate blocked", detail: "The packet failed a local readiness rule and cannot be exported.", tone: "error" },
-  "gate-clean": { label: "Gate Clean", detail: "Preview bytes are hashed and eligible for exact-five export.", tone: "success" },
-  "export-success": { label: "Export complete", detail: "Exactly five verified files were written to a new folder.", tone: "success" },
+  "gate-clean": { label: "Gate Clean", detail: "Preview bytes are hashed and eligible for export of the five documents and any preset starter kit.", tone: "success" },
+  "export-success": { label: "Export complete", detail: "The five verified documents and any preset starter kit were written to a new folder.", tone: "success" },
   cancelled: { label: "Cancelled", detail: "No packet was accepted and export remains locked.", tone: "neutral" },
   "intake-rejected": { label: "Intake rejected", detail: "Jev did not confirm this idea as viable, so no provider request was made.", tone: "error" },
   "blueprint-integrity-failed": { label: "Integrity blocked", detail: "Jev found an integrity problem in the completed blueprint. Export remains locked.", tone: "error" },
@@ -586,7 +586,7 @@ export function mountApp(
     if (!state.packet || !canExport(state)) throw { kind: "invalid-packet", classification: "export-locked" }
     const path = await exportPacketTo(parent, state.packet)
     dispatch({ type: "export-succeeded", path })
-    announce("Exact-five packet exported.", "success")
+    announce("Packet exported.", "success")
     return path
   }
 

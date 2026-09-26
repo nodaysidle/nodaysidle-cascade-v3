@@ -142,3 +142,70 @@ fn rejects_an_oversized_document_without_writing() {
     assert!(write_packet_atomic(root.path(), "too-large", &packet).is_err());
     assert!(!root.path().join("too-large").exists());
 }
+
+fn kit_file(name: &str, content: &str) -> ExportFile {
+    ExportFile {
+        name: name.into(),
+        content: content.into(),
+        sha256: sha256_hex(content.as_bytes()),
+    }
+}
+
+#[test]
+fn writes_kit_files_after_the_documents_in_nested_folders() {
+    let root = tempfile::tempdir().unwrap();
+    let mut packet = files();
+    packet.push(kit_file("kit/README.md", "kit\n"));
+    packet.push(kit_file(
+        "kit/Sources/HarborSort/HarborSortApp.swift",
+        "app\n",
+    ));
+    packet.push(kit_file(
+        "kit/Scripts/package_app.sh",
+        "#!/usr/bin/env bash\n",
+    ));
+    let destination = write_packet_atomic(root.path(), "with-kit", &packet).unwrap();
+
+    for file in &packet {
+        assert_eq!(
+            fs::read(destination.join(&file.name)).unwrap(),
+            file.content.as_bytes()
+        );
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = fs::metadata(destination.join("kit/Scripts/package_app.sh"))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o111, 0o111);
+    }
+}
+
+#[test]
+fn rejects_kit_files_outside_kit_hidden_traversing_duplicated_or_first() {
+    let names = [
+        "kit/../escape.md",
+        "kit/.hidden",
+        "kit/",
+        "kit//double",
+        "/kit/absolute",
+        "other/file.swift",
+        "kit/with space.swift",
+    ];
+    for name in names {
+        let mut packet = files();
+        packet.push(kit_file(name, "x\n"));
+        assert!(validate_export_files(&packet).is_err(), "accepted {name}");
+    }
+
+    let mut duplicated = files();
+    duplicated.push(kit_file("kit/README.md", "a\n"));
+    duplicated.push(kit_file("kit/README.md", "b\n"));
+    assert!(validate_export_files(&duplicated).is_err());
+
+    let mut kit_first = vec![kit_file("kit/README.md", "a\n")];
+    kit_first.extend(files());
+    assert!(validate_export_files(&kit_first).is_err());
+}

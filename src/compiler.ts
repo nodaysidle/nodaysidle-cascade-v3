@@ -3,6 +3,7 @@ import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREME
 import { PRESETS, USER_SELECTED_FILE_PLACEMENT, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
 import { renderPacket } from "./renderers"
 import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
+import { kitProjectPaths, presetKit } from "./kits"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
 
@@ -190,6 +191,8 @@ export interface ProjectGraph {
   readonly owners: GraphOwner[]
   readonly phases: readonly GraphPhase[]
   readonly foundationFiles: readonly string[]
+  // Project paths the preset's starter kit provides (empty when the preset has no kit).
+  readonly kitPaths: readonly string[]
   readonly lockedStack: readonly string[]
   readonly forbiddenTechnologies: readonly string[]
   readonly testFramework: string
@@ -224,13 +227,21 @@ export interface CompiledPacket {
   readonly graph: ProjectGraph
   readonly documents: DocumentPacket
   readonly hashes: DocumentHashes
+  // Starter-kit files exported under kit/, rendered from templates and hashed like the documents.
+  readonly kit: readonly KitExportFile[]
   readonly ledger: readonly AuditEntry[]
   readonly failures: readonly AuditFailure[]
   readonly exportable: boolean
 }
 
+export interface KitExportFile {
+  readonly name: string
+  readonly content: string
+  readonly sha256: string
+}
+
 export interface ExportFile {
-  readonly name: DocumentName
+  readonly name: string
   readonly content: string
   readonly sha256: string
 }
@@ -1005,7 +1016,7 @@ function buildOwnersAndContracts(
       [feature.id],
       feature.ownerId,
       `Treat failure as a terminal or recoverable state exactly as the semantic contract describes. ${preset.recoveryRules.join(" ")}`,
-      [`Failure: ${feature.failureBehavior}`, ...preset.recoveryRules],
+      preset.recoveryRules,
       feature.failureBehavior,
       feature.recoveryExpectations,
     ))
@@ -1290,9 +1301,11 @@ function buildPhases(
   acceptance: readonly GraphAcceptance[],
   astroPlan?: AstroRoutePlan,
   integrationServices: NormalizedBlueprint["externalServices"] = [],
+  kitFoundationFiles: readonly string[] = [],
 ): { owners: GraphOwner[]; phases: GraphPhase[] } {
   const foundationFiles = unique([
     ...preset.sourceLayout(identity),
+    ...kitFoundationFiles,
     ...(astroPlan?.foundationExtras ?? []),
     ...(astroPlan?.seedContentPaths ?? []),
   ])
@@ -1460,7 +1473,11 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
 
   const integrationServices = compilerIntegrationServices(blueprint)
   const { ownerDrafts, contracts } = buildOwnersAndContracts(blueprint, preset, identity, features, astroPlan, integrationServices)
-  const { owners, phases } = buildPhases(preset, identity, ownerDrafts, contracts, features, requirements, acceptance, astroPlan, integrationServices)
+  // Kit files no other owner claims belong to the foundation, so the "create only" lists stay exact.
+  const kitPaths = kitProjectPaths(presetKit(presetId, identity, blueprint))
+  const packagingOwned = new Set(["Scripts/package_app.sh", ...preset.packagingFiles(identity)])
+  const kitFoundationFiles = kitPaths.filter(path => !preset.sourceLayout(identity).includes(path) && !packagingOwned.has(path))
+  const { owners, phases } = buildPhases(preset, identity, ownerDrafts, contracts, features, requirements, acceptance, astroPlan, integrationServices, kitFoundationFiles)
   const persistenceEnabled = blueprint.persistenceNeeds.length > 0
   const declaredStorage = new Set(blueprint.persistenceNeeds.map(p => p.storage))
   const isDocNativeMac = isNativeMacPreset(presetId) && !declaredStorage.has("records")
@@ -1508,7 +1525,8 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
     contracts,
     owners,
     phases,
-    foundationFiles: unique([...preset.sourceLayout(identity), ...(astroPlan?.foundationExtras ?? []), ...(astroPlan?.seedContentPaths ?? [])]),
+    foundationFiles: unique([...preset.sourceLayout(identity), ...kitFoundationFiles, ...(astroPlan?.foundationExtras ?? []), ...(astroPlan?.seedContentPaths ?? [])]),
+    kitPaths,
     lockedStack: deriveLockedStack(preset, blueprint, integrationServices.filter(s => s.credentialRequirement !== "none"), contracts),
     forbiddenTechnologies: preset.forbiddenTechnologies,
     testFramework: preset.testFramework,
@@ -1582,6 +1600,8 @@ export async function compileNormalizedPacket(
     .filter(name => repeatedDocuments[name] !== documents[name])
     .map(name => ({ rule: "render.deterministic", path: name, message: `${name} changed across repeated local rendering.` }))
   const hashes = await hashDocuments(documents)
+  const kit = await Promise.all(presetKit(presetId, graph.identity, graph.blueprint)
+    .map(async file => ({ name: `kit/${file.path}`, content: file.content, sha256: await sha256(file.content) })))
   const failures = [...mechanicalIssues, ...readinessIssues, ...renderIssues, ...packetIssues]
   const ledger = buildValidationLedger(failures)
   return deepFreeze({
@@ -1590,6 +1610,7 @@ export async function compileNormalizedPacket(
     graph,
     documents,
     hashes,
+    kit,
     ledger,
     failures,
     exportable: failures.length === 0,
@@ -1602,10 +1623,15 @@ export function compilePacket(blueprint: SemanticBlueprint, presetId: PresetId):
 
 export function packetForExport(packet: CompiledPacket): readonly ExportFile[] {
   if (!packet.exportable) return []
-  return DOCUMENT_NAMES.map(name => ({ name, content: packet.documents[name], sha256: packet.hashes[name] }))
+  return [
+    ...DOCUMENT_NAMES.map(name => ({ name, content: packet.documents[name], sha256: packet.hashes[name] })),
+    ...packet.kit,
+  ]
 }
 
 export async function verifyPacketHashes(packet: CompiledPacket): Promise<boolean> {
   const current = await hashDocuments(packet.documents)
+  const kitHashes = await Promise.all(packet.kit.map(file => sha256(file.content)))
   return DOCUMENT_NAMES.every(name => current[name] === packet.hashes[name])
+    && packet.kit.every((file, index) => kitHashes[index] === file.sha256)
 }

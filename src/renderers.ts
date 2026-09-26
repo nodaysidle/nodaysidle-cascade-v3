@@ -13,31 +13,20 @@ function section(title: string, body: string): string {
   return `## ${title}\n\n${body.trim()}`
 }
 
-type TraceDetailLevel = "compact" | "full"
 
-function featureTrace(graph: ProjectGraph, detail: TraceDetailLevel): string {
+// One short index, identical in all five documents: every ID appears everywhere so an agent can
+// navigate, while decisions, criteria, and task prompts live only in the sections that own them.
+function featureTrace(graph: ProjectGraph): string {
   const featureLines = graph.features.map(feature => {
     const requirements = graph.requirements.filter(requirement => requirement.featureId === feature.id)
-    const acceptance = graph.acceptance.filter(item => item.featureIds.includes(feature.id))
-    const contracts = graph.contracts.filter(contract => contract.featureIds.includes(feature.id))
     const owner = graph.owners.find(item => item.id === feature.ownerId)!
     const phase = graph.phases.find(item => item.id === owner.createPhaseId)!
     const task = phase.tasks.find(item => item.ownerIds.includes(owner.id))!
-    if (detail === "compact") {
-      return `${feature.id} — ${feature.name} — Requirement ${requirements.map(requirement => requirement.id).join(", ")} — Acceptance ${acceptance.map(item => item.id).join(", ")} — Owner ${owner.id} — Contracts ${contracts.map(contract => contract.id).join(", ") || "none"} — Files ${owner.implementationFile}; ${owner.focusedTestFile} — Phase ${phase.id} — Task ${task.id} depends on ${task.dependencies.join(", ") || "none"}`
-    }
-    const contractIds = (kind: GraphContract["kind"]) => contracts.filter(contract => contract.kind === kind).map(contract => contract.id).join(", ") || "none"
-    return `${feature.id} — ${feature.name} — Requirement ${requirements.map(requirement => requirement.id).join(", ")} — Acceptance ${acceptance.map(item => `${item.id} (${item.kind}, owner ${item.ownerId}): ${item.criterion}`).join("; ")} — Owner ${owner.id} — Interface ${contractIds("interface")} — Data ${contractIds("data")} — Persistence ${contractIds("persistence")} — Recovery ${contractIds("recovery")} — All contracts ${contracts.map(contract => contract.id).join(", ")} — Files ${owner.implementationFile}; ${owner.focusedTestFile} — Phase ${phase.id} depends on ${phase.dependencies.join(", ") || "none"} — Task ${task.id} depends on ${task.dependencies.join(", ") || "none"} — Focused test command ${owner.focusedTestCommand} — Validation ${task.validationCommands.join("; ")} — Downstream instruction ${task.prompt}`
+    return `${feature.id} — ${feature.name} — Requirement ${requirements.map(requirement => requirement.id).join(", ")} — Owner ${owner.id} — Task ${task.id} depends on ${task.dependencies.join(", ") || "none"}`
   })
-  const requirementLines = graph.requirements.map(requirement => detail === "compact"
-    ? `${requirement.id} — Feature ${requirement.featureId} — ${requirement.statement}`
-    : `${requirement.id} — Feature ${requirement.featureId} — ${requirement.statement} — Acceptance ${requirement.acceptanceIds.join(", ")}: ${requirement.acceptanceCriteria.join("; ")}`)
-  const acceptanceLines = graph.acceptance.map(item => detail === "compact"
-    ? `${item.id} — ${item.kind} — Features ${item.featureIds.join(", ")} — Owner ${item.ownerId}`
-    : `${item.id} — ${item.kind} acceptance — Features ${item.featureIds.join(", ")} — Owner ${item.ownerId} — Criterion ${item.criterion}`)
-  const contractLines = graph.contracts.map(contract => detail === "compact"
-    ? `${contract.id} — ${contract.name} (${contract.kind}) — Owner ${contract.ownerId} — Features ${contract.featureIds.join(", ") || "none"}`
-    : `${contract.id} — ${contract.name} (${contract.kind}) — Features ${contract.featureIds.join(", ")} — Owner ${contract.ownerId} — Decision ${contract.decision} — Details ${contract.details.join("; ")} — Failure ${contract.failureBehavior} — Recovery ${contract.recovery.join("; ")}`)
+  const requirementLines = graph.requirements.map(requirement => `${requirement.id} — Feature ${requirement.featureId}`)
+  const acceptanceLines = graph.acceptance.map(item => `${item.id} — Features ${item.featureIds.join(", ")} — Owner ${item.ownerId}`)
+  const contractLines = graph.contracts.map(contract => `${contract.id} — ${contract.kind} — Owner ${contract.ownerId} — Features ${contract.featureIds.join(", ") || "none"}`)
   return `${bullets(featureLines)}\n${bullets(requirementLines)}\n${bullets(acceptanceLines)}\n${bullets(contractLines)}`
 }
 
@@ -87,6 +76,12 @@ function renderFeature(feature: GraphFeature): string {
   ].join("\n")
 }
 
+// The kit instruction appears only when the preset ships a starter kit.
+function kitRules(graph: ProjectGraph): string[] {
+  if (!graph.kitPaths.length) return []
+  return [`Before TASK-01, copy every file under kit/ except kit/README.md to the same path in the project root: ${graph.kitPaths.join(", ")}. The task that owns each file starts from the kit content and extends it; keep every behavior kit/README.md lists and keep KitTests passing.`]
+}
+
 function renderContract(contract: GraphContract): string {
   return [
     `### ${contract.id} — ${contract.name}`,
@@ -95,7 +90,8 @@ function renderContract(contract: GraphContract): string {
     `- Feature trace: ${contract.featureIds.join(", ") || "none"}`,
     `- Owner: ${contract.ownerId}`,
     `- Decision: ${contract.decision}`,
-    ...contract.details.map(detail => `- ${detail}`),
+    // A detail the decision already states word for word is not repeated.
+    ...contract.details.filter(detail => !contract.decision.includes(detail)).map(detail => `- ${detail}`),
     `- Failure behavior: ${contract.failureBehavior}`,
     `- Recovery: ${contract.recovery.join("; ")}`,
   ].join("\n")
@@ -138,7 +134,7 @@ function renderPRD(graph: ProjectGraph): string {
     section("Success Criteria", bullets(blueprint.successCriteria)),
     section("Explicit Assumptions", bullets(blueprint.assumptions)),
     section("Scope Boundaries", bullets([`Included features: ${graph.features.map(feature => feature.name).join("; ")}`, `Excluded outcomes: ${blueprint.nonGoals.join("; ")}`, `Locked delivery preset: ${graph.presetId}`])),
-    section("Traceability Index", featureTrace(graph, "compact")),
+    section("Traceability Index", featureTrace(graph)),
   ].join("\n\n") + "\n"
 }
 
@@ -180,7 +176,7 @@ function renderARD(graph: ProjectGraph): string {
       `${graph.runtimeMode === "server" ? "Server rendering is enabled only to protect required service credentials." : "No server runtime is introduced."}`,
     ])),
     section("Architecture Review Checklist", bullets(["Every feature has one owner and one focused test.", "Every contract resolves to known features and one owner.", "Every modified file is created in an earlier phase.", "Persistence, permissions, credentials, lifecycle, recovery, packaging, and signing are explicit.", "No forbidden technology appears in an implementation decision."])),
-    section("Traceability Index", featureTrace(graph, "compact")),
+    section("Traceability Index", featureTrace(graph)),
   ].join("\n\n") + "\n"
 }
 
@@ -221,7 +217,7 @@ function renderTRD(graph: ProjectGraph): string {
     section("Installation Contract", graph.installationDecision),
     section("Validation Commands", numbered(graph.validationCommands.map(command => `\`${command}\``))),
     section("Completion Evidence", bullets(graph.completionEvidence)),
-    section("Traceability Index", featureTrace(graph, "full")),
+    section("Traceability Index", featureTrace(graph)),
   ].join("\n\n") + "\n"
 }
 
@@ -257,14 +253,14 @@ function renderTASKS(graph: ProjectGraph): string {
   return [
     `# Implementation Tasks — ${graph.blueprint.projectName}`,
     section("Document Purpose", "Define dependency-safe phases, exact create and modify ownership, focused tests, acceptance criteria, complete task prompts, and root-level proof commands."),
-    section("Working Rules", bullets(["Execute phases and tasks in listed order.", "Create every listed file before a later task modifies it.", "Use only the locked preset stack and exact owner map.", "Write the focused test before each non-trivial implementation and observe its intended failure.", "Stop on the first failing validation command and fix the root cause.", "Implement full contract decision, details, failure, and recovery prose from TRD.md for every listed contract ID.", "Keep test doubles in test files only; production entry points call the real owners named in the contracts."])),
+    section("Working Rules", bullets([...kitRules(graph), "Execute phases and tasks in listed order.", "Create every listed file before a later task modifies it.", "Use only the locked preset stack and exact owner map.", "Write the focused test before each non-trivial implementation and observe its intended failure.", "Stop on the first failing validation command and fix the root cause.", "Implement full contract decision, details, failure, and recovery prose from TRD.md for every listed contract ID.", "Keep test doubles in test files only; production entry points call the real owners named in the contracts."])),
     ...astroRoutesSection(graph),
     ...contentSeedSection(graph),
     phases,
     section("Packaging and Installation", bullets([...graph.packagingRules, graph.installationDecision])),
     section("Final Validation Commands", numbered(graph.validationCommands.map(command => `\`${command}\``))),
     section("Completion Evidence", bullets(graph.completionEvidence)),
-    section("Traceability Index", featureTrace(graph, "full")),
+    section("Traceability Index", featureTrace(graph)),
   ].join("\n\n") + "\n"
 }
 
@@ -280,6 +276,7 @@ function renderAGENTS(graph: ProjectGraph): string {
     section("Locked Identity and Output", bullets([`Identity: ${graph.identity.bundleId}`, `Preset: ${graph.presetId}`, `Runtime mode: ${graph.runtimeMode}`, `Artifact: ${graph.outputArtifact}`, `Artifact path: ${graph.artifactPath}`])),
     section("Installation Rule", graph.installationDecision),
     section("Execution Rules", bullets([
+      ...kitRules(graph),
       "Do not reinterpret the idea, add scope, switch stacks, rename IDs, or invent owners.",
       "Use the exact owner, implementation file, focused test, feature, contract, task, and phase mappings.",
       "Create files only in the task that first owns them and modify them only after creation.",
@@ -304,7 +301,7 @@ function renderAGENTS(graph: ProjectGraph): string {
     section("Stop Conditions", bullets(["Stop when a requested implementation decision is absent from all five documents.", "Stop when an ID, owner, file, focused test, dependency, or command conflicts across documents.", "Stop when a task would modify a file before its create task.", "Stop when a forbidden technology or undeclared remote service is required.", "Stop when a relevant test, build, package, signing, install, or launch check fails after root-cause diagnosis.", "Report the exact blocker without claiming completion.", "Report PARTIAL, not DONE, while any production entry point uses a test double or any CON-RUNTIME-WIRING check fails."])),
     section("Completion Reporting", bullets(["DONE: every declared feature and contract is implemented, every required command passed, the artifact was verified, and no required work remains.", "PARTIAL: safe implemented work is verified but a named external proof or user-controlled action remains; list it precisely.", "BLOCKED: an exact missing authority, unavailable dependency, unsafe conflict, or repeated external failure prevents further safe progress; include the failing command and next action."])),
     section("Review Checklist", bullets(["Product and non-goal boundaries match PRD.md.", "Architecture and state ownership match ARD.md.", "Stack, files, contracts, permissions, persistence, credentials, lifecycle, recovery, packaging, and signing match TRD.md.", "Task and phase ordering match TASKS.md.", "Focused tests and every final command passed with fresh output."])),
-    section("Traceability Index", featureTrace(graph, "compact")),
+    section("Traceability Index", featureTrace(graph)),
   ].join("\n\n") + "\n"
 }
 

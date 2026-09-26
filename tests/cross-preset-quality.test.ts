@@ -22,6 +22,7 @@ export const noteSummarizerAstroBlueprint: SemanticBlueprint = {
       usesPlatformNeeds: [],
       usesData: ["Note documents"],
       usesServices: [],
+      userFileAccess: "none",
     },
     {
       name: "AI Note Summarization",
@@ -35,6 +36,7 @@ export const noteSummarizerAstroBlueprint: SemanticBlueprint = {
       usesPlatformNeeds: ["network"],
       usesData: ["Note documents"],
       usesServices: ["OpenRouter"],
+      userFileAccess: "none",
     },
   ],
   dataObjects: [

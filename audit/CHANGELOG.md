@@ -1,5 +1,19 @@
 # Audit changelog
 
+## ReceiptShelf run with coverage and repair (2026-09-26)
+
+With DeepSeek Pro, the first response failed a check and the repair request fixed it; coverage
+brought every idea sentence into a feature, including the category sidebar filter. But the
+importer again had no file access: twice in three runs the provider omitted the optional
+`document` for the chosen source file, while earlier it had set a per-feature flag on the importer
+correctly. An optional declaration can be silently skipped; a required answer cannot. Every
+feature now answers `userFileAccess` (none, opens, saves, opens-and-saves), defined by whether the
+feature itself shows an Open or Save panel or accepts drops. File access links to those features
+and to features that reopen a declared document; a saving feature without a document is rejected
+(`semantic.saved-file-without-document`) and so goes through the repair request.
+
+Needs one live retry because the provider schema and prompt changed.
+
 ## Provider step: one fact per field, idea coverage, one repair (2026-09-26)
 
 Six live runs showed that every packet defect came from the single DeepSeek step (omissions,

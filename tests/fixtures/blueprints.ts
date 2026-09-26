@@ -15,6 +15,7 @@ interface FeatureUses {
   readonly services?: readonly string[]
   readonly recovery?: FeatureRecovery
   readonly surface?: FeatureSurface
+  readonly files?: Feature["userFileAccess"]
 }
 
 function feature(name: string, userOutcome: string, behavior: string, acceptance: string, uses: FeatureUses = {}): Feature {
@@ -30,6 +31,7 @@ function feature(name: string, userOutcome: string, behavior: string, acceptance
     usesPlatformNeeds: [...(uses.platform ?? [])],
     usesData: [...(uses.data ?? [])],
     usesServices: [...(uses.services ?? [])],
+    userFileAccess: uses.files ?? "none",
   }
 }
 
@@ -72,7 +74,7 @@ export const fileOrganizerBlueprint = blueprint({
   goals: ["Preview every planned move", "Undo completed organization batches", "Keep filenames and contents on the device"],
   nonGoals: ["Cloud synchronization", "Document editing"],
   features: [
-    feature("Folder scan", "See every eligible file exactly once", "Read metadata only inside a user-selected folder and group eligible files without opening their contents.", "Unreadable files stay in place with a clear explanation.", { data: ["Organization rules", "Selected folder"] }),
+    feature("Folder scan", "See every eligible file exactly once", "Read metadata only inside a user-selected folder and group eligible files without opening their contents.", "Unreadable files stay in place with a clear explanation.", { data: ["Organization rules", "Selected folder"], files: "opens" }),
     feature("Move preview", "Review every source and destination before writing", "Build a complete move plan and identify destination collisions before any filesystem change.", "No move occurs outside the reviewed plan.", { data: ["Organization rules", "Selected folder"] }),
     feature("Reversible batch", "Restore every successfully moved file", "Apply the approved plan, stop safely on partial failure, and record the completed subset for exact undo.", "Undo restores the completed subset to original locations.", { platform: ["local-storage"], data: ["Move journal", "Selected folder"] }),
   ],
@@ -92,9 +94,9 @@ export const photoCleanerBlueprint = blueprint({
   goals: ["Explain exposed metadata", "Remove selected categories from copies", "Keep source images unchanged"],
   nonGoals: ["Photo editing", "Social publishing"],
   features: [
-    feature("Metadata inspection", "Understand what each image exposes", "List human-readable location, device, timestamp, and descriptive metadata for selected images.", "Every reported value identifies its source and category.", { data: ["Selected photographs"] }),
+    feature("Metadata inspection", "Understand what each image exposes", "List human-readable location, device, timestamp, and descriptive metadata for selected images.", "Every reported value identifies its source and category.", { data: ["Selected photographs"], files: "opens" }),
     feature("Cleaning policy", "Choose exactly which metadata categories to remove", "Maintain a reviewed category policy without altering an image.", "The export summary matches the selected policy.", { platform: ["local-storage"], data: ["Cleaning policy"] }),
-    feature("Verified copy export", "Receive cleaned copies with unchanged originals", "Write new files, reread metadata, and discard incomplete outputs when verification fails.", "Every output passes the selected policy and source hashes remain unchanged.", { data: ["Cleaning policy", "Selected photographs", "Cleaned copies"] }),
+    feature("Verified copy export", "Receive cleaned copies with unchanged originals", "Write new files, reread metadata, and discard incomplete outputs when verification fails.", "Every output passes the selected policy and source hashes remain unchanged.", { data: ["Cleaning policy", "Selected photographs", "Cleaned copies"], files: "saves" }),
   ],
   dataObjects: [
     { name: "Cleaning policy", purpose: "Remember the last reviewed metadata categories.", sensitivity: "personal", retentionIntent: "Keep locally until reset.", storage: "settings", writeMode: "direct" },
@@ -131,7 +133,7 @@ export const knowledgeManagerBlueprint = blueprint({
     feature("Note capture", "Create and edit notes with honest save status", "Persist titled plain-text notes while keeping unsaved content visible after a failed write.", "Reopening a saved note preserves exact content.", { platform: ["local-storage"], data: ["Notes and links"] }),
     feature("Explicit note links", "Navigate known links and visible missing targets", "Create directional links and preserve recoverable missing references when a target is deleted.", "Every link resolves or shows a missing-target state.", { platform: ["local-storage"], data: ["Notes and links"] }),
     feature("Offline search", "Find notes without network access", "Index titles and bodies locally and rebuild derived index data without altering notes.", "A newly saved note appears after the bounded index update.", { data: ["Notes and links", "Search index"] }),
-    feature("Portable export", "Reconstruct notes and links from a selected folder", "Export notes, relationships, and a manifest through an atomic destination boundary.", "A fresh import preserves note and link counts.", { data: ["Notes and links", "Export folder"] }),
+    feature("Portable export", "Reconstruct notes and links from a selected folder", "Export notes, relationships, and a manifest through an atomic destination boundary.", "A fresh import preserves note and link counts.", { data: ["Notes and links", "Export folder"], files: "saves" }),
   ],
   dataObjects: [
     { name: "Notes and links", purpose: "Store user-authored text and directional relationships.", sensitivity: "personal", retentionIntent: "Keep locally until explicit deletion.", storage: "records", writeMode: "direct" },
@@ -149,10 +151,10 @@ export const invoiceArchiveBlueprint = blueprint({
   goals: ["Keep invoices local", "Require field verification", "Produce reproducible reconciliation exports"],
   nonGoals: ["Tax advice", "Payments or bank connections"],
   features: [
-    feature("Invoice import", "Add selected invoices without cloud upload", "Copy selected files into the archive and surface unsupported or unreadable inputs before acceptance.", "Every accepted document has one archive record.", { data: ["Invoice archive", "Selected invoice files"] }),
+    feature("Invoice import", "Add selected invoices without cloud upload", "Copy selected files into the archive and surface unsupported or unreadable inputs before acceptance.", "Every accepted document has one archive record.", { data: ["Invoice archive", "Selected invoice files"], files: "opens" }),
     feature("Verified fields", "Confirm vendor, amount, currency, date, and status", "Keep extracted values provisional until the user reviews them.", "No provisional value silently becomes authoritative.", { data: ["Invoice archive"] }),
     feature("Duplicate review", "Resolve likely duplicates without losing originals", "Compare stable document evidence and require an explicit keep, merge, or reject choice.", "A duplicate decision remains reversible until export.", { data: ["Invoice archive"] }),
-    feature("Reconciliation export", "Receive a stable local summary", "Export reviewed records in deterministic order without modifying the archive.", "Repeated export from unchanged records is byte-identical.", { data: ["Invoice archive", "Reconciliation file"] }),
+    feature("Reconciliation export", "Receive a stable local summary", "Export reviewed records in deterministic order without modifying the archive.", "Repeated export from unchanged records is byte-identical.", { data: ["Invoice archive", "Reconciliation file"], files: "saves" }),
   ],
   dataObjects: [
     { name: "Invoice archive", purpose: "Store document references, verified fields, and duplicate decisions.", sensitivity: "sensitive", retentionIntent: "Keep until explicit record deletion.", storage: "records", writeMode: "direct" },
@@ -263,10 +265,10 @@ export const scanDrawerBlueprint = blueprint({
   goals: ["Keep scans in a local library without network access", "Find scans by tag"],
   nonGoals: ["No OCR or automatic text extraction", "No cloud sync"],
   features: [
-    feature("Scan import", "Add scanned files to the library", "The app copies each chosen PDF, PNG, or JPEG into its own library folder under a generated file name and creates a scan record that points to the copy.", "After importing one PDF, the library folder contains exactly one new file with the same bytes.", { data: ["Stored scans", "Scan index", "Chosen scan file"] }),
+    feature("Scan import", "Add scanned files to the library", "The app copies each chosen PDF, PNG, or JPEG into its own library folder under a generated file name and creates a scan record that points to the copy.", "After importing one PDF, the library folder contains exactly one new file with the same bytes.", { data: ["Stored scans", "Scan index", "Chosen scan file"], files: "opens" }),
     feature("Scan removal", "Remove a scan and its copy", "On confirmation, the app deletes the scan record and removes its copied file from the library folder.", "After removal, no file exists at the removed scan's copied path.", { data: ["Stored scans", "Scan index"] }),
     feature("Tag filter", "Narrow the list to one tag", "Selecting a tag shows only scans with that tag; if the saved tag list cannot be read, the list shows every scan.", "With scans tagged Home and Work, selecting Home shows only the Home scans.", { data: ["Scan index", "Drawer preferences"], recovery: "fallback" }),
-    feature("Scan list export", "Save the visible scans as a CSV file", "The app writes one CSV row per visible scan to the location the user chooses in the Save panel.", "After export, the chosen file has one header row and one row per visible scan.", { data: ["Scan index", "Exported scan list"] }),
+    feature("Scan list export", "Save the visible scans as a CSV file", "The app writes one CSV row per visible scan to the location the user chooses in the Save panel.", "After export, the chosen file has one header row and one row per visible scan.", { data: ["Scan index", "Exported scan list"], files: "saves" }),
   ],
   dataObjects: [
     { name: "Stored scans", purpose: "The copied scan files the app keeps in its own library folder.", sensitivity: "personal", retentionIntent: "Keep until the user removes the scan.", storage: "app-files", writeMode: "direct" },

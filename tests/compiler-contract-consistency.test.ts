@@ -22,6 +22,7 @@ const blueprint: SemanticBlueprint = {
       usesPlatformNeeds: [],
       usesData: ["Editor Buffer", "Typography Preferences"],
       usesServices: [],
+      userFileAccess: "none",
     },
     {
       name: "Save Note",
@@ -35,6 +36,7 @@ const blueprint: SemanticBlueprint = {
       usesPlatformNeeds: [],
       usesData: ["Note File"],
       usesServices: [],
+      userFileAccess: "none",
     },
     {
       name: "Close Record",
@@ -48,6 +50,7 @@ const blueprint: SemanticBlueprint = {
       usesPlatformNeeds: [],
       usesData: ["Editor Buffer"],
       usesServices: [],
+      userFileAccess: "none",
     },
     {
       name: "Find Notes",
@@ -61,6 +64,7 @@ const blueprint: SemanticBlueprint = {
       usesPlatformNeeds: [],
       usesData: ["Search Index"],
       usesServices: [],
+      userFileAccess: "none",
     },
   ],
   dataObjects: [
@@ -147,6 +151,7 @@ describe("compiler contract consistency", () => {
           usesPlatformNeeds: [],
           usesData: ["Note File", "Temporary Write File"],
           usesServices: [],
+          userFileAccess: "none",
         },
         {
           name: "Background Write",
@@ -160,6 +165,7 @@ describe("compiler contract consistency", () => {
           usesPlatformNeeds: [],
           usesData: ["Note File", "Temporary Write File"],
           usesServices: [],
+          userFileAccess: "none",
         },
         {
           name: "Open Note",
@@ -173,6 +179,7 @@ describe("compiler contract consistency", () => {
           usesPlatformNeeds: [],
           usesData: ["Note File"],
           usesServices: [],
+          userFileAccess: "none",
         },
         {
           name: "Workspace Search",
@@ -186,6 +193,7 @@ describe("compiler contract consistency", () => {
           usesPlatformNeeds: [],
           usesData: ["Workspace Folder Reference"],
           usesServices: [],
+          userFileAccess: "none",
         },
         {
           name: "Settings Window",
@@ -199,6 +207,7 @@ describe("compiler contract consistency", () => {
           usesPlatformNeeds: ["local-storage"],
           usesData: ["Keybinding Preferences"],
           usesServices: [],
+          userFileAccess: "none",
         },
       ],
       dataObjects: [
@@ -269,6 +278,7 @@ describe("compiler contract consistency", () => {
           usesPlatformNeeds: [],
           usesData: ["Note File", "Temporary Write File"],
           usesServices: [],
+          userFileAccess: "none",
         },
         {
           name: "Background Write",
@@ -282,6 +292,7 @@ describe("compiler contract consistency", () => {
           usesPlatformNeeds: [],
           usesData: ["Note File", "Temporary Write File"],
           usesServices: [],
+          userFileAccess: "none",
         },
         {
           name: "Open Note",
@@ -295,6 +306,7 @@ describe("compiler contract consistency", () => {
           usesPlatformNeeds: [],
           usesData: ["Note File"],
           usesServices: [],
+          userFileAccess: "none",
         },
         {
           name: "Workspace Search",
@@ -308,6 +320,7 @@ describe("compiler contract consistency", () => {
           usesPlatformNeeds: [],
           usesData: ["Workspace Folder Reference"],
           usesServices: [],
+          userFileAccess: "none",
         },
         {
           name: "Settings Window",
@@ -321,6 +334,7 @@ describe("compiler contract consistency", () => {
           usesPlatformNeeds: ["local-storage"],
           usesData: ["Typography Preferences"],
           usesServices: [],
+          userFileAccess: "none",
         },
       ],
       dataObjects: [
@@ -384,6 +398,7 @@ describe("compiler contract consistency", () => {
           usesPlatformNeeds: [],
           usesData: ["Note File", "Temporary Save File"],
           usesServices: [],
+          userFileAccess: "none",
         },
         {
           name: "Workspace Search",
@@ -397,6 +412,7 @@ describe("compiler contract consistency", () => {
           usesPlatformNeeds: [],
           usesData: ["Workspace Search Index"],
           usesServices: [],
+          userFileAccess: "none",
         },
       ],
       dataObjects: [

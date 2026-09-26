@@ -24,6 +24,7 @@ const portfolioBlueprint: SemanticBlueprint = {
       usesPlatformNeeds: [],
       usesData: ["Project catalog entry"],
       usesServices: [],
+      userFileAccess: "none",
     },
     {
       name: "Project detail page",
@@ -37,6 +38,7 @@ const portfolioBlueprint: SemanticBlueprint = {
       usesPlatformNeeds: [],
       usesData: ["Project catalog entry"],
       usesServices: ["GitHub"],
+      userFileAccess: "none",
     },
     {
       name: "About page",
@@ -50,6 +52,7 @@ const portfolioBlueprint: SemanticBlueprint = {
       usesPlatformNeeds: [],
       usesData: [],
       usesServices: [],
+      userFileAccess: "none",
     },
   ],
   dataObjects: [

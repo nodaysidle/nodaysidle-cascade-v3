@@ -21,6 +21,7 @@ describe("Downstream Executable Instruction & Prompt Injection Guard (H4)", () =
           usesPlatformNeeds: [],
           usesData: [],
           usesServices: [],
+          userFileAccess: "none",
         },
       ],
     }
@@ -47,6 +48,7 @@ describe("Downstream Executable Instruction & Prompt Injection Guard (H4)", () =
           usesPlatformNeeds: [],
           usesData: [],
           usesServices: [],
+          userFileAccess: "none",
         },
       ],
     }

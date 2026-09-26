@@ -472,6 +472,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       usesPlatformNeeds: unique(feature.usesPlatformNeeds),
       usesData: unique(featureDataUses(source, feature).map(name => dataNameByKey.get(referenceKey(name))!)),
       usesServices: unique(feature.usesServices.map(name => serviceNameByKey.get(referenceKey(name))!)),
+      userFileAccess: feature.userFileAccess,
       surface: feature.surface,
     }
   }))
@@ -500,13 +501,13 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       recovery: "Preserve recoverable local input and allow only an explicit retry or explicit service change.",
     }
   }).filter(item => item.name && item.purpose))
-  // File access follows declared documents: a feature gets the filesystem permission exactly when it
-  // reads or writes a document data object; features cannot declare filesystem themselves.
+  // File access is declared per feature by userFileAccess (the feature shows an Open or Save panel or
+  // accepts drops); a feature that reopens a declared document by saved path gets it too.
   const documentNames = new Set(dataObjects.filter(item => item.storage === "document").map(item => item.name))
-  const features = baseFeatures.map(({ usesPlatformNeeds, usesData, usesServices, ...feature }) => ({
+  const features = baseFeatures.map(({ usesPlatformNeeds, usesData, usesServices, userFileAccess, ...feature }) => ({
     ...feature,
     resourceIds: featureResourceIds(
-      [...usesPlatformNeeds, ...(usesData.some(name => documentNames.has(name)) ? ["filesystem" as const] : [])],
+      [...usesPlatformNeeds, ...(userFileAccess !== "none" || usesData.some(name => documentNames.has(name)) ? ["filesystem" as const] : [])],
       usesData,
       usesServices,
     ),

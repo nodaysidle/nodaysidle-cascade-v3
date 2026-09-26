@@ -65,20 +65,22 @@ describe("explicit feature references", () => {
     expect(linked.contracts.find(contract => contract.id === "CON-PERMISSION-MICROPHONE")?.featureIds).toEqual(["FEAT-REVERSIBLE-BATCH"])
   })
 
-  it("grants file access exactly to features that use a declared document", () => {
+  it("grants file access exactly to features that show a file panel or use a declared document", () => {
     const blueprint = structuredClone(fileOrganizerBlueprint)
     const permissionFeatures = () => compileProjectGraph(normalizeBlueprint(blueprint, PRESET), PRESET)
       .contracts.find(contract => contract.id === "CON-PERMISSION-FILESYSTEM")?.featureIds
 
     expect(permissionFeatures()).toEqual(["FEAT-FOLDER-SCAN", "FEAT-MOVE-PREVIEW", "FEAT-REVERSIBLE-BATCH"])
 
-    // A filesystem flag without a document links nothing.
+    // Without a panel or a document, a feature gets no file access.
     blueprint.features[1]!.usesData = ["Organization rules"]
     expect(permissionFeatures()).toEqual(["FEAT-FOLDER-SCAN", "FEAT-REVERSIBLE-BATCH"])
 
-    // A document without the flag still grants access.
-    blueprint.features[2]!.usesPlatformNeeds = ["local-storage"]
+    // A feature that opens a panel gets file access even when no document is declared for the file.
+    blueprint.features[0]!.usesData = ["Organization rules"]
     expect(permissionFeatures()).toEqual(["FEAT-FOLDER-SCAN", "FEAT-REVERSIBLE-BATCH"])
+    blueprint.features[0]!.userFileAccess = "none"
+    expect(permissionFeatures()).toEqual(["FEAT-REVERSIBLE-BATCH"])
   })
 
   it("links data and services only to the features that list them", () => {

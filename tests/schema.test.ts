@@ -64,13 +64,12 @@ describe("compact semantic provider boundary", () => {
     expect(instructions).toContain("List a platform need only when a stated feature uses it")
     expect(instructions).toContain("When a feature offers a fixed set of choices, such as currencies, units, or levels, list every choice and state which one is selected initially.")
     expect(instructions).toContain("state the same rule in both features. Never let two features describe the same record field differently.")
-    expect(instructions).toContain("(file access is not a platform need; it comes only from a document dataObject)")
+    expect(instructions).toContain("(file access is not a platform need; userFileAccess states it)")
+    expect(instructions).toContain("set userFileAccess to opens when the feature itself asks the user to choose a file or folder in an Open panel or to drop one on the window, saves when it asks the user to choose where to save a file in a Save panel")
     expect(instructions).toContain("Return ideaCoverage with exactly one entry for every numbered idea sentence below.")
     expect(instructions).toContain("Idea sentences:\n1. Build a focused local file organizer.")
-    expect(instructions).toContain("Declare a document dataObject for every file or folder the user chooses to open, import, or save")
-    expect(instructions).toContain("File access is granted only to features that list a document dataObject.")
-    expect(instructions).toContain("An import feature lists both the document the user chooses and whatever it creates from it")
-    expect(instructions).toContain("a feature that only works on its content after it is loaded lists a session dataObject for that loaded content instead")
+    expect(instructions).toContain("Declare a document dataObject for every file the user chooses where to save, such as an export")
+    expect(instructions).toContain("A feature that only works on loaded content lists a session dataObject for that content instead.")
     expect(instructions).toContain("Set its writeMode to atomic-replace when a failed write must leave an existing file at that location unchanged.")
     expect(instructions).toContain("Do not add features, settings, or platform needs that the idea does not ask for")
     expect(instructions).not.toContain("Include every applicable platform need")
@@ -219,11 +218,26 @@ describe("idea coverage", () => {
 })
 
 describe("hard semantic blockers", () => {
-  it("has no feature-level filesystem need, so file access can only come from a document", () => {
-    const candidate = structuredClone(fileOrganizerBlueprint) as unknown as { features: Array<{ usesPlatformNeeds: string[] }> }
-    candidate.features[0]!.usesPlatformNeeds = ["filesystem"]
+  it("states file access only through the required userFileAccess answer", () => {
+    const flagged = structuredClone(fileOrganizerBlueprint) as unknown as { features: Array<{ usesPlatformNeeds: string[] }> }
+    flagged.features[0]!.usesPlatformNeeds = ["filesystem"]
+    expect(SemanticBlueprintSchema.safeParse(flagged).success).toBe(false)
 
-    expect(SemanticBlueprintSchema.safeParse(candidate).success).toBe(false)
+    const unanswered = structuredClone(fileOrganizerBlueprint) as unknown as { features: Array<{ userFileAccess?: string }> }
+    delete unanswered.features[0]!.userFileAccess
+    expect(SemanticBlueprintSchema.safeParse(unanswered).success).toBe(false)
+  })
+
+  it("rejects a feature that saves a user-chosen file without a document dataObject", () => {
+    const candidate = structuredClone(fileOrganizerBlueprint)
+    candidate.features[2]!.userFileAccess = "saves"
+    candidate.features[2]!.usesData = ["Move journal"]
+
+    expect(auditSemanticIntake(candidate)).toEqual([{
+      path: "features[2].usesData",
+      rule: "semantic.saved-file-without-document",
+      message: "Feature 'Reversible batch' saves a file the user chooses but lists no document dataObject for it.",
+    }])
   })
 
   it("blocks actual secret material by exact path without exposing it", () => {
@@ -257,6 +271,7 @@ describe("hard semantic blockers", () => {
       usesPlatformNeeds: [],
       usesData: [],
       usesServices: [],
+      userFileAccess: "none",
     }]
 
     expect(SemanticBlueprintSchema.safeParse(candidate).success).toBe(true)

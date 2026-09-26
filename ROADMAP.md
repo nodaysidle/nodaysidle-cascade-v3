@@ -53,7 +53,8 @@ notes for the user, not compiler work.
   leakage, untestable acceptance) keep blocking; the idea review never blocks.
 - Links, placement, recovery, and routes come only from declared fields (`usesPlatformNeeds`,
   `usesData`, `usesServices`, `storage`, `writeMode`, `failureRecovery`, `surface`), never from
-  wording. Each fact is declared in one place: file access comes only from `document` data.
+  wording. Each fact is declared in one place and asked as a required field, never as an optional
+  declaration the provider can forget: file access is the per-feature `userFileAccess` answer.
 
 ## How to audit a packet
 

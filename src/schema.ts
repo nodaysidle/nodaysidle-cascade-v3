@@ -40,6 +40,7 @@ const FeatureSchema = z.strictObject({
   usesPlatformNeeds: z.array(FeaturePlatformNeedSchema).max(12),
   usesData: z.array(shortMeaning).max(8),
   usesServices: z.array(shortMeaning).max(8),
+  userFileAccess: z.enum(["none", "opens", "saves", "opens-and-saves"]),
 })
 
 export const DataStorageSchema = z.enum(["settings", "records", "document", "app-files", "secret", "temporary", "session"])
@@ -317,8 +318,21 @@ function featureProse(feature: SemanticBlueprint["features"][number]): string[] 
   return [feature.name, feature.userOutcome, feature.trigger, feature.behavior, feature.failureOutcome, ...feature.acceptanceSignals]
 }
 
+// A saved file needs a declared document so its placement and atomic-write rule come from a field.
+function savedFileDocumentIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
+  const documents = new Set(blueprint.dataObjects.filter(item => item.storage === "document").map(item => referenceKey(item.name)))
+  return blueprint.features.flatMap((feature, index) =>
+    (feature.userFileAccess === "saves" || feature.userFileAccess === "opens-and-saves") && !feature.usesData.some(name => documents.has(referenceKey(name)))
+      ? [{
+        path: `features[${index}].usesData`,
+        rule: "semantic.saved-file-without-document",
+        message: `Feature '${feature.name}' saves a file the user chooses but lists no document dataObject for it.`,
+      }]
+      : [])
+}
+
 export function auditSemanticIntake(blueprint: SemanticBlueprint): SemanticIssue[] {
-  const issues: SemanticIssue[] = [...featureReferenceIssues(blueprint)]
+  const issues: SemanticIssue[] = [...featureReferenceIssues(blueprint), ...savedFileDocumentIssues(blueprint)]
   if (unusableMeaning.test(blueprint.productName)) {
     issues.push({ path: "productName", rule: "semantic.unusable-product", message: "The product name does not contain usable product meaning." })
   }
@@ -398,8 +412,9 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "State one decided behavior for every rule. Never leave a choice between two behaviors for the builder to make (for example 'retries or skips'); pick one. Options that the user chooses between, such as a list of billing cycles, are fine. Give every scheduled or repeated action an exact time or interval and state how it avoids acting twice for the same item.",
     "Use no more than twelve features and no more than eight values in each prose list. List a platform need only when a stated feature uses it. Do not add features, settings, or platform needs that the idea does not ask for.",
     "Every acceptance signal checks only the behavior of its own feature. Never repeat a behavior that another feature owns.",
-    "For every feature, list in usesPlatformNeeds each platform need that feature itself exercises (file access is not a platform need; it comes only from a document dataObject), in usesData the exact names of the dataObjects it reads or writes, and in usesServices the exact names of the externalServices it calls. Use empty arrays when a feature uses none. Every name must match a declared dataObject or externalService exactly. Declare a dataObject or externalService only when at least one feature lists it: every dataObject must appear in some feature's usesData and every externalService in some feature's usesServices, or the blueprint is rejected.",
-    "Declare a document dataObject for every file or folder the user chooses to open, import, or save, such as an imported source file or an export. An import feature lists both the document the user chooses and whatever it creates from it, for example a document named for the chosen source file plus the app-files copy and the record. List it in usesData only for features that open, reopen, import, or write that file or folder itself; a feature that only works on its content after it is loaded lists a session dataObject for that loaded content instead. File access is granted only to features that list a document dataObject. Set its writeMode to atomic-replace when a failed write must leave an existing file at that location unchanged.",
+    "For every feature, list in usesPlatformNeeds each platform need that feature itself exercises (file access is not a platform need; userFileAccess states it), in usesData the exact names of the dataObjects it reads or writes, and in usesServices the exact names of the externalServices it calls. Use empty arrays when a feature uses none. Every name must match a declared dataObject or externalService exactly. Declare a dataObject or externalService only when at least one feature lists it: every dataObject must appear in some feature's usesData and every externalService in some feature's usesServices, or the blueprint is rejected.",
+    "For every feature, set userFileAccess to opens when the feature itself asks the user to choose a file or folder in an Open panel or to drop one on the window, saves when it asks the user to choose where to save a file in a Save panel, opens-and-saves when it does both, and none otherwise. Working with the app's own settings, records, app-files, or already loaded content is none.",
+    "Declare a document dataObject for every file the user chooses where to save, such as an export, and list it in the usesData of the feature that saves it; a feature whose userFileAccess is saves or opens-and-saves is rejected without one. A file or folder the user opens, imports, or reopens later may also be declared as a document and listed by every feature that opens or reopens it. A feature that only works on loaded content lists a session dataObject for that content instead. Set its writeMode to atomic-replace when a failed write must leave an existing file at that location unchanged.",
     "For every dataObject, set storage to settings for small user preferences, records for structured app-owned records or history, document for files or folders the user opens, imports, or saves at a location the user chooses, app-files for files the app itself copies or creates and keeps in its own folder (such as imported attachments, photos, or recordings), secret for API keys, tokens, or other credentials, temporary for short-lived files removed automatically, and session for values held in memory and never written to disk.",
     "For every feature, set failureRecovery to exit when its failure outcome ends the app or process; fallback only when the failure outcome itself names data or a default the app switches to automatically so the user does nothing (for example the last cached rates or the previous saved value); and retry when the operation is rejected, blocked, or shows an error the user must act on, and in every other case. Set surface to main unless the idea itself asks for that feature as its own page per item with a direct link (item-page), an about page (about-page), or a page for unknown links (not-found-page). Never add a feature only to use a surface value.",
     "For every dataObject, set writeMode to atomic-replace when a save must never leave a partially written copy (it is written to a temporary copy and swapped in whole), and direct otherwise. Do not declare that temporary copy as its own dataObject; writeMode atomic-replace on the stored dataObject already covers it.",

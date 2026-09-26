@@ -31,8 +31,10 @@ The only stack-specific knowledge lives in `src/presets.ts` (plus `src/astroWeb.
 
 - Each feature declares `usesPlatformNeeds`, `usesData`, and `usesServices`. Permission, data,
   persistence, and integration contracts link only to the features that declare them. File access
-  is not a feature platform need: the filesystem permission links exactly to features that use a
-  `document` data object (a file or folder the user chooses), so there is one place to state it.
+  is not a feature platform need: every feature answers the required `userFileAccess` (none, opens,
+  saves, opens-and-saves: does it show an Open or Save panel or accept drops), and the filesystem
+  permission links to features that answer other than none or use a `document` (reopen by saved
+  path). Intake rejects a saving feature without a `document`.
 - The blueprint's `ideaCoverage` maps every numbered sentence of the user's idea (split
   deterministically by `splitIdeaSentences`) to the features, product statement, non-goal, or
   constraint that covers it. Intake rejects a missing or featureless sentence and any feature no

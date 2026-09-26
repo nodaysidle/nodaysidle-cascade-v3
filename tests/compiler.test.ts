@@ -306,6 +306,9 @@ describe("Tauri starter kit", () => {
     expect(trd).toContain("clipboard-manager:allow-write-text and never reads")
     expect(trd).toContain("keyring crate (3.6, apple-native feature)")
     expect(trd).toContain("scripts/package_app.sh --install")
+    // A second window (a picker) missing from the capability windows has every command refused.
+    expect(trd).toContain("listed in the windows array of src-tauri/capabilities/default.json")
+    expect(packet.kit.find(file => file.name === "kit/README.md")!.content).toContain("add that label there")
   })
 })
 

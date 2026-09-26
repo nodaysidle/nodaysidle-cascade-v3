@@ -1,5 +1,22 @@
 # Audit changelog
 
+## PromptShelf packet audit (2026-09-26)
+
+The first Tauri packet with the new kit is correct apart from one blocking gap. The schema repair
+fix held: import and export declare file access through `userFileAccess`. DeepSeek declared 12
+features covering all 15 idea sentences; prompts as records, settings, the DeepSeek key as a secret,
+and the export file as an atomic document; the Theme choice list; Control-Option-P and deepseek-flash.
+The kit carried exactly the declared plugins (clipboard write-only, global shortcut, autostart,
+dialog; no notification), rusqlite, the keychain vault, and the tray; the TRD contracts match it;
+recovery lines match their failure text.
+
+Blocking and fixed: nothing said that a second window must be listed in the capability `windows`,
+so the quick picker would have had every command refused ("not allowed"). The Tauri wiring rule and
+the kit README now say every window that calls commands gets a fixed label listed there, and the
+packaging test calls one command from each window (`tests/compiler.test.ts`).
+
+Polish (already listed): the integration contract names no endpoint or auth for DeepSeek.
+
 ## PromptShelf generation stopped at blueprint validation (2026-09-26)
 
 The first Tauri live idea (PromptShelf) failed `features[4].usesPlatformNeeds[0]`

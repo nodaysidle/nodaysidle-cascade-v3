@@ -125,6 +125,7 @@ export function tauriKitReadme(identity: ProjectIdentity, paths: readonly string
     "- src-tauri/tests/kit_tests.rs builds app_builder(mock_builder()) with the app's own context() and calls commands through get_ipc_response from the devUrl origin (http://localhost:1420); a request from any other origin is refused. Keep this test passing as commands are added.",
     "- Every command returns Result<T, AppError>; AppError carries a message written for the user, and the frontend shows it through errors.report(). errors.show() is for messages the frontend writes itself. Never show a raw runtime error.",
     "- src-tauri/capabilities/default.json lists only core:default and the permissions of the plugins lib.rs initializes. Add a permission only with the plugin feature that needs it.",
+    "- Its windows array starts as [\"main\"]. When a feature opens another window, give it a fixed label and add that label there, or Tauri refuses every command the window calls.",
     ...(uses.settings ? ["- settings.rs replaces settings.json whole: a temporary file in the same folder, synced, then renamed."] : []),
     ...(uses.records ? ["- database.rs applies MIGRATIONS in order and records the schema version in PRAGMA user_version; append new migrations, never edit a shipped one."] : []),
     ...(uses.secrets ? ["- vault.rs is the only place secrets are stored: generic passwords in the login keychain under the bundle ID's credentials service. Tests use MemoryStore, never the keychain."] : []),
@@ -900,7 +901,7 @@ function capabilities(uses: TauriKitUses): string {
   return `${JSON.stringify({
     $schema: "../gen/schemas/desktop-schema.json",
     identifier: "default",
-    description: "Permissions for the main window: core, plus exactly the plugins lib.rs initializes.",
+    description: "Permissions for every window listed: core, plus exactly the plugins lib.rs initializes. Add each window label that calls commands.",
     windows: ["main"],
     permissions: ["core:default", ...uses.plugins.flatMap(plugin => plugin.permissions)],
   }, null, 2)}\n`

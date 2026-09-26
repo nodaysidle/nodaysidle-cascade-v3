@@ -1,5 +1,31 @@
 # Audit changelog
 
+## ReceiptShelf retry audit (2026-09-26)
+
+The retry confirmed the previous fixes live (DeepSeek declared the receipt files as `app-files`).
+Compiler findings, each covered by the Scan Drawer fixture:
+
+- The native file-permission rule named only NSOpenPanel and prescribed security-scoped bookmarks,
+  which only apply under App Sandbox; the local build is unsandboxed. It now names NSOpenPanel,
+  drops, and NSSavePanel, and forbids bookmarks.
+- The prompt now limits `filesystem` to features that touch a location the user chooses; the app's
+  own settings, records, app-files, and temporary data never need it.
+- The prompt now requires a `document` data object for every file written at a user-chosen
+  location (such as an export), with `atomic-replace` when a failure must leave an existing file
+  unchanged, so the atomic-write rule comes from a declared field.
+- Found while testing: on Tauri, Astro, and Android, `document` storage fell through to the records
+  store (SQLite, content collections, Room). Each preset now declares `documentPlacement`
+  (tauri-plugin-dialog path, file input or download, Storage Access Framework URI). Android and
+  Astro declare their own atomic-write rule because those targets cannot rename in place.
+
+Follow-up after the next retry, where Preview, Delete, and Persist still declared `filesystem`
+although they touch only the app's own folder: the filesystem permission now links exactly to
+features that use a `document` data object, and the prompt asks for a document for every file or
+folder the user chooses to open, import, or save. Test fixtures that touch user-chosen files now
+declare those documents; Jev-healed filesystem flags no longer link a permission on their own.
+
+Needs one live retry because the provider prompt changed.
+
 ## ReceiptShelf packet audit, native macOS desktop (2026-09-26)
 
 Compiler findings, each fixed with the Scan Drawer fixture in `tests/idea-preset-matrix.test.ts`:

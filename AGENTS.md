@@ -29,7 +29,9 @@ The only stack-specific knowledge lives in `src/presets.ts` (plus `src/astroWeb.
 ## How the compiler links things
 
 - Each feature declares `usesPlatformNeeds`, `usesData`, and `usesServices`. Permission, data,
-  persistence, and integration contracts link only to the features that declare them.
+  persistence, and integration contracts link only to the features that declare them. File access
+  is the exception: the filesystem permission links exactly to features that use a `document`
+  data object (a file or folder the user chooses), whatever their `filesystem` flag says.
 - Each data object declares `storage` (settings, records, document, app-files, secret, temporary, session);
   the preset maps that kind to a concrete store. It also declares `writeMode` (direct,
   atomic-replace), which sets the atomic-write rule and temporary-file placement. A temporary

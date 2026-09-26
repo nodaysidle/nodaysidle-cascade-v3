@@ -107,7 +107,31 @@ describe("declared storage, recovery, and sentence form stay precise", () => {
     if (presetId.startsWith("native-macos")) {
       expect(stored.details).toContain(`Placement: Files in Application Support/${packet.graph.identity.bundleId}/Files/, created only by the app under generated unique file names; stored references hold the file name relative to that folder, never an absolute path or a user-selected location.`)
       expect(packet.documents["ARD.md"]).toContain(`- App files: ${PRESETS[presetId].persistence.appFilesPlacement(packet.graph.identity)}`)
-      expect(packet.graph.persistence.decision).toBe("Persistence: enabled with UserDefaults for lightweight settings, SQLite for durable record collections in Application Support, and app-owned files in Application Support.")
+      expect(packet.graph.persistence.decision).toBe("Persistence: enabled with UserDefaults for lightweight settings, SQLite for durable record collections in Application Support, local filesystem at user-selected paths for document storage, and app-owned files in Application Support.")
+    }
+
+    // Only features that declare filesystem link the permission; app-owned stores never add it.
+    const permission = packet.graph.contracts.find(item => item.id === "CON-PERMISSION-FILESYSTEM")!
+    expect(permission.featureIds).toEqual(["FEAT-SCAN-IMPORT", "FEAT-SCAN-LIST-EXPORT"])
+    if (presetId.startsWith("native-macos")) {
+      expect(permission.decision).toContain("NSSavePanel")
+      expect(permission.decision).toContain("no security-scoped bookmarks are created or stored")
+      expect(text).toContain("Entitlements ownership: Resources/App.entitlements is the only entitlements source and is an XML plist with an empty dictionary for the local unsandboxed build")
+    }
+
+    // A file written at a user-chosen location is a declared document; atomic-replace gives it the atomic-write rule.
+    const exported = packet.graph.contracts.find(item => item.id === "CON-PERSISTENCE-EXPORTED-SCAN-LIST")!
+    expect(exported.featureIds).toContain("FEAT-SCAN-LIST-EXPORT")
+    if (presetId !== "astro-web") {
+      expect(exported.details).toContain(`Placement: ${PRESETS[presetId].persistence.documentPlacement}`)
+      expect(exported.details.some(detail => detail.startsWith("Write mode: "))).toBe(true)
+    }
+    if (presetId === "android-kotlin-compose") {
+      expect(exported.details).toContain(`Write mode: ${PRESETS[presetId].persistence.documentAtomicWrite}`)
+    }
+    if (presetId.startsWith("native-macos")) {
+      expect(exported.details).toContain("Placement: Local filesystem at user-selected paths via native open/save panels.")
+      expect(exported.details.find(detail => detail.startsWith("Write mode: "))).toMatch(/renam/)
     }
 
     // A declared automatic fallback never sits next to a rule that forbids non-user retries.

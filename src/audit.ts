@@ -3,9 +3,8 @@ import {
   type ContractKind,
   type DocumentName,
   type ProjectGraph,
-  USER_SELECTED_FILE_PLACEMENT,
 } from "./compiler"
-import { PRESET_IDS, PRESETS, type PresetContract } from "./presets"
+import { PRESET_IDS, PRESETS, USER_SELECTED_FILE_PLACEMENT, type PresetContract } from "./presets"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 
 export interface AuditFailure {

@@ -65,6 +65,22 @@ describe("explicit feature references", () => {
     expect(linked.contracts.find(contract => contract.id === "CON-PERMISSION-MICROPHONE")?.featureIds).toEqual(["FEAT-REVERSIBLE-BATCH"])
   })
 
+  it("grants file access exactly to features that use a declared document", () => {
+    const blueprint = structuredClone(fileOrganizerBlueprint)
+    const permissionFeatures = () => compileProjectGraph(normalizeBlueprint(blueprint, PRESET), PRESET)
+      .contracts.find(contract => contract.id === "CON-PERMISSION-FILESYSTEM")?.featureIds
+
+    expect(permissionFeatures()).toEqual(["FEAT-FOLDER-SCAN", "FEAT-MOVE-PREVIEW", "FEAT-REVERSIBLE-BATCH"])
+
+    // A filesystem flag without a document links nothing.
+    blueprint.features[1]!.usesData = ["Organization rules"]
+    expect(permissionFeatures()).toEqual(["FEAT-FOLDER-SCAN", "FEAT-REVERSIBLE-BATCH"])
+
+    // A document without the flag still grants access.
+    blueprint.features[2]!.usesPlatformNeeds = ["local-storage"]
+    expect(permissionFeatures()).toEqual(["FEAT-FOLDER-SCAN", "FEAT-REVERSIBLE-BATCH"])
+  })
+
   it("links data and services only to the features that list them", () => {
     const graph = compileProjectGraph(normalizeBlueprint(forecastGlanceBlueprint, PRESET), PRESET)
     const featureIds = (id: string) => graph.contracts.find(contract => contract.id === id)?.featureIds
@@ -124,7 +140,7 @@ describe("explicit feature references", () => {
     expect(graph.contracts.find(contract => contract.id === "CON-PERSISTENCE-STORE-WRITE-TEMPORARY-COPY")?.featureIds).toEqual(["FEAT-REVERSIBLE-BATCH"])
 
     blueprint.dataObjects[1]!.writeMode = "direct"
-    expect(auditSemanticIntake(blueprint)).toContainEqual(expect.objectContaining({ path: "dataObjects[2]", rule: "semantic.unused-data-object" }))
+    expect(auditSemanticIntake(blueprint)).toContainEqual(expect.objectContaining({ path: `dataObjects[${blueprint.dataObjects.length - 1}]`, rule: "semantic.unused-data-object" }))
   })
 
   it("places Tauri settings in JSON, keeps background running separate from launch at login, and words credentials per preset", async () => {

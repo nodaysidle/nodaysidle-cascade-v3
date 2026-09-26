@@ -1,6 +1,6 @@
 import { auditAgentReadinessGraph, auditMechanicalGraph, auditPacket, auditProjectGraph, buildValidationLedger, type AuditEntry, type AuditFailure } from "./audit"
 import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS, planAstroWeb, type AstroRoutePlan } from "./astroWeb"
-import { PRESETS, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
+import { PRESETS, USER_SELECTED_FILE_PLACEMENT, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
 import { renderPacket } from "./renderers"
 import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
@@ -499,9 +499,16 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       recovery: "Preserve recoverable local input and allow only an explicit retry or explicit service change.",
     }
   }).filter(item => item.name && item.purpose))
+  // File access follows declared documents: a feature gets the filesystem permission exactly when it
+  // reads or writes a document data object, whatever its own filesystem flag says.
+  const documentNames = new Set(dataObjects.filter(item => item.storage === "document").map(item => item.name))
   const features = baseFeatures.map(({ usesPlatformNeeds, usesData, usesServices, ...feature }) => ({
     ...feature,
-    resourceIds: featureResourceIds(usesPlatformNeeds, usesData, usesServices),
+    resourceIds: featureResourceIds(
+      [...usesPlatformNeeds.filter(need => need !== "filesystem"), ...(usesData.some(name => documentNames.has(name)) ? ["filesystem" as const] : [])],
+      usesData,
+      usesServices,
+    ),
   }))
   const rawPlatformNeeds = unique([
     ...source.platformNeeds,
@@ -817,8 +824,12 @@ function atomicWriteDetail(placement: string): string | undefined {
   return undefined
 }
 
+function documentWriteDetail(storage: string, placement: string, preset: PresetContract): string | undefined {
+  if (storage === "document" && preset.persistence.documentAtomicWrite) return preset.persistence.documentAtomicWrite
+  return atomicWriteDetail(placement)
+}
+
 const SESSION_MEMORY_PLACEMENT = "Held in memory for the session and not written to disk."
-export const USER_SELECTED_FILE_PLACEMENT = "Local filesystem at user-selected paths via native open/save panels."
 const ATOMIC_RENAME_SCRATCH_PLACEMENT = "A temporary file in the destination file's own directory, renamed over the destination on success and removed on failure; never in temporaryDirectory or Application Support."
 
 function persistencePlacement(
@@ -839,6 +850,7 @@ function persistencePlacement(
   if (item.storage === "app-files") return preset.persistence.appFilesPlacement(identity)
   if (!isNativeMacPreset(preset.id)) {
     if (item.storage === "temporary") return preset.persistence.temporaryPlacement
+    if (item.storage === "document") return preset.persistence.documentPlacement
     return item.storage === "settings" ? preset.persistence.settingsPlacement : preset.persistence.recordsPlacement
   }
   switch (item.storage) {
@@ -847,7 +859,7 @@ function persistencePlacement(
         ? ATOMIC_RENAME_SCRATCH_PLACEMENT
         : `FileManager.default.temporaryDirectory/${identity.bundleId}/ for ephemeral runtime scratch files.`
     case "document":
-      return USER_SELECTED_FILE_PLACEMENT
+      return preset.persistence.documentPlacement
     case "settings":
       return userDefaultsPlacement
     case "records":
@@ -1076,6 +1088,8 @@ function buildOwnersAndContracts(
             ? "Kept in memory for the session and not written to disk."
             : item.storage === "app-files"
             ? "Persistence: app-owned files kept in the app's own data folder."
+            : item.storage === "document" && !isNativeMacPreset(preset.id)
+            ? "Persistence: the document location the user chooses; the app keeps no copy."
             : /\bSQLite\b/.test(placement)
               ? preset.persistence.enabledDecision
               : /\bUserDefaults\b/.test(placement)
@@ -1094,7 +1108,7 @@ function buildOwnersAndContracts(
         `${persistenceDecision} ${item.purpose}`,
         [
           `Placement: ${placement}`,
-          ...(item.writeMode === "atomic-replace" && !item.temporary && !memoryResident && atomicWriteDetail(placement) ? [`Write mode: ${atomicWriteDetail(placement)}`] : []),
+          ...(item.writeMode === "atomic-replace" && !item.temporary && !memoryResident && documentWriteDetail(item.storage, placement, preset) ? [`Write mode: ${documentWriteDetail(item.storage, placement, preset)}`] : []),
           `Retention: ${item.retention}`,
           `Deletion: ${item.deletionBehavior}`,
           `Sensitivity: ${item.sensitivity}`,

@@ -265,7 +265,8 @@ describe("Jev postflight boundary", () => {
     expect(result.status).toBe("gate-clean")
     expect(captured).toHaveLength(1)
     expect(captured[0]!.blueprint.platformNeeds).toEqual([...JEV_PLATFORM_NEEDS])
-    expect(captured[0]!.blueprint.permissionNeeds).toEqual([])
+    // Healed needs never link permissions; file access comes only from the fixture's declared document.
+    expect(captured[0]!.blueprint.permissionNeeds.map(need => need.capability)).toEqual(["filesystem"])
     expect(result.jev?.addedPlatformNeeds).toEqual([...JEV_PLATFORM_NEEDS])
     expect(blueprint).toEqual(snapshot)
   })

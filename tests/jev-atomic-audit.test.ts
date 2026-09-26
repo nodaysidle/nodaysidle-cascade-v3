@@ -181,9 +181,10 @@ describe("Opportunity 2: Jev Atomic Contract & Placement Auditor", () => {
 
     const normalized = normalizeBlueprint(decision.blueprint, "native-macos-swiftui-desktop", decision)
     expect(normalized.platformNeeds).toContain("filesystem")
-    expect(normalized.permissionNeeds.map(need => need.capability)).toContain("filesystem")
+    // File access follows declared documents, so a healed filesystem flag alone links no permission.
+    expect(normalized.permissionNeeds.map(need => need.capability)).not.toContain("filesystem")
     const graph = compileProjectGraph(normalized, "native-macos-swiftui-desktop")
-    expect(graph.contracts.find(contract => contract.id === "CON-PERMISSION-FILESYSTEM")?.featureIds).toEqual(["FEAT-PREVIEW-PANE"])
+    expect(graph.contracts.find(contract => contract.id === "CON-PERMISSION-FILESYSTEM")).toBeUndefined()
   })
 
   it("assigns persistence placement from the declared storage kind without regex fragility", async () => {

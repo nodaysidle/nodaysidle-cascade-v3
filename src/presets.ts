@@ -16,6 +16,8 @@ export interface PresetSemanticInput {
   readonly externalServices: readonly { readonly credentialRequirement: "none" | "api-key" }[]
 }
 
+export const USER_SELECTED_FILE_PLACEMENT = "Local filesystem at user-selected paths via native open/save panels."
+
 export interface ProjectIdentity {
   readonly projectName: string
   readonly slug: string
@@ -64,6 +66,9 @@ export interface PresetContract {
     readonly recordsPlacement: string
     readonly temporaryPlacement: string
     readonly appFilesPlacement: (identity: ProjectIdentity) => string
+    readonly documentPlacement: string
+    // Replaces the generic atomic-write rule for documents when the platform cannot rename in place.
+    readonly documentAtomicWrite?: string
   }
   readonly credentialPlacement: string
   readonly permissionPatterns: Readonly<Record<PermissionCapability, string>>
@@ -85,7 +90,7 @@ const swiftPermissionPatterns: Readonly<Record<PermissionCapability, string>> = 
   microphone: "Declare NSMicrophoneUsageDescription and request AVCaptureDevice audio authorization before capture.",
   accessibility: "Check AXIsProcessTrustedWithOptions before AXUIElement or synthesized-paste work; denial keeps a manual path.",
   notifications: "Request UNUserNotificationCenter authorization only from a user action and retain in-app status when denied.",
-  filesystem: "Use NSOpenPanel and security-scoped bookmarks only for user-selected locations; release every access scope.",
+  filesystem: "Read only the files the user chooses in NSOpenPanel or drops on the window, and write only to the location the user chooses in NSSavePanel; the local build is unsandboxed, so access lasts for that one operation and no security-scoped bookmarks are created or stored.",
   network: "Use URLSession for explicit outbound requests and declare the outbound network entitlement only if the signed sandbox contract enables it.",
   camera: "Declare NSCameraUsageDescription and request AVCaptureDevice video authorization before capture.",
   location: "Declare NSLocationUsageDescription and use CLLocationManager only while the user-visible feature needs it.",
@@ -228,6 +233,7 @@ const swiftDesktop: PresetContract = {
     disabledDecision: "Persistence: disabled; keep transient state in memory and write no application records between launches.",
     settingsPlacement: "UserDefaults with versioned keys and explicit reset behavior.",
     recordsPlacement: "SQLite in Application Support with schema-versioned transactional migrations and owner-scoped repositories.",
+    documentPlacement: USER_SELECTED_FILE_PLACEMENT,
     appFilesPlacement: identity => `Files in Application Support/${identity.bundleId}/Files/, created only by the app under generated unique file names; stored references hold the file name relative to that folder, never an absolute path or a user-selected location.`,
     temporaryPlacement: "Use FileManager.default.temporaryDirectory with one per-operation subdirectory; retain it only for an explicit recovery decision and verify deletion after success, discard, or exhausted recovery.",
   },
@@ -307,6 +313,7 @@ const tauriDesktop: PresetContract = {
     disabledDecision: "Persistence: disabled; keep transient state in memory and create no app-data files.",
     settingsPlacement: "Atomic JSON in the Tauri app-data directory through one Rust command boundary.",
     recordsPlacement: "SQLite in the Tauri app-data directory with migrations and transactions owned by Rust.",
+    documentPlacement: "Local filesystem at the path the user chooses through tauri-plugin-dialog; Rust reads or writes that exact path and nothing else.",
     appFilesPlacement: () => "Files in the files/ subdirectory of the Tauri app-data directory, created only by Rust under generated unique file names; stored references hold the file name relative to that folder, never an absolute path or a user-selected location.",
     temporaryPlacement: "Use the Tauri app-cache directory with one random per-operation file owned by Rust; retain only for explicit recovery and delete on success, discard, cancellation, or exhausted recovery.",
   },
@@ -368,6 +375,8 @@ const astroWeb: PresetContract = {
     disabledDecision: "Persistence: disabled. No application data is retained between visits; static assets use ordinary HTTP caching only.",
     settingsPlacement: "Build-time content schema in src/content/config.ts; browser-only settings use IndexedDB only when semantics explicitly require client-side retention.",
     recordsPlacement: "Public catalog records live in src/content/{collection}/ and compile through getCollection(); authenticated remote records require an explicit server-rendered contract.",
+    documentPlacement: "A file the user picks in a file input or saves through a download the user starts; the site keeps no copy.",
+    documentAtomicWrite: "Build the complete file as one Blob before starting the download, so a failed build never starts a partial file.",
     appFilesPlacement: () => "Blobs in a dedicated IndexedDB object store keyed by generated unique IDs; stored references hold that ID, never a file path or build-time content.",
     temporaryPlacement: "Keep temporary values in memory as Blob or structured state and revoke object URLs on completion; do not mirror build-time catalog data into IndexedDB.",
   },
@@ -426,6 +435,8 @@ const androidCompose: PresetContract = {
     disabledDecision: "Persistence: disabled; ViewModel state is transient and no application records survive process death.",
     settingsPlacement: "Preferences DataStore with typed keys and explicit reset behavior.",
     recordsPlacement: "Room entities, DAO transactions, migrations, and repository APIs for durable records.",
+    documentPlacement: "The document URI the user chooses through the Storage Access Framework (ActivityResultContracts.CreateDocument to save, OpenDocument to open), accessed only through ContentResolver.",
+    documentAtomicWrite: "Write the complete content to one per-operation file in Context.cacheDir first, then copy it to the chosen URI through ContentResolver.openOutputStream(uri, \"wt\") and delete the cache file; a failure before the copy starts leaves the existing document unchanged, and a failed copy is reported honestly because document providers cannot rename in place.",
     appFilesPlacement: () => "Files in File(context.filesDir, \"files\"), created only by the app under generated unique file names; stored references hold the file name relative to that folder, never an absolute path or a user-selected location.",
     temporaryPlacement: "Use Context.cacheDir with one per-operation file; retain only for explicit recovery and delete after success, discard, cancellation, or exhausted recovery.",
   },

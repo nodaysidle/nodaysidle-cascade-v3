@@ -78,7 +78,7 @@ describe("deterministic exact-five compiler", () => {
       { ...duplicate.features[0]!, name: "Fast Search" },
       { ...duplicate.features[1]!, name: "fast-search." },
     ]
-    duplicate.dataObjects = duplicate.dataObjects.filter(item => item.name === "Organization rules")
+    duplicate.dataObjects = duplicate.dataObjects.filter(item => ["Organization rules", "Selected folder"].includes(item.name))
     const normalized = normalizeBlueprint(duplicate, "native-macos-swiftui-desktop")
     const graph = compileProjectGraph(normalized, "native-macos-swiftui-desktop")
 

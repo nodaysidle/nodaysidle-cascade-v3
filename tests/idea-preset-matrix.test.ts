@@ -149,6 +149,7 @@ describe("declared storage, recovery, and sentence form stay precise", () => {
     expect(wiring.details.some(detail => detail.startsWith("Every failure behavior that shows the user a message is visible in the running app"))).toBe(true)
     expect(wiring.details.some(detail => detail.startsWith("The launch check leaves no test data behind"))).toBe(true)
     expect(wiring.details.some(detail => detail.startsWith("The launch check looks at the app") && detail.includes("takes a screenshot of every window"))).toBe(true)
+    expect(wiring.details.some(detail => detail.startsWith("Every screen follows the platform's conventions") && detail.includes("a command with nothing to act on is disabled"))).toBe(true)
     if (presetId.startsWith("native-macos") || presetId === "tauri2-rust-typescript-desktop") {
       const index = packet.graph.contracts.find(item => item.id === "CON-PERSISTENCE-SCAN-INDEX")!
       expect(index.details.find(detail => detail.startsWith("Placement:"))).toContain("PRAGMA user_version stores the schema version")

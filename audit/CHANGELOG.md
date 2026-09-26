@@ -1,5 +1,26 @@
 # Audit changelog
 
+## PromptShelf build audit (2026-09-26)
+
+The first Tauri build from a packet with the kit worked on the first try, verified live: add with
+title and tags, selection, Control-Option-P from another app, Enter copies and paste works, quit and
+relaunch keeps the prompt, Improve with a real deepseek-flash rewrite and Accept/Discard, light and
+dark themes, and the menu-bar menu (Open PromptShelf, Quick Picker, Quit). The quick picker's window
+was listed in the capabilities, so the window fix held. Kit storage, vault, settings, and install
+script were unchanged; typecheck, 34 frontend and 26 Rust tests, fmt, clippy, and the bundle pass.
+
+The screens looked unfinished: full-width buttons and a checkbox above its label in Settings, Edit,
+Duplicate, Delete, and Improve enabled with nothing selected, a bare "No prompts yet." in the corner,
+long prompts scrolling inside their own card in the picker, and monospace text in the comparison.
+The Tauri kit gave the agent no UI building blocks. It now ships `src/ui.ts` (button, setEnabled,
+toolbar, emptyState, clampedText, settingsGroup, settingsRow, switchControl) with matching styles and
+a DOM test (happy-dom), checked by rendering a demo in light and dark. A new shared rule for every
+preset makes the launch check confirm the same conventions: centered empty state, disabled commands
+without a target, clamped list text, grouped settings rows, buttons sized to their label.
+
+Not compiler work: AeroSpork tiled the picker partly off-screen although the app asks to center it.
+Export and import were not tested live.
+
 ## PromptShelf packet audit (2026-09-26)
 
 The first Tauri packet with the new kit is correct apart from one blocking gap. The schema repair

@@ -89,9 +89,11 @@ export function tauriKitFiles(identity: ProjectIdentity, uses: TauriKitUses): Ta
     { path: "index.html", content: indexHtml(identity) },
     { path: "src/api.ts", content: API_TS },
     { path: "src/errors.ts", content: ERRORS_TS },
+    { path: "src/ui.ts", content: UI_TS },
     { path: "src/main.ts", content: mainTs(identity) },
     { path: "src/style.css", content: STYLE_CSS },
     { path: "tests/kit.test.ts", content: KIT_TEST_TS },
+    { path: "tests/ui.test.ts", content: UI_TEST_TS },
     { path: "app-icon.svg", content: APP_ICON_SVG },
     { path: "scripts/package_app.sh", content: packageScript(identity) },
     { path: "src-tauri/Cargo.toml", content: cargoToml(identity, lib, uses) },
@@ -133,6 +135,7 @@ export function tauriKitReadme(identity: ProjectIdentity, paths: readonly string
     ...(uses.usageDescriptions.length ? ["- src-tauri/Info.plist holds the privacy usage strings; Tauri merges it into the bundle's Info.plist."] : []),
     "- scripts/package_app.sh builds only the .app (no DMG), signs it ad hoc, and verifies it; with --install it waits for the running app to quit, moves the installed copy to src-tauri/target/rollback/ (never inside /Applications), installs, restores the previous copy if verification fails, registers, and launches by bundle ID. The first run generates src-tauri/icons from app-icon.svg.",
     "- Versions are exact (= in Cargo.toml, no ^ in package.json) because they are tested together; keep src-tauri/Cargo.lock and package-lock.json from the first build, and change a version only on purpose, never by a broad update.",
+    "- Screens are built from src/ui.ts and the classes in src/style.css, never from unstyled elements: button() is sized to its label (primary for the one main action); toolbar() holds a search field and actions; setEnabled() disables a command until it has something to act on (Edit, Delete, Copy with nothing selected); emptyState(title, hint) fills an empty list with one centered message saying how to fill it; list rows use .row with aria-selected for the selection and clampedText() so long text is cut to a few lines with the full text on hover, never a scroll area inside a scrolling list; settings are settingsGroup() sections of settingsRow() lines, label on the left and control on the right, a switchControl() on the same line as its label, and a footnote under the group; body text uses the system font, and monospace only for code.",
     "- src/style.css uses the system font and light and dark system colors; the page never scrolls, and .app-content scrolls inside the window.",
     "",
   ].join("\n")
@@ -156,6 +159,7 @@ function packageJson(identity: ProjectIdentity, uses: TauriKitUses): string {
     dependencies,
     devDependencies: {
       "@tauri-apps/cli": "2.11.4",
+      "happy-dom": "20.14.5",
       typescript: "5.9.3",
       vite: "7.3.6",
       vitest: "4.1.11",
@@ -195,6 +199,7 @@ function indexHtml(identity: ProjectIdentity): string {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:," />
     <link rel="stylesheet" href="/src/style.css" />
     <title>${identity.projectName}</title>
   </head>
@@ -277,6 +282,144 @@ export const errors = createErrorBanner(root)
 `
 }
 
+const UI_TS = `// Small building blocks for screens that look native. Features compose these instead of styling raw
+// elements, so buttons, empty lists, settings rows, and long text look and behave the same everywhere.
+
+type Handler = () => void
+
+/** A button sized to its label. Use primary for the one main action on a screen. */
+export const button = (label: string, onClick: Handler, options: { primary?: boolean; disabled?: boolean } = {}): HTMLButtonElement => {
+  const element = document.createElement("button")
+  element.type = "button"
+  element.className = options.primary ? "button primary" : "button"
+  element.textContent = label
+  element.disabled = options.disabled ?? false
+  element.addEventListener("click", onClick)
+  return element
+}
+
+/** A command with nothing to act on stays disabled until it has one. */
+export const setEnabled = (element: HTMLButtonElement, enabled: boolean): void => {
+  element.disabled = !enabled
+}
+
+/** A row of controls: a search field or other flexible control grows, buttons keep their size. */
+export const toolbar = (...children: HTMLElement[]): HTMLElement => {
+  const element = document.createElement("div")
+  element.className = "toolbar"
+  element.append(...children)
+  return element
+}
+
+/** What an empty list shows: one centered message and a hint saying how to fill it. */
+export const emptyState = (title: string, hint: string): HTMLElement => {
+  const element = document.createElement("div")
+  element.className = "empty-state"
+  const heading = document.createElement("strong")
+  heading.textContent = title
+  const detail = document.createElement("span")
+  detail.textContent = hint
+  element.append(heading, detail)
+  return element
+}
+
+/** Long text in a list, cut to a few lines with an ellipsis; the full text shows on hover. */
+export const clampedText = (text: string, lines: 2 | 3 = 2): HTMLElement => {
+  const element = document.createElement("p")
+  element.className = \`clamp-\${lines}\`
+  element.textContent = text
+  element.title = text
+  return element
+}
+
+let nextControlId = 0
+
+/** One settings line: the label (and an optional detail) on the left, the control on the right. */
+export const settingsRow = (label: string, control: HTMLElement, detail?: string): HTMLElement => {
+  const row = document.createElement("div")
+  row.className = "settings-row"
+  if (!control.id) control.id = \`setting-\${nextControlId++}\`
+  const text = document.createElement("label")
+  text.htmlFor = control.id
+  text.textContent = label
+  if (detail) {
+    const small = document.createElement("span")
+    small.className = "detail"
+    small.textContent = detail
+    text.append(small)
+  }
+  row.append(text, control)
+  return row
+}
+
+/** A settings section: a heading, its rows in one rounded group, and a footnote that explains it. */
+export const settingsGroup = (title: string, rows: HTMLElement[], footnote?: string): HTMLElement => {
+  const section = document.createElement("section")
+  section.className = "settings-group"
+  const heading = document.createElement("h2")
+  heading.textContent = title
+  const group = document.createElement("div")
+  group.className = "settings-rows"
+  group.append(...rows)
+  section.append(heading, group)
+  if (footnote) {
+    const note = document.createElement("p")
+    note.className = "footnote"
+    note.textContent = footnote
+    section.append(note)
+  }
+  return section
+}
+
+/** An on/off switch for a settings row; the row's label names it. */
+export const switchControl = (checked: boolean, onChange: (checked: boolean) => void): HTMLInputElement => {
+  const element = document.createElement("input")
+  element.type = "checkbox"
+  element.setAttribute("role", "switch")
+  element.checked = checked
+  element.addEventListener("change", () => onChange(element.checked))
+  return element
+}
+`
+
+const UI_TEST_TS = `// @vitest-environment happy-dom
+import { describe, expect, it } from "vitest"
+import { button, clampedText, emptyState, setEnabled, settingsGroup, settingsRow, switchControl } from "../src/ui"
+
+describe("ui building blocks", () => {
+  it("disables a command until it has something to act on", () => {
+    const edit = button("Edit", () => {}, { disabled: true })
+    expect(edit.disabled).toBe(true)
+    setEnabled(edit, true)
+    expect(edit.disabled).toBe(false)
+    expect(edit.type).toBe("button")
+  })
+
+  it("fills an empty list with a message and a hint", () => {
+    const empty = emptyState("No prompts yet", "Click Add to create one.")
+    expect(empty.className).toBe("empty-state")
+    expect(empty.textContent).toContain("Click Add to create one.")
+  })
+
+  it("names every settings control by its row label and groups rows with a footnote", () => {
+    const toggle = switchControl(false, () => {})
+    const row = settingsRow("Launch at login", toggle)
+    const label = row.querySelector("label")!
+    expect(label.htmlFor).toBe(toggle.id)
+    expect(toggle.getAttribute("role")).toBe("switch")
+    const group = settingsGroup("General", [row], "Off until you turn it on.")
+    expect(group.querySelector(".settings-rows")!.children).toHaveLength(1)
+    expect(group.querySelector(".footnote")!.textContent).toBe("Off until you turn it on.")
+  })
+
+  it("clamps long text and keeps the full text on hover", () => {
+    const text = clampedText("A long prompt that goes on and on.", 3)
+    expect(text.className).toBe("clamp-3")
+    expect(text.title).toBe("A long prompt that goes on and on.")
+  })
+})
+`
+
 const STYLE_CSS = `/* Native-feeling base: system font, system colors in light and dark, no page scroll. Features style
    their own views with these tokens. */
 :root {
@@ -318,6 +461,62 @@ body { color: var(--text); background: var(--bg); overflow: hidden; }
 .error-banner { display: flex; align-items: flex-start; gap: 12px; margin: 10px 20px 0; padding: 9px 12px; color: var(--danger); background: var(--danger-bg); border-radius: 8px; }
 .error-banner p { flex: 1; margin: 0; }
 .error-banner button { color: inherit; background: none; border: 0; font: inherit; font-weight: 600; cursor: pointer; }
+
+/* Building blocks from src/ui.ts. */
+.button {
+  display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center;
+  height: 28px; padding: 0 12px; color: var(--text); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 6px; font: inherit; font-weight: 500;
+  white-space: nowrap; cursor: pointer;
+}
+.button:hover:not(:disabled) { border-color: var(--text-2); }
+.button.primary { color: #fff; background: var(--accent); border-color: var(--accent); }
+.button:disabled { opacity: 0.45; cursor: default; }
+
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.toolbar > input, .toolbar > .grow { flex: 1 1 220px; min-width: 0; }
+
+input[type="text"], input[type="search"], input[type="password"], select, textarea {
+  color: var(--text); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 6px; padding: 5px 8px; font: inherit;
+}
+textarea { resize: vertical; }
+
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; min-height: 180px; height: 100%; text-align: center; color: var(--text-2);
+}
+.empty-state strong { color: var(--text); font-size: 14px; font-weight: 600; }
+
+.list { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.row { padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.row[aria-selected="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.row p { margin: 4px 0 0; color: var(--text-2); }
+.clamp-2, .clamp-3 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.clamp-2 { -webkit-line-clamp: 2; }
+.clamp-3 { -webkit-line-clamp: 3; }
+.muted { color: var(--text-2); }
+
+.settings { display: flex; flex-direction: column; gap: 22px; max-width: 620px; margin: 0 auto; }
+.settings-group h2 { margin: 0 0 6px 4px; font-size: 13px; font-weight: 600; }
+.settings-rows { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.settings-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 42px; padding: 8px 12px; }
+.settings-row + .settings-row { border-top: 1px solid var(--line); }
+.settings-row label { flex: 1 1 auto; }
+.settings-row .detail { display: block; color: var(--text-2); font-size: 12px; }
+.settings-row > :last-child { flex: 0 0 auto; }
+.footnote { margin: 6px 4px 0; color: var(--text-2); font-size: 12px; }
+
+input[role="switch"] {
+  position: relative; flex: 0 0 auto; width: 34px; height: 20px; margin: 0;
+  appearance: none; background: var(--line); border-radius: 10px; cursor: pointer; transition: background 0.15s;
+}
+input[role="switch"]::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+  background: #fff; border-radius: 50%; box-shadow: 0 1px 2px rgb(0 0 0 / 30%); transition: transform 0.15s;
+}
+input[role="switch"]:checked { background: var(--accent); }
+input[role="switch"]:checked::after { transform: translateX(14px); }
 
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 `

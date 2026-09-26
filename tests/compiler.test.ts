@@ -285,6 +285,9 @@ describe("Tauri starter kit", () => {
     expect(cargo).toContain(`features = ["tray-icon"]`)
     expect(kitFile(full, "src-tauri/Info.plist")).toContain("<key>NSMicrophoneUsageDescription</key>")
     expect(kitFile(full, "src-tauri/tests/kit_tests.rs")).toContain(`url: "http://localhost:1420"`)
+    expect(kitFile(full, "src/ui.ts")).toContain("export const emptyState")
+    expect(kitFile(full, "src/style.css")).toContain(".settings-row")
+    expect(kitFile(full, "README.md")).toContain("setEnabled() disables a command until it has something to act on")
 
     const bare = await compilePacket(landingPageBlueprint, tauri)
     expect(JSON.parse(kitFile(bare, "src-tauri/capabilities/default.json")!).permissions).toEqual(["core:default"])

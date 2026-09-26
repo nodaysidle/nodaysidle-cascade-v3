@@ -280,6 +280,8 @@ describe("Tauri starter kit", () => {
       expect(npm[`@tauri-apps/plugin-${plugin}`], plugin).toBeDefined()
       expect(lib, plugin).toContain(`tauri_plugin_${plugin.replace(/-/g, "_")}::`)
     }
+    // The service integration's HTTP client ships with the kit, so no later task edits Cargo.toml for it.
+    expect(cargo).toContain(`reqwest = { version = "=0.12.28", features = ["json"] }`)
     expect(lib.match(/\.setup\(/g)).toHaveLength(1)
     expect(lib).toContain("prevent_exit()")
     expect(cargo).toContain(`features = ["tray-icon"]`)
@@ -296,6 +298,7 @@ describe("Tauri starter kit", () => {
     }
     expect(kitFile(bare, "src-tauri/src/lib.rs")).not.toContain("prevent_exit")
     expect(kitFile(bare, "src-tauri/src/lib.rs")).not.toContain(".plugin(")
+    expect(kitFile(bare, "src-tauri/Cargo.toml")).not.toContain("reqwest")
   })
 
   it("gives every kit file one owning task and carries the verified wiring rules", async () => {

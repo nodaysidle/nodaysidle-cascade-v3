@@ -63,6 +63,8 @@ build a working app from them.
   feature contracts, requirement contracts, ARD flows and boundaries, TRD interfaces). ReceiptShelf
   is 229 KB; the target is about 120 KB.
 - A kit test string reads `"receipt"`; rename to a neutral sample.
+- Tauri kit UI: give search fields `autocomplete="off"` (WebKit shows autofill suggestions), a tag
+  chip helper, and a navigation or back control that is not stretched; PromptShelf showed all three.
 - Integration contracts name no endpoint, auth header, or model. Add a native rule to take each
   declared service's endpoint, authentication, request format, and model from the provider's current
   documentation and keep them as constants in its integration owner (Murmur, 2026-09-26).

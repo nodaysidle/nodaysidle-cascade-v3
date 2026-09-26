@@ -53,6 +53,7 @@ export interface TauriKitUses {
   readonly settings: boolean
   readonly records: boolean
   readonly secrets: boolean
+  readonly services: boolean
   readonly tray: boolean
   readonly plugins: readonly TauriPlugin[]
   readonly usageDescriptions: ReadonlyArray<readonly [string, string]>
@@ -68,6 +69,7 @@ export function tauriKitUses(blueprint: NormalizedBlueprint, usageDescriptions: 
     records: storage.has("records"),
     secrets: blueprint.externalServices.some(service => service.credentialRequirement !== "none")
       || blueprint.domainData.some(item => item.storage === "secret"),
+    services: blueprint.externalServices.length > 0,
     tray: needs.has("background-execution"),
     plugins: [
       ...(needs.has("clipboard") ? [PLUGINS.clipboard] : []),
@@ -130,6 +132,7 @@ export function tauriKitReadme(identity: ProjectIdentity, paths: readonly string
     "- Its windows array starts as [\"main\"]. When a feature opens another window, give it a fixed label and add that label there, or Tauri refuses every command the window calls.",
     ...(uses.settings ? ["- settings.rs replaces settings.json whole: a temporary file in the same folder, synced, then renamed."] : []),
     ...(uses.records ? ["- database.rs applies MIGRATIONS in order and records the schema version in PRAGMA user_version; append new migrations, never edit a shipped one."] : []),
+    ...(uses.services ? ["- src-tauri/Cargo.toml already has reqwest (json) for the declared services; integration owners use one reqwest::Client and add no HTTP crate of their own."] : []),
     ...(uses.secrets ? ["- vault.rs is the only place secrets are stored: generic passwords in the login keychain under the bundle ID's credentials service. Tests use MemoryStore, never the keychain."] : []),
     ...(uses.tray ? ["- The tray keeps the app running: closing the window hides it, Show brings it back, and Quit (or quitting from outside) exits. RunEvent::ExitRequested with no exit code is prevented; an explicit exit code is not."] : []),
     ...(uses.usageDescriptions.length ? ["- src-tauri/Info.plist holds the privacy usage strings; Tauri merges it into the bundle's Info.plist."] : []),
@@ -630,6 +633,8 @@ serde_json = "1"
 ${[
     ...(uses.records ? [`rusqlite = { version = "=0.37.0", features = ["bundled"] }`] : []),
     ...(uses.secrets ? [`keyring = { version = "=3.6.3", features = ["apple-native"] }`] : []),
+    // The HTTPS client for declared services, here so integration tasks never have to edit Cargo.toml.
+    ...(uses.services ? [`reqwest = { version = "=0.12.28", features = ["json"] }`] : []),
     ...uses.plugins.map(plugin => `${plugin.crate} = "=${plugin.crateVersion}"`),
   ].join("\n")}
 

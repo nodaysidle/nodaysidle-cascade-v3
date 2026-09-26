@@ -1,5 +1,26 @@
 # Audit changelog
 
+## PromptShelf second build audit (2026-09-27)
+
+Built from the packet with the UI kit. The user's data survived (the agent backed it up, used
+zz-test rows, and deleted only those); typecheck, 38 frontend and 28 Rust tests, fmt, clippy, and the
+bundle pass; the kit's storage files and ui.ts are unchanged and every feature builds its screens
+from ui.ts; the quick picker is in the capabilities. The screens now follow the conventions: a
+centered empty search result, Edit, Duplicate, Delete, and Improve disabled with nothing selected,
+toolbar buttons sized to their labels, grouped Settings rows with a switch, and a clean picker. A
+live DeepSeek improvement succeeded.
+
+Blocking and fixed: the TRD tells integrations to use reqwest, but the kit's Cargo.toml lacked it
+and only the packaging task may edit Cargo.toml, so every idea with a service forced a rule break.
+The kit now ships reqwest =0.12.28 (json) when a service is declared (`tests/compiler.test.ts`,
+`npm run kit:check`).
+
+Not a compiler issue: the agent reported AGENTS.md listing 15 phases; it lists all 17.
+Polish (roadmap list): Settings' Back button stretches across the window, a key-status line sits
+between groups, tags lost their chip style, and the search field shows WebKit's autofill suggestion.
+Open: Escape in the picker (the agent's synthetic key did not close it) and a real export and import
+need the user's check.
+
 ## PromptShelf regeneration failed after the repair (2026-09-26)
 
 The first response failed `schema.invalid_value` again; the one repair fixed it but rewrote the idea

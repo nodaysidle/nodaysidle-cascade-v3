@@ -110,13 +110,23 @@ describe("declared storage, recovery, and sentence form stay precise", () => {
       expect(packet.graph.persistence.decision).toBe("Persistence: enabled with UserDefaults for lightweight settings, SQLite for durable record collections in Application Support, local filesystem at user-selected paths for document storage, and app-owned files in Application Support.")
     }
 
-    // Only features that declare filesystem link the permission; app-owned stores never add it.
+    // Only features that use a declared document link the permission; app-owned stores never add it.
     const permission = packet.graph.contracts.find(item => item.id === "CON-PERMISSION-FILESYSTEM")!
     expect(permission.featureIds).toEqual(["FEAT-SCAN-IMPORT", "FEAT-SCAN-LIST-EXPORT"])
     if (presetId.startsWith("native-macos")) {
       expect(permission.decision).toContain("NSSavePanel")
       expect(permission.decision).toContain("no security-scoped bookmarks are created or stored")
+      // Files chosen once can be reopened later from a saved path.
+      expect(permission.decision).toContain("including paths to those files that the app saved to reopen later")
+      expect(permission.decision).not.toContain("that one operation")
       expect(text).toContain("Entitlements ownership: Resources/App.entitlements is the only entitlements source and is an XML plist with an empty dictionary for the local unsandboxed build")
+    }
+    if (presetId === "tauri2-rust-typescript-desktop") {
+      expect(permission.decision).toContain("including paths saved earlier to reopen, with std::fs")
+      expect(permission.decision).toContain("the frontend gets no tauri-plugin-fs access")
+    }
+    if (presetId === "android-kotlin-compose") {
+      expect(permission.decision).toContain("ContentResolver.takePersistableUriPermission at selection time")
     }
 
     // A file written at a user-chosen location is a declared document; atomic-replace gives it the atomic-write rule.
@@ -144,8 +154,8 @@ describe("declared storage, recovery, and sentence form stay precise", () => {
     const removal = packet.graph.requirements.find(item => item.featureId === "FEAT-SCAN-REMOVAL")!
     expect(removal.statement).toBe(scanDrawerBlueprint.features[1]!.behavior)
 
-    // Acronyms keep their case and "without" is not chained.
-    expect(packet.documents["PRD.md"]).toContain("need a focused way to keep scans in a local library without network access and without OCR or automatic text extraction.")
+    // Acronyms keep their case and a second "without" becomes its own clause.
+    expect(packet.documents["PRD.md"]).toContain("need a focused way to keep scans in a local library without network access, without OCR or automatic text extraction.")
 
     // The ARD lifecycle section lists each lifecycle contract once.
     const lifecycle = packet.documents["ARD.md"].split("## Platform Lifecycle")[1]!.split("\n## ")[0]!.split("\n").filter(line => line.startsWith("- "))

@@ -61,6 +61,7 @@ describe("compact semantic provider boundary", () => {
     expect(instructions).toContain("Reading or writing the app's own settings, records, app-files, or temporary data never needs filesystem.")
     expect(instructions).toContain("Declare a document dataObject for every file or folder the user chooses to open, import, or save")
     expect(instructions).toContain("File access is granted only to features that list a document dataObject.")
+    expect(instructions).toContain("a feature that only works on its content after it is loaded lists a session dataObject for that loaded content instead")
     expect(instructions).toContain("Set its writeMode to atomic-replace when a failed write must leave an existing file at that location unchanged.")
     expect(instructions).toContain("Do not add features, settings, or platform needs that the idea does not ask for")
     expect(instructions).not.toContain("Include every applicable platform need")

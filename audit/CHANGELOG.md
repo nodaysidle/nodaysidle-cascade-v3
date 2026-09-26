@@ -1,5 +1,27 @@
 # Audit changelog
 
+## LogLens packet audit, native macOS desktop (2026-09-26)
+
+Sanity check of the document-based file access on a second idea. Documents, storage placement,
+recovery, and wording were correct. Compiler findings:
+
+- The native file-permission rule said access lasts for one panel operation, which contradicts
+  features that reopen a saved path (recent files, reopen at launch, bookmarks). It now allows
+  saved paths to files the user chose earlier. Tauri and Android had the same reopen gap:
+  Tauri now keeps file I/O in Rust std::fs with no frontend tauri-plugin-fs access (dialog scopes
+  do not survive a restart without persisted-scope), and Android takes a persistable URI
+  permission at selection time for documents it reopens later.
+- The prompt told DeepSeek to list a document in every feature that reads it, so level filtering
+  and search over loaded lines gained file access. The prompt now lists a document only in
+  features that open, reopen, import, or write the file itself; features that work on loaded
+  content use a session data object.
+
+The retry confirmed both fixes live: file access traced only to open, export, and reopen. One
+cosmetic follow-up: when the goal already contains "without", the problem statement now adds the
+avoided scope as its own ", without …" clause instead of "and without".
+
+Needs one live retry because the provider prompt changed.
+
 ## ReceiptShelf retry audit (2026-09-26)
 
 The retry confirmed the previous fixes live (DeepSeek declared the receipt files as `app-files`).

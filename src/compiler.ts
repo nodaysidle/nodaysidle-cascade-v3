@@ -415,8 +415,9 @@ function deriveProblemStatement(targetUsers: readonly string[], goals: readonly 
   const verb = /^(?:a|an|one|each|every)\b/i.test(audience) ? "needs" : "need"
   // Lowercase only a capitalized ordinary word; acronyms such as OCR or API keep their case.
   const lowerFirst = (text: string) => /^[A-Z][a-z]/.test(text) ? `${text.charAt(0).toLowerCase()}${text.slice(1)}` : text
-  const joiner = /\bwithout\b/i.test(goalText) ? "and without" : "without"
-  return `${audience} ${verb} a focused way to ${lowerFirst(goalText)} ${joiner} ${lowerFirst(avoidText)}.`
+  // A goal that already has a "without" clause gets the avoided scope as a separate trailing clause.
+  const joiner = /\bwithout\b/i.test(goalText) ? ", without" : " without"
+  return `${audience} ${verb} a focused way to ${lowerFirst(goalText)}${joiner} ${lowerFirst(avoidText)}.`
 }
 
 function astroContentSiteSemantics(source: SemanticBlueprint, presetId: PresetId): boolean {

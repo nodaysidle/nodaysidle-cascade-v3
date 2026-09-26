@@ -83,6 +83,23 @@ describe("explicit feature references", () => {
     expect(permissionFeatures()).toEqual(["FEAT-REVERSIBLE-BATCH"])
   })
 
+  it("gives native clipboard features a watcher rule with the system paste-access prompt", () => {
+    for (const presetId of ["native-macos-swiftui-desktop", "native-macos-swiftui-menubar"] as const) {
+      const blueprint = structuredClone(fileOrganizerBlueprint)
+      blueprint.features[0]!.usesPlatformNeeds = ["clipboard"]
+      const clipboard = compileProjectGraph(normalizeBlueprint(blueprint, presetId), presetId)
+        .contracts.find(contract => contract.id === "CON-PERMISSION-CLIPBOARD")!
+      const text = [clipboard.decision, ...clipboard.details].join(" ")
+
+      expect(clipboard.featureIds).toEqual(["FEAT-FOLDER-SCAN"])
+      expect(text).toContain("read its contents only after changeCount changes")
+      expect(text).toContain("NSPasteboard.general.accessBehavior and, when it is alwaysDeny, stop reading")
+      expect(text).toContain("Snapshot and restore the user's clipboard only when the PRD promises to preserve it.")
+      expect(text).not.toContain("only for the explicit user action")
+      expect(text).toContain("show the user how to allow clipboard access again")
+    }
+  })
+
   it("keeps file access when the provider omits filesystem from the product-level needs", () => {
     const blueprint = { ...structuredClone(fileOrganizerBlueprint), platformNeeds: ["local-storage" as const] }
     const graph = compileProjectGraph(normalizeBlueprint(blueprint, PRESET), PRESET)

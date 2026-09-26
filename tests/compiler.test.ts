@@ -185,9 +185,32 @@ describe("deterministic exact-five compiler", () => {
     const names = habit.kit.map(file => file.name)
     expect(names.some(name => name.endsWith("SQLiteDatabase.swift"))).toBe(true)
     expect(names.some(name => name.endsWith("AppFileStore.swift"))).toBe(false)
-    for (const presetId of PRESET_IDS.filter(id => id !== "native-macos-swiftui-desktop")) {
+    for (const presetId of PRESET_IDS.filter(id => !id.startsWith("native-macos"))) {
       expect((await compilePacket(scanDrawerBlueprint, presetId)).kit, presetId).toEqual([])
     }
+  })
+
+  it("exports a menu bar kit with MenuBarExtra, no Dock icon, and a login item only when declared", async () => {
+    const plain = await compilePacket(networkMonitorBlueprint, "native-macos-swiftui-menubar")
+    const module = plain.graph.identity.moduleName
+    const file = (packet: typeof plain, suffix: string) => packet.kit.find(item => item.name.endsWith(suffix))?.content
+
+    expect(file(plain, `${module}App.swift`)).toContain("MenuBarExtra {")
+    expect(file(plain, `${module}App.swift`)).toContain("@NSApplicationDelegateAdaptor(AppDelegate.self)")
+    expect(file(plain, `${module}App.swift`)).toContain("controller.didFinishLaunching()")
+    expect(file(plain, "MenuBarController.swift")).toContain("ErrorBanner(center: errors)")
+    expect(file(plain, "MenuBarController.swift")).toContain("NSApp.activate()")
+    expect(file(plain, "Resources/Info.plist")).toContain("<key>LSUIElement</key>\n    <true/>")
+    expect(file(plain, "LoginItem.swift")).toBeUndefined()
+    const created = plain.graph.phases.flatMap(phase => phase.tasks).flatMap(task => task.filesToCreate)
+    for (const path of plain.graph.kitPaths) expect(created.filter(item => item === path), path).toHaveLength(1)
+
+    const login = structuredClone(networkMonitorBlueprint)
+    login.platformNeeds = [...login.platformNeeds, "launch-at-login"]
+    login.features[0]!.usesPlatformNeeds = [...login.features[0]!.usesPlatformNeeds, "launch-at-login"]
+    const withLogin = await compilePacket(login, "native-macos-swiftui-menubar")
+    expect(file(withLogin, "LoginItem.swift")).toContain("SMAppService.mainApp.register()")
+    expect(withLogin.documents["TRD.md"]).toContain("`./Scripts/package_app.sh --install`")
   })
 })
 

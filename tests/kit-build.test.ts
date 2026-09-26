@@ -4,7 +4,15 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { compilePacket } from "../src/compiler"
-import { habitTrackerBlueprint, scanDrawerBlueprint } from "./fixtures/blueprints"
+import type { PresetId } from "../src/presets"
+import type { SemanticBlueprint } from "../src/schema"
+import { habitTrackerBlueprint, networkMonitorBlueprint, scanDrawerBlueprint } from "./fixtures/blueprints"
+
+const menuBarWithLogin: SemanticBlueprint = {
+  ...networkMonitorBlueprint,
+  platformNeeds: [...networkMonitorBlueprint.platformNeeds, "launch-at-login"],
+  features: networkMonitorBlueprint.features.map((feature, index) => index === 0 ? { ...feature, usesPlatformNeeds: [...feature.usesPlatformNeeds, "launch-at-login"] } : feature),
+}
 
 // Builds and tests every rendered kit with the local Swift toolchain. It runs through
 // npm run kit:check, which sets CASCADE_KIT_BUILD, so the default suite stays fast.
@@ -12,10 +20,11 @@ const describeBuild = process.env.CASCADE_KIT_BUILD ? describe : describe.skip
 
 describeBuild("starter kits compile and pass their own tests", () => {
   it.each([
-    ["records, app-files, and atomic documents", scanDrawerBlueprint],
-    ["records only", habitTrackerBlueprint],
-  ] as const)("native macOS desktop kit with %s", async (_label, blueprint) => {
-    const packet = await compilePacket(blueprint, "native-macos-swiftui-desktop")
+    ["desktop with records, app-files, and atomic documents", scanDrawerBlueprint, "native-macos-swiftui-desktop"],
+    ["desktop with records only", habitTrackerBlueprint, "native-macos-swiftui-desktop"],
+    ["menu bar with records and a login item", menuBarWithLogin, "native-macos-swiftui-menubar"],
+  ] as const satisfies ReadonlyArray<readonly [string, SemanticBlueprint, PresetId]>)("native macOS kit: %s", async (_label, blueprint, presetId) => {
+    const packet = await compilePacket(blueprint, presetId)
     const root = mkdtempSync(join(tmpdir(), "cascade-kit-"))
     try {
       for (const file of packet.kit) {

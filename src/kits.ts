@@ -11,9 +11,12 @@ export interface KitFile {
 
 export const KIT_README = "README.md"
 
+type NativeVariant = "desktop" | "menubar"
+
 export function presetKit(presetId: PresetId, identity: ProjectIdentity, blueprint: NormalizedBlueprint): readonly KitFile[] {
-  if (presetId !== "native-macos-swiftui-desktop") return []
-  return nativeMacDesktopKit(identity, blueprint)
+  if (presetId === "native-macos-swiftui-desktop") return nativeMacKit(identity, blueprint, "desktop")
+  if (presetId === "native-macos-swiftui-menubar") return nativeMacKit(identity, blueprint, "menubar")
+  return []
 }
 
 // Project paths the kit provides, excluding its own README.
@@ -21,33 +24,43 @@ export function kitProjectPaths(kit: readonly KitFile[]): string[] {
   return kit.filter(file => file.path !== KIT_README).map(file => file.path)
 }
 
-function nativeMacDesktopKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint): KitFile[] {
+function nativeMacKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint, variant: NativeVariant): KitFile[] {
   const module = identity.moduleName
   const storage = new Set(blueprint.persistenceNeeds.map(need => need.storage))
   const usesRecords = storage.has("records")
   const usesAppFiles = storage.has("app-files")
   const writesAtomically = blueprint.persistenceNeeds.some(need => need.writeMode === "atomic-replace" && !need.temporary)
   const needsMicrophone = blueprint.platformNeeds.includes("audio-input")
+  const launchesAtLogin = blueprint.platformNeeds.includes("launch-at-login")
   const source = (name: string) => `Sources/${module}/${name}`
   const platform = (name: string) => `Sources/${module}/Platform/${name}`
 
   const files: KitFile[] = [
     { path: "Package.swift", content: packageSwift(module, usesRecords) },
-    { path: source(`${module}App.swift`), content: appSwift(identity) },
-    { path: source("AppState.swift"), content: appStateSwift(identity) },
+    ...(variant === "desktop"
+      ? [
+        { path: source(`${module}App.swift`), content: appSwift(identity) },
+        { path: source("AppState.swift"), content: appStateSwift(identity) },
+      ]
+      : [
+        { path: source(`${module}App.swift`), content: menuBarAppSwift(identity) },
+        { path: source("MenuBarController.swift"), content: menuBarControllerSwift(identity) },
+        { path: source("SettingsWindow.swift"), content: SETTINGS_WINDOW_SWIFT },
+      ]),
     { path: platform("ErrorCenter.swift"), content: ERROR_CENTER_SWIFT },
+    ...(variant === "menubar" && launchesAtLogin ? [{ path: platform("LoginItem.swift"), content: LOGIN_ITEM_SWIFT }] : []),
     ...(writesAtomically || usesAppFiles ? [{ path: platform("AtomicFileWriter.swift"), content: ATOMIC_FILE_WRITER_SWIFT }] : []),
     ...(usesAppFiles ? [{ path: platform("AppFileStore.swift"), content: appFileStoreSwift(identity) }] : []),
     ...(usesRecords ? [{ path: platform("SQLiteDatabase.swift"), content: sqliteDatabaseSwift(identity) }] : []),
     { path: `Tests/${module}Tests/KitTests.swift`, content: kitTestsSwift(module, { usesRecords, usesAppFiles, writesAtomically }) },
     { path: "Scripts/package_app.sh", content: packageAppScript(identity) },
-    { path: "Resources/Info.plist", content: infoPlist(identity, needsMicrophone) },
+    { path: "Resources/Info.plist", content: infoPlist(identity, needsMicrophone, variant === "menubar") },
     { path: "Resources/App.entitlements", content: ENTITLEMENTS_PLIST },
   ]
-  return [{ path: KIT_README, content: kitReadme(identity, files.map(file => file.path)) }, ...files]
+  return [{ path: KIT_README, content: kitReadme(identity, files.map(file => file.path), variant) }, ...files]
 }
 
-function kitReadme(identity: ProjectIdentity, paths: readonly string[]): string {
+function kitReadme(identity: ProjectIdentity, paths: readonly string[], variant: NativeVariant): string {
   return [
     `# ${identity.projectName} starter kit`,
     "",
@@ -57,8 +70,17 @@ function kitReadme(identity: ProjectIdentity, paths: readonly string[]): string 
     "",
     "## Behavior to keep",
     "",
-    "- The app entry uses @NSApplicationDelegateAdaptor and a WindowGroup; add app commands with CommandGroup(after:) so File > New Window and Dock-click reopen keep working.",
-    "- Every feature reports a user-visible failure through AppState.errors.report(_:), which the root view shows as one alert; never swallow an error the PRD says the user sees.",
+    ...(variant === "desktop"
+      ? [
+        "- The app entry uses @NSApplicationDelegateAdaptor and a WindowGroup; add app commands with CommandGroup(after:) so File > New Window and Dock-click reopen keep working.",
+        "- Every feature reports a user-visible failure through AppState.errors.report(_:), which the root view shows as one alert; never swallow an error the PRD says the user sees.",
+      ]
+      : [
+        "- The app entry is a MenuBarExtra with a Settings scene and no Dock icon (LSUIElement); the AppDelegate owns MenuBarController so launch-time work starts in didFinishLaunching, before the menu is first opened.",
+        "- Every feature reports a user-visible failure through MenuBarController.errors.report(_:), which the menu shows as an ErrorBanner; never swallow an error the PRD says the user sees.",
+        "- SettingsButton activates the app before opening Settings, so the Settings window comes to the front.",
+        "- LoginItem, when present, is the only place that registers or unregisters the login item through SMAppService.mainApp.",
+      ]),
     "- AtomicFileWriter writes a temporary file in the destination's own folder and swaps it in whole.",
     "- AppFileStore keeps app-owned copies under Application Support with generated names; store only the returned file name.",
     "- SQLiteDatabase applies migrations in order and records the schema version in PRAGMA user_version; append new migrations, never edit applied ones.",
@@ -150,6 +172,135 @@ final class AppState {
 `
 }
 
+function menuBarAppSwift(identity: ProjectIdentity): string {
+  return `import AppKit
+import SwiftUI
+
+@main
+struct ${identity.moduleName}App: App {
+    // AppKit callbacks come through the adaptor; the delegate owns the controller so launch-time work
+    // starts before the menu is first opened.
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
+    var body: some Scene {
+        MenuBarExtra {
+            appDelegate.controller.menuContent
+                .environment(appDelegate.controller)
+        } label: {
+            Image(systemName: "menubar.rectangle")
+                .accessibilityLabel("${identity.projectName}")
+        }
+        .menuBarExtraStyle(.window)
+
+        Settings {
+            SettingsWindow()
+                .environment(appDelegate.controller)
+        }
+    }
+}
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    let controller = MenuBarController.makeProduction()
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        controller.didFinishLaunching()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        controller.willTerminate()
+    }
+}
+`
+}
+
+function menuBarControllerSwift(identity: ProjectIdentity): string {
+  return `import AppKit
+import SwiftUI
+
+// The composition root: feature tasks add their owners here and fill menuContent.
+@Observable
+@MainActor
+final class MenuBarController {
+    let errors: ErrorCenter
+
+    init(errors: ErrorCenter) {
+        self.errors = errors
+    }
+
+    static func makeProduction() -> MenuBarController {
+        MenuBarController(errors: ErrorCenter())
+    }
+
+    var menuContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ErrorBanner(center: errors)
+            Text("${identity.projectName}")
+                .font(.headline)
+            Divider()
+            SettingsButton()
+            Button("Quit ${identity.projectName}") { NSApp.terminate(nil) }
+        }
+        .padding(12)
+        .frame(width: 300)
+    }
+
+    /// Starts the work the app does from launch, such as watching a system source.
+    func didFinishLaunching() {}
+
+    func willTerminate() {}
+}
+
+// A menu-bar app is an accessory app, so it activates itself before opening Settings; otherwise the
+// Settings window opens behind the frontmost app.
+struct SettingsButton: View {
+    @Environment(\\.openSettings) private var openSettings
+
+    var body: some View {
+        Button("Settings…") {
+            NSApp.activate()
+            openSettings()
+        }
+    }
+}
+`
+}
+
+const SETTINGS_WINDOW_SWIFT = `import SwiftUI
+
+// Feature tasks add their settings controls here.
+struct SettingsWindow: View {
+    @Environment(MenuBarController.self) private var controller
+
+    var body: some View {
+        Form {
+            ErrorBanner(center: controller.errors)
+        }
+        .padding(20)
+        .frame(width: 380)
+    }
+}
+`
+
+const LOGIN_ITEM_SWIFT = `import ServiceManagement
+
+// The only place that registers or unregisters the app as a login item.
+@MainActor
+enum LoginItem {
+    static var isEnabled: Bool {
+        SMAppService.mainApp.status == .enabled
+    }
+
+    static func setEnabled(_ enabled: Bool) throws {
+        if enabled {
+            try SMAppService.mainApp.register()
+        } else {
+            try SMAppService.mainApp.unregister()
+        }
+    }
+}
+`
+
 const ERROR_CENTER_SWIFT = `import SwiftUI
 
 // One place for user-visible failures: features report here and the root view shows an alert.
@@ -164,6 +315,24 @@ final class ErrorCenter {
 
     func dismiss() {
         message = nil
+    }
+}
+
+// Inline form of the same message, for surfaces without a window to host an alert (a menu-bar menu).
+struct ErrorBanner: View {
+    let center: ErrorCenter
+
+    var body: some View {
+        if let message = center.message {
+            HStack(alignment: .top, spacing: 8) {
+                Text(message)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                Button("Dismiss") { center.dismiss() }
+            }
+            .accessibilityElement(children: .combine)
+        }
     }
 }
 
@@ -520,7 +689,7 @@ fi
 `
 }
 
-function infoPlist(identity: ProjectIdentity, needsMicrophone: boolean): string {
+function infoPlist(identity: ProjectIdentity, needsMicrophone: boolean, uiElement: boolean): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -544,7 +713,7 @@ function infoPlist(identity: ProjectIdentity, needsMicrophone: boolean): string 
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>LSUIElement</key>
-    <false/>${needsMicrophone ? `
+    <${uiElement ? "true" : "false"}/>${needsMicrophone ? `
     <key>NSMicrophoneUsageDescription</key>
     <string>${identity.projectName} uses the microphone only during a recording the user explicitly starts.</string>` : ""}
 </dict>

@@ -369,7 +369,7 @@ const needPurpose: Readonly<Record<PermissionCapability, string>> = {
   camera: "Capture images or video only during an explicit user action.",
   location: "Use foreground location only for the declared user outcome.",
   "global-input": "Receive the explicitly configured system-wide action without broad input capture.",
-  clipboard: "Read or write clipboard content only for the explicit user action and preserve prior content when promised.",
+  clipboard: "Read or write clipboard content only in the features that declare it, and preserve the user's prior clipboard only when the PRD promises it.",
   "background-startup": "Start at login only after the user enables it.",
   "background-execution": "Keep running after the main window closes only while a declared background feature needs it.",
 }
@@ -383,7 +383,7 @@ const deniedBehavior: Readonly<Record<PermissionCapability, string>> = {
   camera: "Skip capture and keep non-camera features available.",
   location: "Use manual input or non-location behavior without fabricating a position.",
   "global-input": "Keep in-app controls available and explain the permission recovery path.",
-  clipboard: "Keep the result visible for manual copy or paste without replacing prior content.",
+  clipboard: "Stop the denied clipboard access, keep saved data unchanged, and show the user how to allow clipboard access again.",
   "background-startup": "Keep manual launch and foreground behavior available.",
   "background-execution": "Keep foreground behavior available and state that background work stops when the app closes.",
 }
@@ -580,7 +580,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       event: "Application termination",
       behavior: "Stop new work, cancel active operations, and preserve only state covered by the persistence contracts.",
       cleanup: features.some(feature => feature.resourceIds.includes(permissionResourceId("clipboard")))
-        ? "Release permissions, listeners, handles, tasks, clipboard snapshots, and temporary resources before termination completes."
+        ? "Release permissions, listeners, handles, tasks, clipboard watchers and snapshots, and temporary resources before termination completes."
         : "Release permissions, listeners, handles, tasks, and temporary resources before termination completes.",
     },
     ...(platformNeeds.includes("audio-input") ? [{

@@ -1,5 +1,26 @@
 # Audit changelog
 
+## PinBoard packet audit, native macOS menu bar (2026-09-26)
+
+The clipboard-history packet was clean except for the clipboard permission, whose wording came
+from dictation apps: "snapshot and restoration around explicit copy or paste work", purpose "only
+for the explicit user action", denied "keep the result visible for manual copy". A clipboard
+watcher reads without a user action, and on macOS 15.4 and later the first programmatic read of
+the general pasteboard shows a system prompt the user can later set to deny. The native rule now
+watches changeCount, reads only after a change, checks NSPasteboard.general.accessBehavior (guarded
+by #available) and stops with guidance when it is alwaysDeny, writes with clearContents() and
+setString, and restores the prior clipboard only when the PRD promises it. The generic purpose and
+denied lines fit both watchers and user-action apps.
+
+The menu bar preset now ships its own starter kit: a MenuBarExtra app entry with a Settings scene
+and @NSApplicationDelegateAdaptor, where the AppDelegate owns MenuBarController so launch-time
+work (such as a clipboard watcher) starts in didFinishLaunching; an inline ErrorBanner, since a
+menu has no window for an alert; a SettingsButton that activates the accessory app before
+opening Settings; LoginItem around SMAppService.mainApp only when launch at login is declared;
+LSUIElement true; and the shared storage, packaging, and test files. It validates like the
+desktop preset, launching only the installed bundle. kit:check builds a menu bar variant with a
+login item, and a live launch confirmed no Dock icon, the status item, and the Settings window.
+
 ## ReceiptShelf built with the starter kit (2026-09-26)
 
 First complete build: the agent copied the kit, kept its behavior (delegate adaptor, New Window,

@@ -26,7 +26,7 @@ The only stack-specific knowledge lives in `src/presets.ts` (plus `src/astroWeb.
 - `src/pipeline.ts`: generate flow (Jev intake, DeepSeek, Jev integrity, normalize, compile)
 - `src/compiler.ts`: normalization, project graph, contracts, placement
 - `src/renderers.ts`: Markdown bytes · `src/audit.ts`: gates that block export · `src/jev.ts`: Jev decisions
-- `src/kits.ts`: starter-kit templates (native macOS desktop so far), rendered from identity and
+- `src/kits.ts`: starter-kit templates (native macOS desktop and menu bar so far), rendered from identity and
   declared storage; kit files join the foundation task so "create only" lists stay exact
 - `src-tauri/src/provider.rs`, `jev.rs`: HTTPS boundaries · `export.rs`: atomic export
 

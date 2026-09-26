@@ -102,7 +102,7 @@ const swiftPermissionPatterns: Readonly<Record<PermissionCapability, string>> = 
   camera: "Declare NSCameraUsageDescription and request AVCaptureDevice video authorization before capture.",
   location: "Declare NSLocationUsageDescription and use CLLocationManager only while the user-visible feature needs it.",
   "global-input": "Register shortcuts with Carbon RegisterEventHotKey; use an event tap only when required and explain Input Monitoring denial.",
-  clipboard: "Use NSPasteboard with representation-preserving snapshot and restoration around explicit copy or paste work.",
+  clipboard: "Watch NSPasteboard.general by polling changeCount and read its contents only after changeCount changes. The first programmatic read can show the system paste-access prompt; on macOS 15.4 and later (check with #available), read NSPasteboard.general.accessBehavior and, when it is alwaysDeny, stop reading and show the user how to allow access in System Settings. Write with clearContents() and then setString(_:forType:). Snapshot and restore the user's clipboard only when the PRD promises to preserve it.",
   "background-startup": "Use SMAppService.mainApp and expose an explicit login-item toggle; denial leaves manual launch available.",
   "background-execution": "Keep the process running after the last window closes by returning false from applicationShouldTerminateAfterLastWindowClosed(_:); register no login item unless launch at login is also required.",
 }
@@ -275,14 +275,6 @@ const swiftMenubar: PresetContract = {
   ...swiftDesktop,
   id: "native-macos-swiftui-menubar",
   label: "Native macOS SwiftUI Menu Bar",
-  // No starter kit yet, so the agent's packaging script has no --install step to launch through.
-  validationCommands: [
-    () => "swift test",
-    () => "swift build -c release -Xswiftc -warnings-as-errors",
-    () => "./Scripts/package_app.sh",
-    identity => `codesign --verify --deep --strict \"dist/${identity.projectName}.app\"`,
-    identity => `open \"dist/${identity.projectName}.app\"`,
-  ],
   implementationMarker: "MenuBarExtra",
   allowedTechnologies: ["Swift 6", "SwiftUI", "MenuBarExtra", "AppKit bridges for hotkeys, event monitoring, floating panels, activation policy, and permissions", "Swift Package Manager", "Swift Testing", "Keychain", "UserDefaults", "SQLite3", "Application Support", "SMAppService"],
   forbiddenTechnologies: ["Dock-first architecture unless semantics require a Dock window", "iOS", "Catalyst", "Flutter", "Tauri", "Electron"],

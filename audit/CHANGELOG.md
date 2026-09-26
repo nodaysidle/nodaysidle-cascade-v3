@@ -1,5 +1,20 @@
 # Audit changelog
 
+## ReceiptShelf third retry audit (2026-09-26)
+
+File access traced only to import and export: DeepSeek declared the chosen receipt as an
+imported-source document, and the library copies stayed app-files. The added sidebar sentence
+brought back category filtering. Two provider-content defects recurred across runs, so the prompt
+now has a rule for each:
+
+- Fixed choice lists ("a fixed list" of currencies, no values, no initial choice) appeared in three
+  of four runs. The prompt now requires every choice and the initially selected one.
+- Import created receipts with an empty currency while the default-currency feature said new
+  receipts get the default (two of four runs). The prompt now requires both features to state the
+  same rule for a record field one of them sets for the other.
+
+Needs one live retry because the provider prompt changed.
+
 ## LogLens packet audit, native macOS desktop (2026-09-26)
 
 Sanity check of the document-based file access on a second idea. Documents, storage placement,

@@ -83,7 +83,7 @@ describe("explicit feature references", () => {
     expect(permissionFeatures()).toEqual(["FEAT-REVERSIBLE-BATCH"])
   })
 
-  it("gives native clipboard features a watcher rule with the system paste-access prompt", () => {
+  it("gives native clipboard features a write-only rule and a watcher rule with the paste-access prompt", () => {
     for (const presetId of ["native-macos-swiftui-desktop", "native-macos-swiftui-menubar"] as const) {
       const blueprint = structuredClone(fileOrganizerBlueprint)
       blueprint.features[0]!.usesPlatformNeeds = ["clipboard"]
@@ -93,6 +93,8 @@ describe("explicit feature references", () => {
 
       expect(clipboard.featureIds).toEqual(["FEAT-FOLDER-SCAN"])
       expect(text).toContain("read its contents only after changeCount changes")
+      // Copy-only features (a transcript copied to the clipboard) must not grow a watcher.
+      expect(text).toContain("A feature that only copies text to the clipboard writes with clearContents() and then setString(_:forType:) and never reads or polls NSPasteboard.general")
       expect(text).toContain("NSPasteboard.general.accessBehavior and, when it is alwaysDeny, stop reading")
       expect(text).toContain("Snapshot and restore the user's clipboard only when the PRD promises to preserve it.")
       expect(text).not.toContain("only for the explicit user action")

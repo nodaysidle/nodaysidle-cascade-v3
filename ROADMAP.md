@@ -29,7 +29,9 @@ build a working app from them.
 
 ## Resume here, in order
 
-1. **Murmur, the speech-to-text menu bar app** (next live test, `native-macos-swiftui-menubar`).
+1. **Murmur, the speech-to-text menu bar app** (packet audited 2026-09-26: one compiler fix, the
+   clipboard rule no longer tells a copy-only app to watch the clipboard; regenerate or tell the
+   build agent before building) (next live test, `native-macos-swiftui-menubar`).
    It exercises the reviewed but unproven capabilities: microphone, global hotkey, HTTPS providers
    plus a localhost server (ATS exception), Keychain keys, provider and language choice lists,
    clipboard write without watching, launch at login, session-only recordings. Prompt:
@@ -64,6 +66,12 @@ build a working app from them.
   feature contracts, requirement contracts, ARD flows and boundaries, TRD interfaces). ReceiptShelf
   is 229 KB; the target is about 120 KB.
 - A kit test string reads `"receipt"`; rename to a neutral sample.
+- Integration contracts name no endpoint, auth header, or model. Add a native rule to take each
+  declared service's endpoint, authentication, request format, and model from the provider's current
+  documentation and keep them as constants in its integration owner (Murmur, 2026-09-26).
+- The integration decision says "HTTPS requests" even for a declared `http://localhost` service; the
+  network contract already allows it. Word the decision per scheme, and let the kit add
+  `NSAllowsLocalNetworking` once services declare an endpoint.
 
 ## Done on 2026-09-25 and 2026-09-26 (details in `audit/CHANGELOG.md`)
 

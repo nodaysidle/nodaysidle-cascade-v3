@@ -1,5 +1,26 @@
 # Audit changelog
 
+## Murmur packet audit (2026-09-26)
+
+The Murmur packet (`native-macos-swiftui-menubar`, exported after the restyled app was installed)
+is correct apart from one blocking rule. DeepSeek declared microphone, global hotkey, clipboard,
+network, background execution, and launch at login; four services with keys on the three cloud
+providers; credentials as `secret` (Keychain), the recording buffer as `session`, the last
+transcript as `records`; and choice lists for provider, language, and icon state. Every idea
+sentence is covered. The kit carries MenuStyle.swift, KeychainStore, LoginItem, SQLiteDatabase, and
+the microphone usage string; the foundation task names MenuBarController.swift; the runtime wiring
+contract carries the screenshot rule; recovery lines match their failure text.
+
+Blocking and fixed: the native clipboard rule always said to watch NSPasteboard by polling
+changeCount, so a copy-only app (Murmur copies each transcript) would grow an unrequested watcher
+and the macOS 15.4 paste-access prompt. The rule now says a copy-only feature writes with
+clearContents() and setString(_:forType:) and never reads or polls; only a feature the PRD has read
+the clipboard watches it (`tests/feature-references.test.ts`).
+
+Polish (roadmap list): integration contracts name no endpoint, auth, or model; the integration
+decision says HTTPS for the local http server. Idea notes: the default provider (OpenAI) and the
+provider models were not in the idea, and a single last transcript is stored as SQLite records.
+
 ## PinBoard build audit (2026-09-26)
 
 The first menu bar build from a kit (`native-macos-swiftui-menubar`) behaved correctly but was

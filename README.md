@@ -53,7 +53,7 @@ Most idea-to-spec tools either dump vague prose or ask the model to invent file 
 | Layer | Who owns it |
 | --- | --- |
 | **Boundary decisions** | Jev viability, preset-fit, platform-needs, stack-leakage, and acceptance-verifiability judgments |
-| **Product meaning** | One DeepSeek request (Pro or Flash) after intake passes |
+| **Product meaning** | One DeepSeek request (Pro or Flash) after intake passes, plus at most one repair request that names the checks the first response failed |
 | **IDs, graph, files, phases, contracts** | Deterministic local TypeScript compiler |
 | **Five markdown documents** | Locked renderers — preview bytes equal export bytes |
 | **Gate** | Mechanical + agent-readiness audits before export |

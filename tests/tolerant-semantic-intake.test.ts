@@ -34,7 +34,7 @@ const messyProviderBlueprint = {
       failureRecovery: "retry",
       surface: "main",
       acceptanceSignals: ["Every eligible file appears once", "every eligible file appears once."],
-      usesPlatformNeeds: ["filesystem"],
+      usesPlatformNeeds: [],
       usesData: ["Selected folder"],
       usesServices: [],
     },
@@ -47,7 +47,7 @@ const messyProviderBlueprint = {
       failureRecovery: "retry",
       surface: "main",
       acceptanceSignals: ["Undo restores every completed move"],
-      usesPlatformNeeds: ["filesystem", "local-storage"],
+      usesPlatformNeeds: ["local-storage"],
       usesData: ["Move journal", "Selected folder"],
       usesServices: [],
     },
@@ -72,6 +72,7 @@ const messyProviderBlueprint = {
   platformNeeds: ["filesystem", "local-storage"],
   qualityRequirements: ["Keyboard-accessible controls", "keyboard accessible controls."],
   productConstraints: ["Never upload filenames or file contents."],
+  ideaCoverage: [{ sentence: 1, features: ["Move Preview", "Reversible Batch"], outsideFeatures: "none" }],
 }
 
 describe("tolerant semantic intake architecture", () => {
@@ -117,6 +118,7 @@ describe("tolerant semantic intake architecture", () => {
       "platformNeeds",
       "qualityRequirements",
       "productConstraints",
+      "ideaCoverage",
     ])
     expect(result.status).toBe("gate-clean")
     expect(result.exportable).toBe(true)

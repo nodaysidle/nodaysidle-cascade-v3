@@ -31,6 +31,7 @@ import {
 const progressStages: ReadonlyArray<{ id: ProgressStage; label: string }> = [
   { id: "jev-preflight", label: "Jev preflight" },
   { id: "provider", label: "Provider" },
+  { id: "provider-repair", label: "Provider repair" },
   { id: "blueprint-validation", label: "Blueprint validation" },
   { id: "jev-integrity", label: "Jev integrity" },
   { id: "local-normalization", label: "Local normalization" },
@@ -342,6 +343,9 @@ export function mountApp(
     ])
     if (!details.length) details.push(["State", state.status], ["Preset", state.form.presetId], ["Model", state.form.model])
     if (!state.issues.length && state.progress) details.push(["Stage", state.progress])
+    if (state.repairedIssues?.length) {
+      details.push(["Provider repair", `The first response failed ${state.repairedIssues.length} check(s) (${[...new Set(state.repairedIssues.map(issue => issue.rule))].join(", ")}); one repair request was sent${state.status === "gate-clean" ? " and passed." : " and the issues above remain."}`])
+    }
     if (state.jev?.presetMismatch) details.push(["Jev preset check", jevPresetMismatchDetail(state.jev.presetMismatch)])
     if (state.jev?.addedPlatformNeeds.length) details.push(["Jev healed platform needs", jevHealedNeedsDetail(state.jev.addedPlatformNeeds)])
     for (const feature of state.jev?.atomicAudits?.ideaReviewFeatures ?? []) {
@@ -531,11 +535,11 @@ export function mountApp(
       onProgress: stage => dispatch({ type: "progressed", stage }),
     }, provider, undefined, activeJevProvider).then(result => {
       if (result.status === "gate-clean" && result.packet) {
-        dispatch({ type: "generation-succeeded", packet: result.packet, jev: result.jev })
+        dispatch({ type: "generation-succeeded", packet: result.packet, jev: result.jev, repairedIssues: result.repairedIssues })
         syncControls()
       } else {
         const status = result.status === "gate-clean" ? "local-compiler-failure" : result.status
-        dispatch({ type: "generation-failed", status, failure: result.failure, issues: result.issues, jev: result.jev })
+        dispatch({ type: "generation-failed", status, failure: result.failure, issues: result.issues, jev: result.jev, repairedIssues: result.repairedIssues })
       }
       return state
     }).catch(() => {

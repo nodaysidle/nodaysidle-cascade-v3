@@ -28,7 +28,7 @@ function createSampleBlueprint(): SemanticBlueprint {
         trigger: "User clicks a file row.",
         userOutcome: "Preview panel displays the file metadata and thumbnail.",
         acceptanceSignals: ["Preview updates within 50ms of selection", "Error state rendered if file unreadable"],
-        usesPlatformNeeds: ["filesystem"],
+        usesPlatformNeeds: [],
         usesData: ["UserPreferences", "TemporaryScanBuffer", "SelectedFolder"],
         usesServices: [],
         failureOutcome: "Empty preview with error notification.",
@@ -79,6 +79,7 @@ function createSampleBlueprint(): SemanticBlueprint {
         sensitivity: "personal" as const,
       },
     ],
+    ideaCoverage: [{ sentence: 1, features: ["Preview Pane", "Magic AI Suggestions"], outsideFeatures: "none" }],
   }
 }
 
@@ -158,8 +159,8 @@ describe("Opportunity 2: Jev Atomic Contract & Placement Auditor", () => {
     const blueprint = {
       ...base,
       platformNeeds: base.platformNeeds.filter(p => p !== "filesystem"),
-      // Without a document, a healed filesystem flag is the only file-access signal left.
-      features: base.features.map(feature => ({ ...feature, usesPlatformNeeds: feature.usesPlatformNeeds.filter(p => p !== "filesystem"), usesData: feature.usesData.filter(name => name !== "SelectedFolder") })),
+      // Without a document, Jev's filesystem recommendation is the only file-access signal left.
+      features: base.features.map(feature => ({ ...feature, usesData: feature.usesData.filter(name => name !== "SelectedFolder") })),
       dataObjects: base.dataObjects.filter(item => item.name !== "SelectedFolder"),
     }
 
@@ -185,7 +186,8 @@ describe("Opportunity 2: Jev Atomic Contract & Placement Auditor", () => {
 
     const decision = evaluateJevAtomicAudit(outcomes, blueprint)
     expect(decision.addedPlatformNeeds).toContain("filesystem")
-    expect(decision.blueprint.features[0]!.usesPlatformNeeds).toContain("filesystem")
+    // File access comes only from declared documents, so Jev never heals filesystem onto a feature.
+    expect(decision.blueprint.features[0]!.usesPlatformNeeds).not.toContain("filesystem")
     expect(decision.blueprint.features[1]!.usesPlatformNeeds).not.toContain("filesystem")
 
     const normalized = normalizeBlueprint(decision.blueprint, "native-macos-swiftui-desktop", decision)

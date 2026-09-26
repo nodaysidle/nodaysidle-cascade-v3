@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest"
 import {
   SemanticBlueprintSchema,
+  auditIdeaCoverage,
   auditSemanticIntake,
   buildBlueprintInstructions,
   parseBlueprintJson,
   providerJsonSchema,
+  splitIdeaSentences,
+  type SemanticBlueprint,
 } from "../src/schema"
 import { fixtureCases, fileOrganizerBlueprint } from "./fixtures/blueprints"
 
@@ -20,6 +23,7 @@ const compactFields = [
   "platformNeeds",
   "qualityRequirements",
   "productConstraints",
+  "ideaCoverage",
 ]
 
 describe("compact semantic provider boundary", () => {
@@ -60,9 +64,12 @@ describe("compact semantic provider boundary", () => {
     expect(instructions).toContain("List a platform need only when a stated feature uses it")
     expect(instructions).toContain("When a feature offers a fixed set of choices, such as currencies, units, or levels, list every choice and state which one is selected initially.")
     expect(instructions).toContain("state the same rule in both features. Never let two features describe the same record field differently.")
-    expect(instructions).toContain("Reading or writing the app's own settings, records, app-files, or temporary data never needs filesystem.")
+    expect(instructions).toContain("(file access is not a platform need; it comes only from a document dataObject)")
+    expect(instructions).toContain("Return ideaCoverage with exactly one entry for every numbered idea sentence below.")
+    expect(instructions).toContain("Idea sentences:\n1. Build a focused local file organizer.")
     expect(instructions).toContain("Declare a document dataObject for every file or folder the user chooses to open, import, or save")
     expect(instructions).toContain("File access is granted only to features that list a document dataObject.")
+    expect(instructions).toContain("An import feature lists both the document the user chooses and whatever it creates from it")
     expect(instructions).toContain("a feature that only works on its content after it is loaded lists a session dataObject for that loaded content instead")
     expect(instructions).toContain("Set its writeMode to atomic-replace when a failed write must leave an existing file at that location unchanged.")
     expect(instructions).toContain("Do not add features, settings, or platform needs that the idea does not ask for")
@@ -157,19 +164,66 @@ describe("compact semantic provider boundary", () => {
   })
 })
 
+describe("idea coverage", () => {
+  const idea = "Scan Drawer keeps scans. The user imports PDFs; selecting a tag filters the list. No cloud sync."
+  const covered = (ideaCoverage: SemanticBlueprint["ideaCoverage"]): SemanticBlueprint => ({ ...structuredClone(fileOrganizerBlueprint), ideaCoverage })
+
+  it("splits an idea into numbered sentences at . ! ? and ; deterministically", () => {
+    expect(splitIdeaSentences(idea)).toEqual(["Scan Drawer keeps scans.", "The user imports PDFs;", "selecting a tag filters the list.", "No cloud sync."])
+    expect(splitIdeaSentences("  One   line  ")).toEqual(["One line"])
+  })
+
+  it("accepts one entry per sentence that maps every feature", () => {
+    const blueprint = covered([
+      { sentence: 1, features: [], outsideFeatures: "product" },
+      { sentence: 2, features: ["Folder scan"], outsideFeatures: "none" },
+      { sentence: 3, features: ["Move preview", "reversible batch"], outsideFeatures: "none" },
+      { sentence: 4, features: [], outsideFeatures: "non-goal" },
+    ])
+    expect(auditIdeaCoverage(blueprint, idea)).toEqual([])
+  })
+
+  it("names every missing, unknown, duplicated, featureless, and unrequested entry", () => {
+    const blueprint = covered([
+      { sentence: 1, features: [], outsideFeatures: "product" },
+      { sentence: 2, features: ["Folder scan", "Tag filter"], outsideFeatures: "none" },
+      { sentence: 2, features: ["Move preview"], outsideFeatures: "none" },
+      { sentence: 3, features: [], outsideFeatures: "none" },
+      { sentence: 9, features: [], outsideFeatures: "none" },
+    ])
+    expect(auditIdeaCoverage(blueprint, idea).map(issue => issue.rule)).toEqual([
+      "semantic.coverage-unknown-feature",
+      "semantic.coverage-duplicate-sentence",
+      "semantic.coverage-no-feature",
+      "semantic.coverage-unknown-sentence",
+      "semantic.coverage-missing-sentence",
+      "semantic.feature-not-requested",
+    ])
+    expect(auditIdeaCoverage(blueprint, idea)).toContainEqual(expect.objectContaining({ message: 'Idea sentence 3 ("selecting a tag filters the list.") is covered by no feature.' }))
+    expect(auditIdeaCoverage(blueprint, idea)).toContainEqual(expect.objectContaining({ message: "Feature 'Reversible batch' is listed by no idea sentence; map it to the sentence that asks for it or remove it." }))
+  })
+
+  it("requires the non-goal or constraint a sentence points to", () => {
+    const blueprint = { ...covered([
+      { sentence: 1, features: ["Folder scan", "Move preview", "Reversible batch"], outsideFeatures: "none" },
+      { sentence: 2, features: [], outsideFeatures: "constraint" },
+      { sentence: 3, features: [], outsideFeatures: "non-goal" },
+      { sentence: 4, features: [], outsideFeatures: "non-goal" },
+    ]), nonGoals: [], productConstraints: [], qualityRequirements: [] }
+    expect(auditIdeaCoverage(blueprint, idea).map(issue => issue.rule)).toEqual([
+      "semantic.coverage-missing-constraint",
+      "semantic.coverage-missing-non-goal",
+      "semantic.coverage-missing-non-goal",
+    ])
+  })
+})
+
 describe("hard semantic blockers", () => {
-  it("rejects a feature that lists filesystem without a document dataObject", () => {
-    const candidate = structuredClone(fileOrganizerBlueprint)
-    candidate.features[1]!.usesData = ["Organization rules"]
+  it("has no feature-level filesystem need, so file access can only come from a document", () => {
+    const candidate = structuredClone(fileOrganizerBlueprint) as unknown as { features: Array<{ usesPlatformNeeds: string[] }> }
+    candidate.features[0]!.usesPlatformNeeds = ["filesystem"]
 
-    expect(auditSemanticIntake(candidate)).toEqual([{
-      path: "features[1].usesPlatformNeeds",
-      rule: "semantic.filesystem-without-document",
-      message: "Feature 'Move preview' lists filesystem but no document dataObject for the file or folder the user chooses.",
-    }])
-
-    candidate.features[1]!.usesPlatformNeeds = []
-    expect(auditSemanticIntake(candidate)).toEqual([])
+    expect(SemanticBlueprintSchema.safeParse(candidate).success).toBe(false)
   })
 
   it("blocks actual secret material by exact path without exposing it", () => {

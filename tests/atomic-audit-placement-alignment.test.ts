@@ -56,6 +56,7 @@ describe("Atomic Audit Placement Alignment (H3)", () => {
       platformNeeds: ["local-storage"],
       qualityRequirements: ["Fast load"],
       productConstraints: ["Offline-first"],
+      ideaCoverage: [{ sentence: 1, features: [], outsideFeatures: "product" }],
     }
 
     const atomicAuditDecision: JevAtomicAuditDecision = {

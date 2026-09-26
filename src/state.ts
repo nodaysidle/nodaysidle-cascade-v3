@@ -27,6 +27,7 @@ export interface AppState {
   readonly issues: readonly SemanticIssue[]
   readonly exportPath?: string
   readonly jev?: JevReport
+  readonly repairedIssues?: readonly SemanticIssue[]
 }
 
 export type AppAction =
@@ -34,8 +35,8 @@ export type AppAction =
   | { readonly type: "generation-started"; readonly requestId: string }
   | { readonly type: "progressed"; readonly stage: ProgressStage }
   | { readonly type: "cancel-requested" }
-  | { readonly type: "generation-failed"; readonly status: Extract<AppStatus, "provider-failure" | "blueprint-validation-failed" | "local-normalization-failed" | "local-compiler-failure" | "lint-failure" | "cancelled" | "intake-rejected" | "blueprint-integrity-failed" | "jev-failure">; readonly failure?: ProviderFailure; readonly issues: readonly SemanticIssue[]; readonly jev?: JevReport }
-  | { readonly type: "generation-succeeded"; readonly packet: CompiledPacket; readonly jev?: JevReport }
+  | { readonly type: "generation-failed"; readonly status: Extract<AppStatus, "provider-failure" | "blueprint-validation-failed" | "local-normalization-failed" | "local-compiler-failure" | "lint-failure" | "cancelled" | "intake-rejected" | "blueprint-integrity-failed" | "jev-failure">; readonly failure?: ProviderFailure; readonly issues: readonly SemanticIssue[]; readonly jev?: JevReport; readonly repairedIssues?: readonly SemanticIssue[] }
+  | { readonly type: "generation-succeeded"; readonly packet: CompiledPacket; readonly jev?: JevReport; readonly repairedIssues?: readonly SemanticIssue[] }
   | { readonly type: "export-succeeded"; readonly path: string }
 
 const defaultForm: FormState = {
@@ -88,11 +89,11 @@ export function reduceAppState(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case "form-changed": {
       const form = { ...state.form, [action.field]: action.value } as FormState
-      const next = { ...state, form, packet: undefined, ledger: [], issues: [], failure: undefined, exportPath: undefined, jev: undefined }
+      const next = { ...state, form, packet: undefined, ledger: [], issues: [], failure: undefined, exportPath: undefined, jev: undefined, repairedIssues: undefined }
       return { ...next, status: canGenerate(next) ? "ready" : "empty" }
     }
     case "generation-started":
-      return { ...state, status: "generating", progress: "jev-preflight", activeRequestId: action.requestId, packet: undefined, ledger: [], issues: [], failure: undefined, exportPath: undefined, jev: undefined }
+      return { ...state, status: "generating", progress: "jev-preflight", activeRequestId: action.requestId, packet: undefined, ledger: [], issues: [], failure: undefined, exportPath: undefined, jev: undefined, repairedIssues: undefined }
     case "progressed":
       if (state.status === "cancelling") return { ...state, progress: action.stage }
       if (state.status !== "generating") return state
@@ -100,9 +101,9 @@ export function reduceAppState(state: AppState, action: AppAction): AppState {
     case "cancel-requested":
       return { ...state, status: "cancelling" }
     case "generation-failed":
-      return { ...state, status: action.status, activeRequestId: undefined, packet: undefined, ledger: [], issues: action.issues, failure: action.failure, jev: action.jev }
+      return { ...state, status: action.status, activeRequestId: undefined, packet: undefined, ledger: [], issues: action.issues, failure: action.failure, jev: action.jev, repairedIssues: action.repairedIssues }
     case "generation-succeeded":
-      return { ...state, form: { ...state.form, apiKey: "", jevApiKey: "" }, status: "gate-clean", progress: "export-gate", activeRequestId: undefined, packet: action.packet, ledger: action.packet.ledger, issues: [], failure: undefined, jev: action.jev }
+      return { ...state, form: { ...state.form, apiKey: "", jevApiKey: "" }, status: "gate-clean", progress: "export-gate", activeRequestId: undefined, packet: action.packet, ledger: action.packet.ledger, issues: [], failure: undefined, jev: action.jev, repairedIssues: action.repairedIssues }
     case "export-succeeded":
       return { ...state, status: "export-success", exportPath: action.path }
   }

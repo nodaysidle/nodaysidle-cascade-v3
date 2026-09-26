@@ -32,7 +32,7 @@ const blueprint: SemanticBlueprint = {
       failureRecovery: "retry",
       surface: "main",
       acceptanceSignals: ["The file bytes equal the editor text"],
-      usesPlatformNeeds: ["filesystem"],
+      usesPlatformNeeds: [],
       usesData: ["Note File"],
       usesServices: [],
     },
@@ -73,6 +73,7 @@ const blueprint: SemanticBlueprint = {
   platformNeeds: ["filesystem", "local-storage"],
   qualityRequirements: ["Typing stays responsive"],
   productConstraints: ["Save the note file atomically after each explicit request."],
+  ideaCoverage: [{ sentence: 1, features: [], outsideFeatures: "product" }],
 }
 
 function contract(packet: Awaited<ReturnType<typeof compilePacket>>, id: string) {
@@ -143,7 +144,7 @@ describe("compiler contract consistency", () => {
           failureRecovery: "retry",
           surface: "main",
           acceptanceSignals: ["Reading the path returns the editor contents"],
-          usesPlatformNeeds: ["filesystem"],
+          usesPlatformNeeds: [],
           usesData: ["Note File", "Temporary Write File"],
           usesServices: [],
         },
@@ -156,7 +157,7 @@ describe("compiler contract consistency", () => {
           failureRecovery: "retry",
           surface: "main",
           acceptanceSignals: ["No temporary file remains after a successful write"],
-          usesPlatformNeeds: ["filesystem"],
+          usesPlatformNeeds: [],
           usesData: ["Note File", "Temporary Write File"],
           usesServices: [],
         },
@@ -169,7 +170,7 @@ describe("compiler contract consistency", () => {
           failureRecovery: "retry",
           surface: "main",
           acceptanceSignals: ["The chosen note text appears in the editor"],
-          usesPlatformNeeds: ["filesystem"],
+          usesPlatformNeeds: [],
           usesData: ["Note File"],
           usesServices: [],
         },
@@ -182,7 +183,7 @@ describe("compiler contract consistency", () => {
           failureRecovery: "retry",
           surface: "main",
           acceptanceSignals: ["A matching note appears in the results"],
-          usesPlatformNeeds: ["filesystem"],
+          usesPlatformNeeds: [],
           usesData: ["Workspace Folder Reference"],
           usesServices: [],
         },
@@ -210,6 +211,7 @@ describe("compiler contract consistency", () => {
       platformNeeds: ["filesystem", "local-storage"],
       qualityRequirements: ["Typing stays responsive"],
       productConstraints: ["No network access."],
+      ideaCoverage: [{ sentence: 1, features: [], outsideFeatures: "product" }],
     }
     const packet = await compilePacket(editor, "native-macos-swiftui-desktop")
     expect(packet.exportable).toBe(true)
@@ -264,7 +266,7 @@ describe("compiler contract consistency", () => {
           failureRecovery: "retry",
           surface: "main",
           acceptanceSignals: ["Reading the path returns the editor contents"],
-          usesPlatformNeeds: ["filesystem"],
+          usesPlatformNeeds: [],
           usesData: ["Note File", "Temporary Write File"],
           usesServices: [],
         },
@@ -277,7 +279,7 @@ describe("compiler contract consistency", () => {
           failureRecovery: "retry",
           surface: "main",
           acceptanceSignals: ["No temporary file remains after a successful write"],
-          usesPlatformNeeds: ["filesystem"],
+          usesPlatformNeeds: [],
           usesData: ["Note File", "Temporary Write File"],
           usesServices: [],
         },
@@ -290,7 +292,7 @@ describe("compiler contract consistency", () => {
           failureRecovery: "retry",
           surface: "main",
           acceptanceSignals: ["The editor shows the file contents"],
-          usesPlatformNeeds: ["filesystem"],
+          usesPlatformNeeds: [],
           usesData: ["Note File"],
           usesServices: [],
         },
@@ -303,7 +305,7 @@ describe("compiler contract consistency", () => {
           failureRecovery: "retry",
           surface: "main",
           acceptanceSignals: ["A matching note appears in the results"],
-          usesPlatformNeeds: ["filesystem"],
+          usesPlatformNeeds: [],
           usesData: ["Workspace Folder Reference"],
           usesServices: [],
         },
@@ -331,6 +333,7 @@ describe("compiler contract consistency", () => {
       platformNeeds: ["filesystem", "local-storage"],
       qualityRequirements: ["Typing stays responsive"],
       productConstraints: ["No network access"],
+      ideaCoverage: [{ sentence: 1, features: [], outsideFeatures: "product" }],
     }
     const packet = await compilePacket(editor, "native-macos-swiftui-desktop")
     expect(packet.exportable).toBe(true)
@@ -378,7 +381,7 @@ describe("compiler contract consistency", () => {
           failureRecovery: "retry",
           surface: "main",
           acceptanceSignals: ["The file bytes equal the editor text"],
-          usesPlatformNeeds: ["filesystem"],
+          usesPlatformNeeds: [],
           usesData: ["Note File", "Temporary Save File"],
           usesServices: [],
         },
@@ -391,7 +394,7 @@ describe("compiler contract consistency", () => {
           failureRecovery: "retry",
           surface: "main",
           acceptanceSignals: ["A matching note appears in the results"],
-          usesPlatformNeeds: ["filesystem"],
+          usesPlatformNeeds: [],
           usesData: ["Workspace Search Index"],
           usesServices: [],
         },
@@ -405,6 +408,7 @@ describe("compiler contract consistency", () => {
       platformNeeds: ["filesystem", "local-storage"],
       qualityRequirements: ["Typing stays responsive"],
       productConstraints: ["No network access"],
+      ideaCoverage: [{ sentence: 1, features: [], outsideFeatures: "product" }],
     }
     const packet = await compilePacket(editor, "native-macos-swiftui-desktop")
     expect(packet.exportable).toBe(true)

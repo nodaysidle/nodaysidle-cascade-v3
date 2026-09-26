@@ -94,42 +94,69 @@ describe("one-request provider-to-packet pipeline", () => {
     expect(compileCalls).toBe(0)
   })
 
-  it("blocks invalid JSON without a second request or provider text", async () => {
-    const { provider, requests } = sequenceProvider(['{"productName":"PRIVATE_PROVIDER_SENTINEL"'])
+  it("repairs a failed response once and reports what the repair fixed", async () => {
+    const invalid = structuredClone(fileOrganizerBlueprint) as Partial<typeof fileOrganizerBlueprint>
+    delete invalid.summary
+    const { provider, requests } = sequenceProvider([JSON.stringify(invalid), JSON.stringify(fileOrganizerBlueprint)])
+    const stages: string[] = []
+    const result = await generatePacket({ ...input, onProgress: stage => stages.push(stage) }, provider)
+
+    expect(result.status).toBe("gate-clean")
+    expect(result.exportable).toBe(true)
+    expect(result.repairedIssues).toContainEqual(expect.objectContaining({ path: "summary", rule: "schema.invalid_type" }))
+    expect(requests).toHaveLength(2)
+    expect(requests[0]!.instructions).toBe(requests[1]!.instructions)
+    expect(requests[1]!.requestId).toBe(requests[0]!.requestId)
+    expect(requests[1]!.input).toContain("- summary (schema.invalid_type)")
+    expect(requests[1]!.input).toContain(`Previous response:\n${JSON.stringify(invalid)}`)
+    expect(stages.filter(stage => stage.startsWith("provider"))).toEqual(["provider", "provider-repair"])
+  })
+
+  it("blocks invalid JSON after one repair without exposing provider text", async () => {
+    const { provider, requests } = sequenceProvider(['{"productName":"PRIVATE_PROVIDER_SENTINEL"', '{"productName":"PRIVATE_PROVIDER_SENTINEL"'])
     const result = await generatePacket(input, provider)
 
     expect(result.status).toBe("blueprint-validation-failed")
     expect(result.failure).toEqual({ kind: "invalid-json", classification: "invalid-json" })
     expect(result.issues).toEqual([{ path: "$", rule: "provider.invalid-json", message: "The completed provider response looks truncated before it became valid JSON." }])
+    expect(result.repairedIssues).toEqual(result.issues)
     expect(JSON.stringify(result)).not.toContain("PRIVATE_PROVIDER_SENTINEL")
-    expect(requests).toHaveLength(1)
+    expect(requests).toHaveLength(2)
   })
 
-  it("blocks schema-invalid JSON without a second request", async () => {
+  it("blocks schema-invalid JSON after exactly one repair request", async () => {
     const invalid = structuredClone(fileOrganizerBlueprint) as Partial<typeof fileOrganizerBlueprint>
     delete invalid.summary
-    const { provider, requests } = sequenceProvider([JSON.stringify(invalid)])
+    const { provider, requests } = sequenceProvider([JSON.stringify(invalid), JSON.stringify(invalid), JSON.stringify(fileOrganizerBlueprint)])
     const result = await generatePacket(input, provider)
 
     expect(result.status).toBe("blueprint-validation-failed")
     expect(result.exportable).toBe(false)
     expect(result.issues).toContainEqual(expect.objectContaining({ path: "summary", rule: "schema.invalid_type" }))
-    expect(requests).toHaveLength(1)
+    expect(requests).toHaveLength(2)
   })
 
-  it("blocks actual secret material without exposing it or calling again", async () => {
+  it("blocks actual secret material without exposing it, even in the repair request", async () => {
     const secret = structuredClone(fileOrganizerBlueprint)
     secret.features[0]!.behavior = "Use sk-abcdefghijklmnopqrstuvwxyz012345 for the action."
-    const { provider, requests } = sequenceProvider([JSON.stringify(secret)])
+    const { provider, requests } = sequenceProvider([JSON.stringify(secret), JSON.stringify(secret)])
     const result = await generatePacket(input, provider)
 
     expect(result.status).toBe("blueprint-validation-failed")
     expect(result.issues).toEqual([{ path: "features[0].behavior", rule: "semantic.secret-material", message: "Secret material is not accepted in provider content." }])
     expect(JSON.stringify(result)).not.toContain("sk-abcdefghijklmnopqrstuvwxyz012345")
-    expect(requests).toHaveLength(1)
+    expect(requests).toHaveLength(2)
+    expect(requests[1]!.input).not.toContain("sk-abcdefghijklmnopqrstuvwxyz012345")
+    expect(requests[1]!.input).toContain("[removed secret]")
   })
 
-  it("classifies local compiler and rendered-gate failures without another provider call", async () => {
+  it("never repairs transport failures or local compiler failures", async () => {
+    const transport = sequenceProvider([{ kind: "transport", classification: "request-failed" }, JSON.stringify(fileOrganizerBlueprint)])
+    expect((await generatePacket(input, transport.provider)).status).toBe("provider-failure")
+    expect(transport.requests).toHaveLength(1)
+  })
+
+  it("classifies local compiler and rendered-gate failures", async () => {
     const first = sequenceProvider([JSON.stringify(fileOrganizerBlueprint)])
     const compilerFailure = await generatePacket(input, first.provider, async () => {
       throw new Error("PRIVATE_COMPILER_SENTINEL")
@@ -139,7 +166,7 @@ describe("one-request provider-to-packet pipeline", () => {
     expect(first.requests).toHaveLength(1)
 
     const validPacket = await compilePacket(fileOrganizerBlueprint, input.presetId)
-    const second = sequenceProvider([JSON.stringify(fileOrganizerBlueprint)])
+    const second = sequenceProvider([JSON.stringify(fileOrganizerBlueprint), JSON.stringify(fileOrganizerBlueprint)])
     const lintFailure = await generatePacket(input, second.provider, async () => ({
       ...validPacket,
       exportable: false,
@@ -148,7 +175,8 @@ describe("one-request provider-to-packet pipeline", () => {
     expect(lintFailure.status).toBe("lint-failure")
     expect(lintFailure.exportable).toBe(false)
     expect(lintFailure.issues).toEqual([{ rule: "trace.missing-reference", path: "ARD.md", message: "A required local reference is missing." }])
-    expect(second.requests).toHaveLength(1)
+    // A rendered-gate failure is sent back once; a local compiler failure never is.
+    expect(second.requests).toHaveLength(2)
   })
 
   it("returns one actionable graph error before rendering", async () => {

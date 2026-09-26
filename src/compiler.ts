@@ -501,12 +501,12 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
     }
   }).filter(item => item.name && item.purpose))
   // File access follows declared documents: a feature gets the filesystem permission exactly when it
-  // reads or writes a document data object, whatever its own filesystem flag says.
+  // reads or writes a document data object; features cannot declare filesystem themselves.
   const documentNames = new Set(dataObjects.filter(item => item.storage === "document").map(item => item.name))
   const features = baseFeatures.map(({ usesPlatformNeeds, usesData, usesServices, ...feature }) => ({
     ...feature,
     resourceIds: featureResourceIds(
-      [...usesPlatformNeeds.filter(need => need !== "filesystem"), ...(usesData.some(name => documentNames.has(name)) ? ["filesystem" as const] : [])],
+      [...usesPlatformNeeds, ...(usesData.some(name => documentNames.has(name)) ? ["filesystem" as const] : [])],
       usesData,
       usesServices,
     ),
@@ -864,7 +864,7 @@ function persistencePlacement(
     case "settings":
       return userDefaultsPlacement
     case "records":
-      return `SQLite at Application Support/${identity.bundleId}/${identity.slug}.sqlite3 under the matching record schema.`
+      return `SQLite at Application Support/${identity.bundleId}/${identity.slug}.sqlite3 under the matching record schema; PRAGMA user_version stores the schema version, and the data store's focused test asserts it after opening the database.`
   }
 }
 

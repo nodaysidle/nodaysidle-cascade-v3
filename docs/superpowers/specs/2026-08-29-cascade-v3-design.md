@@ -34,7 +34,7 @@ idea + locked preset + model + URL + two memory-only keys
   -> Rust hash revalidation and atomic exact-five export
 ```
 
-There is exactly one DeepSeek request for each Generate action, plus the Jev decision requests before and after it. Incomplete, truncated, filtered, failed, in-progress, malformed, cancelled, or unknown responses are rejected before semantic parsing or compilation. Schema-valid usable meaning proceeds directly to local normalization; no provider call rewrites a blueprint.
+There is one DeepSeek request for each Generate action, plus the Jev decision requests before and after it; when the response's content fails a deterministic check, one repair request sends the failed checks and the previous response, and every check runs again (decided 2026-09-26). Incomplete, truncated, filtered, failed, in-progress, malformed, cancelled, or unknown responses are rejected before semantic parsing or compilation. Schema-valid usable meaning proceeds directly to local normalization; only the single repair request rewrites a blueprint.
 
 Provider output is not claimed to be byte-deterministic. Only repeated local compilation from the same accepted normalized blueprint and preset is required to be byte-identical.
 

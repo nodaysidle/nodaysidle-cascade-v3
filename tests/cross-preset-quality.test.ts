@@ -51,6 +51,7 @@ export const noteSummarizerAstroBlueprint: SemanticBlueprint = {
   platformNeeds: ["local-storage"],
   qualityRequirements: ["Summary renders in under 2 seconds"],
   productConstraints: ["Content collections only"],
+  ideaCoverage: [{ sentence: 1, features: [], outsideFeatures: "product" }],
 }
 
 describe("Cross-Preset OpenRouter Quality & Isolation (H1 & M2)", () => {

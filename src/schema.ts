@@ -21,6 +21,10 @@ export const PlatformNeedSchema = z.enum([
   "location",
 ])
 
+// File access is never a feature platform need: it comes only from a declared document data object,
+// so the provider has no second place to state it and the two can never disagree.
+export const FeaturePlatformNeedSchema = PlatformNeedSchema.exclude(["filesystem"])
+
 export const FeatureRecoverySchema = z.enum(["retry", "fallback", "exit"])
 export const FeatureSurfaceSchema = z.enum(["main", "item-page", "about-page", "not-found-page"])
 
@@ -33,7 +37,7 @@ const FeatureSchema = z.strictObject({
   failureRecovery: FeatureRecoverySchema,
   surface: FeatureSurfaceSchema,
   acceptanceSignals: requiredMeaningList,
-  usesPlatformNeeds: z.array(PlatformNeedSchema).max(12),
+  usesPlatformNeeds: z.array(FeaturePlatformNeedSchema).max(12),
   usesData: z.array(shortMeaning).max(8),
   usesServices: z.array(shortMeaning).max(8),
 })
@@ -57,6 +61,16 @@ const ExternalServiceSchema = z.strictObject({
   credentialRequired: z.boolean(),
 })
 
+export const MAX_IDEA_SENTENCES = 60
+
+// One entry per numbered sentence of the user's idea, so a dropped requirement or an unrequested
+// feature is a structural fact the pipeline can check instead of prose it has to trust.
+const IdeaCoverageSchema = z.strictObject({
+  sentence: z.number().int().min(1).max(MAX_IDEA_SENTENCES),
+  features: z.array(shortMeaning).max(12),
+  outsideFeatures: z.enum(["none", "product", "non-goal", "constraint"]),
+})
+
 export const SemanticBlueprintSchema = z.strictObject({
   productName: z.string().trim().min(1).max(80),
   summary: meaning,
@@ -69,10 +83,12 @@ export const SemanticBlueprintSchema = z.strictObject({
   platformNeeds: z.array(PlatformNeedSchema),
   qualityRequirements: meaningList,
   productConstraints: meaningList,
+  ideaCoverage: z.array(IdeaCoverageSchema).min(1).max(MAX_IDEA_SENTENCES),
 })
 
 export type SemanticBlueprint = z.infer<typeof SemanticBlueprintSchema>
 export type PlatformNeed = z.infer<typeof PlatformNeedSchema>
+export type FeaturePlatformNeed = z.infer<typeof FeaturePlatformNeedSchema>
 export type DataStorage = z.infer<typeof DataStorageSchema>
 export type DataWriteMode = z.infer<typeof DataWriteModeSchema>
 export type FeatureRecovery = z.infer<typeof FeatureRecoverySchema>
@@ -247,6 +263,11 @@ const secretPatterns = [
   /\b(?:api[_ -]?key|access[_ -]?token|client[_ -]?secret|password)\s*[:=]\s*["']?[A-Za-z0-9._~-]{16,}/i,
 ]
 
+// Replaces anything that looks like a credential before provider text is sent anywhere again.
+export function redactSecretMaterial(text: string): string {
+  return secretPatterns.reduce((value, pattern) => value.replace(new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`), "[removed secret]"), text)
+}
+
 export function referenceKey(name: string): string {
   return name.normalize("NFKC").trim().replace(/\s+/g, " ").replace(/[.]+$/, "").toLocaleLowerCase("en-US")
 }
@@ -296,23 +317,8 @@ function featureProse(feature: SemanticBlueprint["features"][number]): string[] 
   return [feature.name, feature.userOutcome, feature.trigger, feature.behavior, feature.failureOutcome, ...feature.acceptanceSignals]
 }
 
-// File access is granted only through a declared document, so a provider feature that flags filesystem
-// without listing a document has an undeclared user-chosen file. This runs on provider output only,
-// before Jev may heal platform needs.
-function filesystemDocumentIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
-  const documents = new Set(blueprint.dataObjects.filter(item => item.storage === "document").map(item => referenceKey(item.name)))
-  return blueprint.features.flatMap((feature, index) =>
-    feature.usesPlatformNeeds.includes("filesystem") && !feature.usesData.some(name => documents.has(referenceKey(name)))
-      ? [{
-        path: `features[${index}].usesPlatformNeeds`,
-        rule: "semantic.filesystem-without-document",
-        message: `Feature '${feature.name}' lists filesystem but no document dataObject for the file or folder the user chooses.`,
-      }]
-      : [])
-}
-
 export function auditSemanticIntake(blueprint: SemanticBlueprint): SemanticIssue[] {
-  const issues: SemanticIssue[] = [...featureReferenceIssues(blueprint), ...filesystemDocumentIssues(blueprint)]
+  const issues: SemanticIssue[] = [...featureReferenceIssues(blueprint)]
   if (unusableMeaning.test(blueprint.productName)) {
     issues.push({ path: "productName", rule: "semantic.unusable-product", message: "The product name does not contain usable product meaning." })
   }
@@ -331,6 +337,52 @@ export function auditSemanticIntake(blueprint: SemanticBlueprint): SemanticIssue
   return issues
 }
 
+// Deterministic sentence split: a break after ., !, ? or ; followed by whitespace. Clauses joined by a
+// semicolon become separate sentences so each requirement is mapped on its own.
+export function splitIdeaSentences(idea: string): string[] {
+  return idea.replace(/\s+/g, " ").trim().split(/(?<=[.!?;])\s+/).map(item => item.trim()).filter(Boolean)
+}
+
+export function auditIdeaCoverage(blueprint: SemanticBlueprint, idea: string): SemanticIssue[] {
+  const sentences = splitIdeaSentences(idea)
+  const featureNames = new Map(blueprint.features.map(feature => [referenceKey(feature.name), feature.name]))
+  const covered = new Set<string>()
+  const seen = new Set<number>()
+  const issues: SemanticIssue[] = []
+  blueprint.ideaCoverage.forEach((entry, index) => {
+    const path = `ideaCoverage[${index}]`
+    if (entry.sentence > sentences.length) {
+      issues.push({ path, rule: "semantic.coverage-unknown-sentence", message: `Idea sentence ${entry.sentence} does not exist; the idea has ${sentences.length} numbered sentences.` })
+      return
+    }
+    if (seen.has(entry.sentence)) issues.push({ path, rule: "semantic.coverage-duplicate-sentence", message: `Idea sentence ${entry.sentence} has more than one ideaCoverage entry.` })
+    seen.add(entry.sentence)
+    entry.features.forEach((name, featureIndex) => {
+      const key = referenceKey(name)
+      if (featureNames.has(key)) covered.add(key)
+      else issues.push({ path: `${path}.features[${featureIndex}]`, rule: "semantic.coverage-unknown-feature", message: `Idea sentence ${entry.sentence} names '${name}', which is not a declared feature.` })
+    })
+    if (!entry.features.length && entry.outsideFeatures === "none") {
+      issues.push({ path, rule: "semantic.coverage-no-feature", message: `Idea sentence ${entry.sentence} ("${sentences[entry.sentence - 1]}") is covered by no feature.` })
+    }
+    if (entry.outsideFeatures === "non-goal" && !blueprint.nonGoals.length) {
+      issues.push({ path, rule: "semantic.coverage-missing-non-goal", message: `Idea sentence ${entry.sentence} is marked non-goal but nonGoals is empty.` })
+    }
+    if (entry.outsideFeatures === "constraint" && !blueprint.productConstraints.length && !blueprint.qualityRequirements.length) {
+      issues.push({ path, rule: "semantic.coverage-missing-constraint", message: `Idea sentence ${entry.sentence} is marked constraint but productConstraints and qualityRequirements are empty.` })
+    }
+  })
+  sentences.forEach((sentence, index) => {
+    if (!seen.has(index + 1)) issues.push({ path: "ideaCoverage", rule: "semantic.coverage-missing-sentence", message: `Idea sentence ${index + 1} ("${sentence}") has no ideaCoverage entry.` })
+  })
+  blueprint.features.forEach((feature, index) => {
+    if (!covered.has(referenceKey(feature.name))) {
+      issues.push({ path: `features[${index}]`, rule: "semantic.feature-not-requested", message: `Feature '${feature.name}' is listed by no idea sentence; map it to the sentence that asks for it or remove it.` })
+    }
+  })
+  return issues
+}
+
 export function buildBlueprintInstructions(input: BlueprintInstructionInput): string {
   return [
     "Return exactly one complete JSON value conforming to the strict semantic_blueprint json_schema supplied in the request text.format.",
@@ -346,12 +398,13 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "State one decided behavior for every rule. Never leave a choice between two behaviors for the builder to make (for example 'retries or skips'); pick one. Options that the user chooses between, such as a list of billing cycles, are fine. Give every scheduled or repeated action an exact time or interval and state how it avoids acting twice for the same item.",
     "Use no more than twelve features and no more than eight values in each prose list. List a platform need only when a stated feature uses it. Do not add features, settings, or platform needs that the idea does not ask for.",
     "Every acceptance signal checks only the behavior of its own feature. Never repeat a behavior that another feature owns.",
-    "For every feature, list in usesPlatformNeeds each platform need that feature itself exercises, in usesData the exact names of the dataObjects it reads or writes, and in usesServices the exact names of the externalServices it calls. Use empty arrays when a feature uses none. Every name must match a declared dataObject or externalService exactly. Declare a dataObject or externalService only when at least one feature lists it: every dataObject must appear in some feature's usesData and every externalService in some feature's usesServices, or the blueprint is rejected.",
-    "List filesystem in a feature's usesPlatformNeeds only when that feature reads or writes a file or folder the user chooses in an open or save panel or by drag and drop. Reading or writing the app's own settings, records, app-files, or temporary data never needs filesystem.",
-    "Declare a document dataObject for every file or folder the user chooses to open, import, or save, such as an imported source file or an export. List it in usesData only for features that open, reopen, import, or write that file or folder itself; a feature that only works on its content after it is loaded lists a session dataObject for that loaded content instead. File access is granted only to features that list a document dataObject. Set its writeMode to atomic-replace when a failed write must leave an existing file at that location unchanged.",
+    "For every feature, list in usesPlatformNeeds each platform need that feature itself exercises (file access is not a platform need; it comes only from a document dataObject), in usesData the exact names of the dataObjects it reads or writes, and in usesServices the exact names of the externalServices it calls. Use empty arrays when a feature uses none. Every name must match a declared dataObject or externalService exactly. Declare a dataObject or externalService only when at least one feature lists it: every dataObject must appear in some feature's usesData and every externalService in some feature's usesServices, or the blueprint is rejected.",
+    "Declare a document dataObject for every file or folder the user chooses to open, import, or save, such as an imported source file or an export. An import feature lists both the document the user chooses and whatever it creates from it, for example a document named for the chosen source file plus the app-files copy and the record. List it in usesData only for features that open, reopen, import, or write that file or folder itself; a feature that only works on its content after it is loaded lists a session dataObject for that loaded content instead. File access is granted only to features that list a document dataObject. Set its writeMode to atomic-replace when a failed write must leave an existing file at that location unchanged.",
     "For every dataObject, set storage to settings for small user preferences, records for structured app-owned records or history, document for files or folders the user opens, imports, or saves at a location the user chooses, app-files for files the app itself copies or creates and keeps in its own folder (such as imported attachments, photos, or recordings), secret for API keys, tokens, or other credentials, temporary for short-lived files removed automatically, and session for values held in memory and never written to disk.",
     "For every feature, set failureRecovery to exit when its failure outcome ends the app or process; fallback only when the failure outcome itself names data or a default the app switches to automatically so the user does nothing (for example the last cached rates or the previous saved value); and retry when the operation is rejected, blocked, or shows an error the user must act on, and in every other case. Set surface to main unless the idea itself asks for that feature as its own page per item with a direct link (item-page), an about page (about-page), or a page for unknown links (not-found-page). Never add a feature only to use a surface value.",
     "For every dataObject, set writeMode to atomic-replace when a save must never leave a partially written copy (it is written to a temporary copy and swapped in whole), and direct otherwise. Do not declare that temporary copy as its own dataObject; writeMode atomic-replace on the stored dataObject already covers it.",
+    "Return ideaCoverage with exactly one entry for every numbered idea sentence below. In features, list the exact names of every feature that implements what the sentence asks for. Set outsideFeatures to product when the sentence only names the product or its purpose, non-goal when it only rules something out and nonGoals states it, constraint when it only states a constraint or quality that productConstraints or qualityRequirements states, and none otherwise. A sentence that asks for any behavior lists at least one feature, and every feature is listed by at least one sentence.",
     `Software idea: ${input.idea.trim()}`,
+    `Idea sentences:\n${splitIdeaSentences(input.idea).map((sentence, index) => `${index + 1}. ${sentence}`).join("\n")}`,
   ].join("\n\n")
 }

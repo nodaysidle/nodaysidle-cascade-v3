@@ -2,7 +2,8 @@
 
 A macOS Tauri 2 app that compiles one software idea plus one locked stack preset into exactly
 five Markdown files (PRD, ARD, TRD, TASKS, AGENTS) that a coding agent can build from.
-One DeepSeek request supplies product meaning; TypeSafe Jev gates intake and integrity;
+One DeepSeek request supplies product meaning, with at most one repair request when its content
+fails a deterministic check; TypeSafe Jev gates intake and integrity;
 everything else (IDs, graph, file paths, phases, Markdown bytes) is local deterministic code.
 
 This repository is the compiler. It is not any app the compiler has produced.
@@ -30,9 +31,12 @@ The only stack-specific knowledge lives in `src/presets.ts` (plus `src/astroWeb.
 
 - Each feature declares `usesPlatformNeeds`, `usesData`, and `usesServices`. Permission, data,
   persistence, and integration contracts link only to the features that declare them. File access
-  is the exception: the filesystem permission links exactly to features that use a `document`
-  data object (a file or folder the user chooses), whatever their `filesystem` flag says. Intake
-  rejects provider output where a feature lists `filesystem` without a `document`.
+  is not a feature platform need: the filesystem permission links exactly to features that use a
+  `document` data object (a file or folder the user chooses), so there is one place to state it.
+- The blueprint's `ideaCoverage` maps every numbered sentence of the user's idea (split
+  deterministically by `splitIdeaSentences`) to the features, product statement, non-goal, or
+  constraint that covers it. Intake rejects a missing or featureless sentence and any feature no
+  sentence asks for (`auditIdeaCoverage`).
 - Each data object declares `storage` (settings, records, document, app-files, secret, temporary, session);
   the preset maps that kind to a concrete store. It also declares `writeMode` (direct,
   atomic-replace), which sets the atomic-write rule and temporary-file placement. A temporary
@@ -61,7 +65,9 @@ The only stack-specific knowledge lives in `src/presets.ts` (plus `src/astroWeb.
   a hands-on launch check runs before completion. Per-owner unit tests alone let a build pass with
   a hollow app.
 - Keep these product requirements: exactly five exported files; preview bytes equal export bytes;
-  API keys memory-only, never logged, persisted, or exported; no provider retry or repair.
+  API keys memory-only, never logged, persisted, or exported; no provider retry except one repair
+  request that sends the failed checks and the previous response (secrets redacted) when the
+  content fails validation, integrity, normalization, or the export gate (`src/pipeline.ts`).
 - DeepSeek models: `deepseek-flash` (default) and `deepseek-v4-pro`. `deepseek-v4-flash` is a
   retired alias kept only for compatibility.
 

@@ -48,6 +48,7 @@ export function astroOwnershipBlueprint(
     platformNeeds: [],
     qualityRequirements: ["Use semantic HTML, keyboard navigation, and WCAG 2.2 AA contrast."],
     productConstraints: ["Publish no secret, credential, private repository data, or invented release status."],
+    ideaCoverage: [{ sentence: 1, features: [], outsideFeatures: "product" }],
   }
 }
 

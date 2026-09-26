@@ -351,9 +351,9 @@ describe("Jev postflight boundary", () => {
     expect(result.packet?.documents).toEqual(expected.documents)
   })
 
-  it("blocks a foreign-stack blueprint before the compiler and export", async () => {
-    const { provider, requests: deepseekRequests } = deepseekSequence([JSON.stringify(fileOrganizerBlueprint)])
-    const { provider: jevProvider, requests: jevRequests } = jevSequence([preflightJson(0.9), postflightJson({}, 0.71)])
+  it("blocks a foreign-stack blueprint before the compiler and export after one repair", async () => {
+    const { provider, requests: deepseekRequests } = deepseekSequence([JSON.stringify(fileOrganizerBlueprint), JSON.stringify(fileOrganizerBlueprint)])
+    const { provider: jevProvider, requests: jevRequests } = jevSequence([preflightJson(0.9), postflightJson({}, 0.71), postflightJson({}, 0.71)])
     const captured: CompilerCapture[] = []
     const result = await generatePacket(input, provider, captureCompiler(captured), jevProvider)
 
@@ -361,8 +361,9 @@ describe("Jev postflight boundary", () => {
     expect(result.exportable).toBe(false)
     expect(result.packet).toBeUndefined()
     expect(captured).toHaveLength(0)
-    expect(deepseekRequests).toHaveLength(1)
-    expect(jevRequests).toHaveLength(2)
+    expect(deepseekRequests).toHaveLength(2)
+    expect(deepseekRequests[1]!.input).toContain("(jev.foreign-stack-leakage)")
+    expect(jevRequests).toHaveLength(3)
     expect(result.issues).toEqual([
       {
         path: "$jev",
@@ -601,9 +602,9 @@ describe("Jev safe fixed diagnostics", () => {
 
     const leakage = await generatePacket(
       { ...input, idea: secretIdea },
-      deepseekSequence([JSON.stringify(fileOrganizerBlueprint)]).provider,
+      deepseekSequence([JSON.stringify(fileOrganizerBlueprint), JSON.stringify(fileOrganizerBlueprint)]).provider,
       captureCompiler([]),
-      jevSequence([preflightJson(0.9), postflightJson({}, 0.99)]).provider,
+      jevSequence([preflightJson(0.9), postflightJson({}, 0.99), postflightJson({}, 0.99)]).provider,
     )
     expect(leakage.status).toBe("blueprint-integrity-failed")
     expect(JSON.stringify(leakage)).not.toMatch(/PRIVATE_IDEA_SENTINEL|PRIVATE_DEEPSEEK_KEY_SENTINEL|PRIVATE_JEV_KEY_SENTINEL|PRIVATE_JEV_RESPONSE_SENTINEL|PRIVATE_JEV_FAILURE_SENTINEL/)
@@ -670,9 +671,10 @@ describe("Jev UI state and keys", () => {
 
 describe("Jev acceptance verifiability boundary", () => {
   it("rejects blueprints when Jev detects unverifiable acceptance signals", async () => {
-    const { provider } = deepseekSequence([JSON.stringify(fileOrganizerBlueprint)])
+    const { provider } = deepseekSequence([JSON.stringify(fileOrganizerBlueprint), JSON.stringify(fileOrganizerBlueprint)])
     const { provider: jevProvider } = jevSequence([
       preflightJson(0.95),
+      postflightJson({}, 0, JEV_ACCEPTANCE_VERIFIABILITY_THRESHOLD - 0.01),
       postflightJson({}, 0, JEV_ACCEPTANCE_VERIFIABILITY_THRESHOLD - 0.01),
     ])
     const result = await generatePacket(input, provider, captureCompiler([]), jevProvider)

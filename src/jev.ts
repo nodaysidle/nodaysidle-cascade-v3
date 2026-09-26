@@ -611,7 +611,8 @@ export function evaluateJevAtomicAudit(outcomes: readonly JevOutcome[], blueprin
     ...blueprint,
     features: blueprint.features.map((feature, index) => {
       const need = confidentFeatureNeeds.get(index)
-      return need && !feature.usesPlatformNeeds.includes(need)
+      // File access is granted only through declared documents, so it is never healed onto a feature.
+      return need && need !== "filesystem" && !feature.usesPlatformNeeds.includes(need)
         ? { ...feature, usesPlatformNeeds: [...feature.usesPlatformNeeds, need] }
         : feature
     }),

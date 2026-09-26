@@ -144,6 +144,15 @@ describe("declared storage, recovery, and sentence form stay precise", () => {
       expect(exported.details.find(detail => detail.startsWith("Write mode: "))).toMatch(/renam/)
     }
 
+    // Every preset makes failures visible, cleans up after the launch check, and versions its SQLite schema.
+    const wiring = packet.graph.contracts.find(item => item.id === "CON-RUNTIME-WIRING")!
+    expect(wiring.details.some(detail => detail.startsWith("Every failure behavior that shows the user a message is visible in the running app"))).toBe(true)
+    expect(wiring.details.some(detail => detail.startsWith("The launch check leaves no test data behind"))).toBe(true)
+    if (presetId.startsWith("native-macos") || presetId === "tauri2-rust-typescript-desktop") {
+      const index = packet.graph.contracts.find(item => item.id === "CON-PERSISTENCE-SCAN-INDEX")!
+      expect(index.details.find(detail => detail.startsWith("Placement:"))).toContain("PRAGMA user_version stores the schema version")
+    }
+
     // A declared automatic fallback never sits next to a rule that forbids non-user retries.
     const fallback = packet.graph.contracts.find(item => item.id === "CON-TAG-FILTER-RECOVERY")!
     expect(fallback.recovery.join(" ")).toContain("Apply the stated fallback automatically")

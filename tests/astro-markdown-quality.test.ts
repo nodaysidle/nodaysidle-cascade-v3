@@ -61,6 +61,7 @@ const portfolioBlueprint: SemanticBlueprint = {
   platformNeeds: [],
   qualityRequirements: ["Dark-first, high-contrast presentation.", "Keyboard-operable filters and navigation.", "Meet WCAG 2.2 AA."],
   productConstraints: ["Publish no secret, credential, or private repository data.", "Do not invent release status."],
+  ideaCoverage: [{ sentence: 1, features: [], outsideFeatures: "product" }],
 }
 
 describe("astro markdown quality improvements", () => {

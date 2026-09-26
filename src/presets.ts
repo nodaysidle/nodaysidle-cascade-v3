@@ -16,6 +16,13 @@ export interface PresetSemanticInput {
   readonly externalServices: readonly { readonly credentialRequirement: "none" | "api-key" }[]
 }
 
+// Every preset's CON-RUNTIME-WIRING carries these: a failure the PRD shows the user must be visible in
+// the running app, and the hands-on launch check must not leave its test data in the user's real state.
+const SHARED_WIRING_RULES = [
+  "Every failure behavior that shows the user a message is visible in the running app: a view renders the owning feature's error state, and no entry point silently discards an error that the PRD says the user sees. The launch check triggers one such failure per feature that has one and confirms the message appears.",
+  "The launch check leaves no test data behind: it restores every setting it changed to its previous value and removes every record and file it created, and the completion report lists anything it could not remove.",
+] as const
+
 export const USER_SELECTED_FILE_PLACEMENT = "Local filesystem at user-selected paths via native open/save panels."
 
 export interface ProjectIdentity {
@@ -257,6 +264,7 @@ const swiftDesktop: PresetContract = {
     "The composition root constructs every feature with the concrete platform owners named in the contracts; test doubles (in-memory stores, print-only notifications, fake credential or network clients) exist only under Tests/.",
     "PackagingContractTests constructs the production composition root and asserts that every injected platform dependency is the concrete production type, not a test double.",
     "Before completion, launch the installed app, complete one acceptance outcome per feature through the UI, quit, relaunch, and confirm that saved records and settings are still present.",
+    ...SHARED_WIRING_RULES,
   ],
   completionEvidence: ["Swift tests and release build exit successfully.", "The .app has the locked bundle ID and resources.", "codesign strict verification succeeds.", "LaunchServices starts the production process."],
 }
@@ -312,7 +320,7 @@ const tauriDesktop: PresetContract = {
     enabledDecision: "Persistence: enabled and local-first; settings use atomic JSON and record collections use SQLite through a Rust repository boundary.",
     disabledDecision: "Persistence: disabled; keep transient state in memory and create no app-data files.",
     settingsPlacement: "Atomic JSON in the Tauri app-data directory through one Rust command boundary.",
-    recordsPlacement: "SQLite in the Tauri app-data directory with migrations and transactions owned by Rust.",
+    recordsPlacement: "SQLite in the Tauri app-data directory with migrations and transactions owned by Rust; PRAGMA user_version stores the schema version, and a Rust test asserts it after opening the database.",
     documentPlacement: "Local filesystem at the path the user chooses through tauri-plugin-dialog; Rust reads or writes that exact path and nothing else.",
     appFilesPlacement: () => "Files in the files/ subdirectory of the Tauri app-data directory, created only by Rust under generated unique file names; stored references hold the file name relative to that folder, never an absolute path or a user-selected location.",
     temporaryPlacement: "Use the Tauri app-cache directory with one random per-operation file owned by Rust; retain only for explicit recovery and delete on success, discard, cancellation, or exhausted recovery.",
@@ -339,6 +347,7 @@ const tauriDesktop: PresetContract = {
     "src/main.ts constructs every feature with adapters that call invoke() or the initialized plugin APIs; test doubles (in-memory stores, console-only notifications, fake tray or credential calls) exist only under tests/.",
     "src-tauri/Cargo.toml declares tauri with the test feature under [dev-dependencies]; the packaging focused test builds app_builder(tauri::test::mock_builder()) and calls every registered command through tauri::test::get_ipc_response, failing if any command the frontend invokes is missing.",
     "Before completion, launch the installed app, complete one acceptance outcome per feature through the UI, quit, relaunch, and confirm that saved records and settings are still present.",
+    ...SHARED_WIRING_RULES,
   ],
   wiringManifestFiles: ["src-tauri/Cargo.toml"],
   completionEvidence: ["TypeScript, Vitest, Rust format, Clippy, and Cargo tests pass.", "Tauri builds the .app bundle from the locked capabilities.", "The built .app installs and launches.", "Local data and temporary-resource cleanup survive restart smoke."],
@@ -400,6 +409,7 @@ const astroWeb: PresetContract = {
     "Pages and components render data from the declared content collections, server endpoints, or browser stores named in the contracts; no page or component keeps sample records inline, and test fixtures exist only under tests/.",
     "The packaging focused test builds the site and asserts that every declared route exists in the output and renders its declared data source.",
     "Before completion, serve the production build, open every declared route, and complete one acceptance outcome per feature.",
+    ...SHARED_WIRING_RULES,
   ],
   completionEvidence: ["Type, content, unit, and production build checks pass.", "Accessibility has no critical findings.", "SEO metadata and internal links validate.", "The production performance budget passes."],
 }
@@ -460,6 +470,7 @@ const androidCompose: PresetContract = {
     "App.kt is the composition root and provides the concrete repositories, services, and platform adapters named in the contracts; fakes and in-memory stores exist only under app/src/test and app/src/androidTest.",
     "The packaging focused test constructs the production composition root and asserts that every provided dependency is the concrete production type, not a fake.",
     "Before completion, install the APK, complete one acceptance outcome per feature, force-stop the app, relaunch, and confirm that saved records and settings are still present.",
+    ...SHARED_WIRING_RULES,
   ],
   completionEvidence: ["Unit, lint, Compose UI, and required instrumentation tests pass.", "assembleDebug produces the expected APK.", "The manifest contains only derived permissions.", "adb installs and launches the locked applicationId."],
 }

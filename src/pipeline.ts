@@ -21,10 +21,14 @@ import {
 } from "./jev"
 import type { PresetId } from "./presets"
 import {
+  auditIdeaCoverage,
   auditSemanticIntake,
   buildBlueprintInstructions,
+  MAX_IDEA_SENTENCES,
   parseBlueprintJson,
   providerJsonSchema,
+  redactSecretMaterial,
+  splitIdeaSentences,
   type SemanticIssue,
 } from "./schema"
 
@@ -38,7 +42,7 @@ export const PROVIDER_MODELS = [
 // The legacy "deepseek-v4-flash" transport alias stays accepted (state validation, the smoke
 // fixture path, and the Rust provider all accept it) without joining the selectable list.
 export type ProviderModel = (typeof PROVIDER_MODELS)[number]["id"] | "deepseek-v4-flash"
-export type ProgressStage = "jev-preflight" | "provider" | "blueprint-validation" | "jev-integrity" | "local-normalization" | LocalCompileStage
+export type ProgressStage = "jev-preflight" | "provider" | "provider-repair" | "blueprint-validation" | "jev-integrity" | "local-normalization" | LocalCompileStage
 export type ProviderFailureKind = "transport" | "timeout" | "http" | "incomplete" | "failed-response" | "invalid-wrapper" | "invalid-json" | "invalid-request" | "cancelled" | "unknown"
 
 export interface ProviderFailure {
@@ -91,6 +95,8 @@ export interface GeneratePacketResult {
   readonly failure?: ProviderFailure
   readonly issues: readonly SemanticIssue[]
   readonly jev?: JevReport
+  // Present when the first provider response failed and one repair request was sent: the checks it failed.
+  readonly repairedIssues?: readonly SemanticIssue[]
 }
 
 const failureKinds = new Set<ProviderFailureKind>(["transport", "timeout", "http", "incomplete", "failed-response", "invalid-wrapper", "invalid-json", "invalid-request", "cancelled", "unknown"])
@@ -195,7 +201,22 @@ export function isSafeProviderUrl(value: string): boolean {
   }
 }
 
-function providerRequest(input: GeneratePacketInput): ProviderRequest {
+interface RepairContext {
+  readonly previousText: string
+  readonly issues: readonly SemanticIssue[]
+}
+
+export const BLUEPRINT_INPUT = "Return the compact semantic JSON value for the supplied software idea."
+
+export function buildRepairInput(repair: RepairContext): string {
+  return [
+    "Your previous response failed the deterministic checks listed below. Return one complete corrected JSON value for the same software idea. Fix every listed issue, keep every part that no issue names unchanged, and follow every rule in the instructions.",
+    `Failed checks:\n${repair.issues.map(issue => `- ${issue.path} (${issue.rule}): ${issue.message}`).join("\n")}`,
+    `Previous response:\n${redactSecretMaterial(repair.previousText)}`,
+  ].join("\n\n")
+}
+
+function providerRequest(input: GeneratePacketInput, repair?: RepairContext): ProviderRequest {
   return {
     requestId: input.requestId,
     apiUrl: input.apiUrl,
@@ -203,7 +224,7 @@ function providerRequest(input: GeneratePacketInput): ProviderRequest {
     model: input.model,
     ...PROVIDER_SETTINGS,
     instructions: buildBlueprintInstructions({ idea: input.idea }),
-    input: "Return the compact semantic JSON value for the supplied software idea.",
+    input: repair ? buildRepairInput(repair) : BLUEPRINT_INPUT,
   }
 }
 
@@ -250,6 +271,10 @@ export async function generatePacket(
     const failure = { kind: "invalid-request", classification: "invalid-request" } as const
     return failureResult("provider-failure", [{ path: "$idea", rule: "provider.idea-too-long", message: "The software idea exceeds the 32,000 character request limit." }], failure)
   }
+  if (splitIdeaSentences(input.idea).length > MAX_IDEA_SENTENCES) {
+    const failure = { kind: "invalid-request", classification: "invalid-request" } as const
+    return failureResult("provider-failure", [{ path: "$idea", rule: "provider.idea-too-many-sentences", message: `The software idea has more than ${MAX_IDEA_SENTENCES} sentences; shorten or merge sentences.` }], failure)
+  }
   if (!isSafeProviderUrl(input.apiUrl)) {
     const failure = { kind: "invalid-request", classification: "invalid-request" } as const
     return failureResult("provider-failure", [{ path: "$provider.url", rule: "provider.invalid-url", message: "The provider URL must be an HTTPS Responses endpoint without embedded data." }], failure)
@@ -277,21 +302,50 @@ export async function generatePacket(
     presetMismatch = preflight.decision.presetMismatch
   }
 
-  input.onProgress?.("provider")
-  let providerText: string
-  try {
-    providerText = await provider(providerRequest(input))
-  } catch (error) {
-    const failure = cancelled(input)
-      ? { kind: "cancelled", classification: "cancelled" } as const
-      : normalizeProviderFailure(error)
-    return failureResult(failure.kind === "cancelled" ? "cancelled" : "provider-failure", [providerIssue(failure)], failure)
-  }
-  if (cancelled(input)) {
-    const failure = { kind: "cancelled", classification: "cancelled" } as const
-    return failureResult("cancelled", [providerIssue(failure)], failure)
-  }
+  let repair: RepairContext | undefined
+  let repairedIssues: readonly SemanticIssue[] | undefined
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    input.onProgress?.(repair ? "provider-repair" : "provider")
+    let providerText: string
+    try {
+      providerText = await provider(providerRequest(input, repair))
+    } catch (error) {
+      const failure = cancelled(input)
+        ? { kind: "cancelled", classification: "cancelled" } as const
+        : normalizeProviderFailure(error)
+      return withRepair(failureResult(failure.kind === "cancelled" ? "cancelled" : "provider-failure", [providerIssue(failure)], failure), repairedIssues)
+    }
+    if (cancelled(input)) {
+      const failure = { kind: "cancelled", classification: "cancelled" } as const
+      return failureResult("cancelled", [providerIssue(failure)], failure)
+    }
 
+    const result = await compileProviderText(providerText, input, compiler, jevProvider, presetMismatch)
+    if (result.status === "gate-clean" || !REPAIRABLE_STATUSES.has(result.status) || repair) {
+      return withRepair(result, repairedIssues)
+    }
+    // One bounded repair: the provider sees exactly which deterministic checks its response failed.
+    repair = { previousText: providerText, issues: result.issues }
+    repairedIssues = result.issues
+  }
+  throw new Error("unreachable: the repair loop always returns")
+}
+
+// Statuses caused by the provider's content, which a single targeted repair request can fix.
+// Transport, cancellation, Jev service, and local compiler failures are never sent back.
+const REPAIRABLE_STATUSES = new Set<PipelineStatus>(["blueprint-validation-failed", "blueprint-integrity-failed", "local-normalization-failed", "lint-failure"])
+
+function withRepair(result: GeneratePacketResult, repairedIssues: readonly SemanticIssue[] | undefined): GeneratePacketResult {
+  return repairedIssues ? { ...result, repairedIssues } : result
+}
+
+async function compileProviderText(
+  providerText: string,
+  input: GeneratePacketInput,
+  compiler: PacketCompiler,
+  jevProvider: JevProvider | undefined,
+  presetMismatch: JevPresetMismatch | undefined,
+): Promise<GeneratePacketResult> {
   input.onProgress?.("blueprint-validation")
   const parsed = parseBlueprintJson(providerText)
   if (!parsed.ok) {
@@ -300,7 +354,7 @@ export async function generatePacket(
       : undefined
     return failureResult("blueprint-validation-failed", parsed.failure.issues, failure)
   }
-  const intakeIssues = auditSemanticIntake(parsed.blueprint)
+  const intakeIssues = [...auditSemanticIntake(parsed.blueprint), ...auditIdeaCoverage(parsed.blueprint, input.idea)]
   if (intakeIssues.length) return failureResult("blueprint-validation-failed", intakeIssues)
 
   let blueprint = parsed.blueprint

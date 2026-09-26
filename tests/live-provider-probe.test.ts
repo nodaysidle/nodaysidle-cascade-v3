@@ -111,11 +111,12 @@ describeLive("live DeepSeek provider probe", () => {
 
     expect(["gate-clean", "blueprint-validation-failed", "local-normalization-failed", "local-compiler-failure", "lint-failure", "provider-failure"]).toContain(result.status)
 
-    if (result.status !== "gate-clean") {
+    if (result.status !== "gate-clean" || result.repairedIssues) {
       console.log(JSON.stringify({
         status: result.status,
         failure: result.failure,
         issues: result.issues,
+        repairedIssues: result.repairedIssues,
       }, null, 2))
     }
 

@@ -46,11 +46,14 @@ notes for the user, not compiler work.
 
 - Phase order within ready owners is alphabetical by owner ID so the same blueprint gives the same
   packet regardless of the provider's feature order (`tests/graph-construction.test.ts`).
-- No provider retry or repair. Jev checks that block (stack leakage, untestable acceptance) keep
-  blocking; the idea review never blocks.
+- One bounded repair request (decided 2026-09-26, replacing "no provider retry or repair"): when
+  the provider's content fails a deterministic check, the pipeline sends the failed checks and the
+  previous response once, reruns every check, and stops if it still fails. Transport, cancellation,
+  Jev service, and local compiler failures are never repaired. Jev checks that block (stack
+  leakage, untestable acceptance) keep blocking; the idea review never blocks.
 - Links, placement, recovery, and routes come only from declared fields (`usesPlatformNeeds`,
   `usesData`, `usesServices`, `storage`, `writeMode`, `failureRecovery`, `surface`), never from
-  wording.
+  wording. Each fact is declared in one place: file access comes only from `document` data.
 
 ## How to audit a packet
 

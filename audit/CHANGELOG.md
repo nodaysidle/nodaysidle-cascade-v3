@@ -1,5 +1,48 @@
 # Audit changelog
 
+## Provider step: one fact per field, idea coverage, one repair (2026-09-26)
+
+Six live runs showed that every packet defect came from the single DeepSeek step (omissions,
+cross-feature contradictions, over-declaration), and that each new prompt rule only lowered the
+odds. Temperature is already 0, so the variance is the model's, not sampling. Three structural
+changes replace rule-by-rule patching:
+
+- One place per fact: `filesystem` is no longer a feature platform need
+  (`FeaturePlatformNeedSchema`); file access comes only from `document` data objects, so the
+  flag/document mismatch and its intake rejection no longer exist. Jev never heals file access onto
+  a feature.
+- Idea coverage: the prompt numbers the idea's sentences (`splitIdeaSentences`) and the blueprint
+  must return `ideaCoverage`, one entry per sentence naming the features (or product, non-goal,
+  constraint) that cover it. `auditIdeaCoverage` rejects missing, duplicated, featureless, or
+  unknown entries and any feature no sentence asks for, so a dropped requirement or unrequested
+  feature is a structural failure instead of a silent one.
+- One bounded repair (reverses the decided "no provider retry or repair"): when the content fails
+  validation, coverage, Jev integrity, normalization, or the export gate, the pipeline sends the
+  exact failed checks and the previous response (secrets redacted) once and reruns every check.
+  Transport, cancellation, Jev service, and local compiler failures are never repaired. The UI
+  shows a "Provider repair" row naming the checks the first response failed.
+
+Needs one live probe because the provider schema and prompt changed.
+
+## LogLens built-app audit (2026-09-26)
+
+The agent's build was genuinely wired (real SQLite DataStore and PermissionCoordinator behind every
+feature; 40 tests; signed arm64 bundle; `open -a` delivered files through `.onOpenURL`) and it
+reported PARTIAL honestly because it could not click the Open and Save panels. App defects: no view
+rendered any error state, so every PRD error message was silent; the launch check left WARN as the
+default level, font size 16, and a bookmark in the user's real state; SQLite had no schema version.
+Compiler changes:
+
+- Every preset's CON-RUNTIME-WIRING now requires failures the PRD shows the user to be visible in
+  the running app (and exercised by the launch check), and requires the launch check to restore
+  changed settings and remove created records and files.
+- SQLite placement on native macOS and Tauri now requires PRAGMA user_version and a focused test
+  that asserts it.
+- The next ReceiptShelf run was correctly rejected by `semantic.filesystem-without-document`; the
+  prompt now gives a concrete import example (the chosen source document plus the copy and record).
+
+Needs one live retry because the provider prompt changed.
+
 ## ReceiptShelf fourth retry audit (2026-09-26)
 
 The fixed-choice and shared-field prompt rules worked live: the currency list and initial default

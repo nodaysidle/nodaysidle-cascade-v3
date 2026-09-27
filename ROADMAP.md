@@ -55,7 +55,8 @@ build a working app from them.
    - A declared-field way to pull system-view helpers (a `QLPreviewView` wrapper) into the kit;
      today the in-app preview is a prose rule, which the ReceiptShelf build followed.
    - Jev idea review stays advisory until more labelled packets exist.
-   - Release: 3.1.0 prepared on 2026-09-27 (primary presets verified); follow
+   - Release: v3.1.0 published on 2026-09-27 (Latest, DMG attached; notes and the DMG are kept in
+     `/Volumes/omarchyuser/COMPILER/nodaysidle-cascade-v3-releases/`). Follow
      `scripts/README-hybrid-release.md` for the next one.
 
 ## Polish list (batch occasionally, never between runs)
@@ -76,7 +77,25 @@ build a working app from them.
   network contract already allows it. Word the decision per scheme, and let the kit add
   `NSAllowsLocalNetworking` once services declare an endpoint.
 
-## Done on 2026-09-25 and 2026-09-26 (details in `audit/CHANGELOG.md`)
+## Done on 2026-09-26 and 2026-09-27 (details in `audit/CHANGELOG.md`)
+
+- **Tauri preset verified.** A tested Tauri starter kit (`src/tauriKit.ts`), prototyped first as a
+  throwaway app: `app_builder` with one `setup` in `run()`, `manage_state` for tests, the real
+  context and devUrl origin in the IPC test, rusqlite, a login-keychain vault, the tray, and the
+  clipboard, shortcut, autostart, notification, and dialog plugins from one list (Cargo.toml,
+  package.json, lib.rs, capabilities); exact pinned versions; reqwest for services; only the main
+  window hides on close; every window that calls commands is listed in the capabilities.
+- **Screens look finished.** Kit UI building blocks: `MenuStyle.swift` and `SettingsFooter` for
+  menu bar apps, `src/ui.ts` for Tauri. A rule on every preset makes the launch check confirm a
+  centered empty state, disabled commands without a target, clamped list text, grouped settings,
+  and buttons sized to their label.
+- **Provider step more robust.** Schema repair messages name allowed values and the bad code word;
+  a redundant `filesystem` need on a feature that declares file access is dropped instead of failing.
+- **Native rules from live builds.** Copy-only clipboard features never watch the clipboard; a lone
+  modifier key (Right Option) as a shortcut uses NSEvent monitors and acts on a clean tap.
+- **Cascade app restyled** (one dark theme, fits without scrolling) and **v3.1.0 released**.
+
+## Done on 2026-09-25 and 2026-09-26
 
 - **PinBoard audited.** Behavior passed but the menu was clipped and unusable, missed by agent and
   audit alike; the launch check now requires looking at screenshots. Foundation task names the
@@ -159,17 +178,23 @@ build a working app from them.
    `/Applications` holds one bundle per ID.
 5. Look at every window and menu with long real content (screenshot, or ask the user to look);
    clipped or unreadable screens fail the audit even when every behavior passes. Opening is not
-   working. Then test live behavior. The terminal has Accessibility access, so `osascript` UI scripting works
-   (a menu bar item is `menu bar 2` of the process). The user runs AeroSpork, so `frontmost` and
-   window focus are not reliable signals. Also use `pbcopy`, `sqlite3` on the app-data store, and
-   quit and relaunch. Test strings must not look like secrets.
-6. Remove any data your own checks created, and check what the agent's run left behind.
+   working. Capture a window by its ID (`screencapture -x -o -l <id>`; the terminal has Screen
+   Recording), because AeroSpork may tile windows oddly and Ice may hide menu bar icons. Then test
+   live behavior. The terminal has Accessibility access, so `osascript` element actions work (a menu
+   bar item is `menu bar 2` of the process; click menu items and close buttons as elements). Never
+   send keystrokes through System Events: they reach the frontmost terminal and interrupt the
+   session. Where an element click does not reach a SwiftUI control, post a real mouse click at the
+   element's position. Also use `sqlite3` on the app-data store and quit and relaunch. Test strings
+   must not look like secrets; never print clipboard or stored text that could hold a key.
+6. The user now uses these apps: back up their data folder first, create test data only under a
+   recognizable prefix (`zz-test`), delete only that, and restore settings. Check what the agent's
+   run left behind.
 
 ## Commands
 
 ```sh
 npm run typecheck && npm test          # plus cargo fmt/clippy/test, see AGENTS.md
-npm run kit:check                      # after any change to src/kits.ts
+npm run kit:check                      # after any change to src/kits.ts or src/tauriKit.ts
 npm run install:app -- --clean         # rebuild and install the Cascade app (deletes the old copy)
 npm run probe:live                     # paid DeepSeek request, the user runs it with their key
 ```

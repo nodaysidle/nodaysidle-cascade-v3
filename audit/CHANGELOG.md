@@ -1,5 +1,21 @@
 # Audit changelog
 
+## PromptShelf third build audit: Tauri preset verified (2026-09-27)
+
+Built from the packet with the reqwest and window fixes; no new compiler findings. The kit's
+Cargo.toml, storage, vault, and error files are unchanged (reqwest came from the kit, no rule
+break), the "only the main window hides" logic was kept, and after the agent deleted its test rows
+the quick picker, reopened without a restart, listed only the user's two prompts. The user's data
+and settings match the agent's backup. typecheck, 36 frontend and 32 Rust tests, fmt, clippy, and
+the signed arm64 bundle pass. Screens seen: the main window with disabled commands and sized
+buttons, and Settings as grouped rows with a switch and notes. Every feature was verified live
+across the three builds (add, edit, duplicate, delete, search, picker with Enter and Escape, copy,
+persistence, DeepSeek Improve, themes, menu-bar menu, export, import).
+
+Polish (roadmap list): the shortcut shows as `Ctrl+Alt+KeyP` instead of `⌃⌥P`; showing whether a
+key is saved reads the secret, so each ad-hoc rebuild asks for the keychain password on opening
+Settings (an existence check would not); tags show as plain text.
+
 ## PromptShelf second build audit (2026-09-27)
 
 Built from the packet with the UI kit. The user's data survived (the agent backed it up, used

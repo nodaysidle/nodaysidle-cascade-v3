@@ -17,32 +17,33 @@ build a working app from them.
 - Close capability gaps proactively (review each capability against current platform docs with a
   synthetic test) instead of discovering one gap per live idea.
 
-## Status (2026-09-26)
+## Priorities (decided 2026-09-27)
+
+- **Primary, verified:** `native-macos-swiftui-desktop`, `native-macos-swiftui-menubar`, and
+  `tauri2-rust-typescript-desktop`. Each has a tested starter kit and live builds the user now uses
+  (ReceiptShelf, PinBoard, Murmur, PromptShelf). Keep them working; fix any regression first.
+- **Secondary, later:** `android-kotlin-compose` and `astro-web`. Lower importance; start them only
+  when the user asks.
+
+## Status (2026-09-27)
 
 | Preset | Kit | Capability review | Live evidence |
 | --- | --- | --- | --- |
 | native-macos-swiftui-desktop | Yes | Done | ReceiptShelf built and verified working (kit kept, embedded preview, window reopen, errors visible, `user_version`, clean install). LogLens built earlier, before the kit. |
 | native-macos-swiftui-menubar | Yes | Done (shared with desktop) | Two live builds. PinBoard: behavior correct, menu fixed after the audit (kit now ships `MenuStyle.swift`, grouped Settings). Murmur: recording, xAI transcription, and auto-paste verified live by the user; Settings footers and modifier-only shortcuts fixed in the kit and rules. |
-| tauri2-rust-typescript-desktop | Yes (`src/tauriKit.ts`) | Done 2026-09-26 | Kit prototyped as a real app (built, installed, looked at); RenewalDesk and ClipVault built before this work. **Live build next.** |
+| tauri2-rust-typescript-desktop | Yes (`src/tauriKit.ts`) | Done 2026-09-26 | PromptShelf built three times; every feature verified live, third build with no new compiler findings (window, UI kit, reqwest, and picker fixes). |
 | android-kotlin-compose | No | Not yet | Never built. |
 | astro-web | No | Not yet | Never built. |
 
 ## Resume here, in order
 
-1. **Murmur** is done (2026-09-26): the user verified recording, xAI transcription, and auto-paste
-   live. DeepSeek cleanup and a dictionary were added to the app on request; they are app
-   features, not compiler work. (next live test, `native-macos-swiftui-menubar`).
-   It exercises the reviewed but unproven capabilities: microphone, global hotkey, HTTPS providers
-   plus a localhost server (ATS exception), Keychain keys, provider and language choice lists,
-   clipboard write without watching, launch at login, session-only recordings. Prompt:
-
-   > Murmur — a minimal native macOS menu-bar speech-to-text app. The user presses a global keyboard shortcut (Option-Space by default, changeable in Settings) to start recording from the microphone and presses it again to stop; the menu-bar icon shows whether it is idle, recording, or transcribing. When recording stops, the app sends the audio to the speech-to-text provider selected in Settings and copies the returned text to the clipboard, and the menu shows the last transcript with a Copy Again button. Settings let the user choose the provider from OpenAI, Deepgram, ElevenLabs, and a local whisper.cpp server; the three cloud providers each need their own API key, entered in Settings and stored securely, while the local server needs only its address (http://localhost:8080 by default). Settings also hold the transcription language (Auto, English, German, Spanish, French; Auto by default) and a launch-at-login option, off by default. If the microphone is denied, a key is missing, or the provider returns an error, the menu shows what went wrong and nothing is copied. Recordings are kept in memory only and discarded after transcription; only the last transcript and the settings survive quit and relaunch. No accounts, no sync, no Dock icon, no window other than the menu and Settings.
-
-   Audit the packet (use `blueprint.json` to see exactly what DeepSeek declared), then build it.
-2. **Tauri live build**: the user picks a Tauri idea, generates the packet, an agent builds it, and
-   the build is audited with screenshots. Then **Android, then Astro**, each the same way: prototype
-   the kit as a real throwaway app with pinned versions, port it into the compiler with a
-   `kit:check` case, update the rules, then one live build.
+1. **Keep the primary presets working.** Any new idea on native desktop, menu bar, or Tauri goes
+   through the full workflow: the user generates the packet, the packet is audited (compiler fixes
+   only, then reinstall, commit, regenerate), an agent builds it, and the build is audited with
+   screenshots. Batch the polish list below between runs, never during one.
+2. **Later, when the user asks: Android, then Astro** (secondary presets), each the way Tauri went: prototype the kit as a real throwaway app with
+   pinned versions, port it into the compiler with a `kit:check` case, update the rules, then one
+   live idea generated, audited, built, and audited with screenshots until a build has no new findings.
 3. **Regression fixtures from real blueprints.** Copy `blueprint.json` from apps that built well
    into `tests/fixtures/` and assert clean packets on their presets on every change.
 4. **Other open items.**
@@ -54,8 +55,8 @@ build a working app from them.
    - A declared-field way to pull system-view helpers (a `QLPreviewView` wrapper) into the kit;
      today the in-app preview is a prose rule, which the ReceiptShelf build followed.
    - Jev idea review stays advisory until more labelled packets exist.
-   - Release: `package.json` is still 3.0.1. Bump with `scripts/bump-version.sh` and follow
-     `scripts/README-hybrid-release.md` when the user asks.
+   - Release: 3.1.0 prepared on 2026-09-27 (primary presets verified); follow
+     `scripts/README-hybrid-release.md` for the next one.
 
 ## Polish list (batch occasionally, never between runs)
 
@@ -65,6 +66,9 @@ build a working app from them.
 - A kit test string reads `"receipt"`; rename to a neutral sample.
 - Tauri kit UI: give search fields `autocomplete="off"` (WebKit shows autofill suggestions), a tag
   chip helper, and a navigation or back control that is not stretched; PromptShelf showed all three.
+- Tauri kit: show a saved shortcut in Mac form (`⌃⌥P`, not `Ctrl+Alt+KeyP`), and check whether a
+  key is saved without reading the secret, so a rebuild does not ask for the keychain password on
+  opening Settings.
 - Integration contracts name no endpoint, auth header, or model. Add a native rule to take each
   declared service's endpoint, authentication, request format, and model from the provider's current
   documentation and keep them as constants in its integration owner (Murmur, 2026-09-26).

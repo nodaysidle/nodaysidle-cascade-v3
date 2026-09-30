@@ -11,6 +11,7 @@
 
 <p align="center">
   <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-black?style=flat-square&logo=apple&logoColor=white">
+  <img alt="Linux" src="https://img.shields.io/badge/Linux-AppImage%20%7C%20deb%20%7C%20Arch-FCC624?style=flat-square&logo=linux&logoColor=black">
   <img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-FFC131?style=flat-square&logo=tauri&logoColor=black">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white">
   <img alt="Rust" src="https://img.shields.io/badge/Rust-destructive%20free-000000?style=flat-square&logo=rust&logoColor=white">
@@ -21,13 +22,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nodaysidle/nodaysidle-cascade-v3/releases/download/v3.1.0/NODAYSIDLE-Cascade-V3-3.1.0-aarch64.dmg"><strong>Download Apple Silicon DMG (v3.1.0)</strong></a>
+  <a href="https://github.com/nodaysidle/nodaysidle-cascade-v3/releases"><strong>Download Releases (macOS DMG & Linux AppImage / Deb)</strong></a>
   ·
   <a href="https://github.com/nodaysidle/nodaysidle-cascade-v3">GitHub</a>
 </p>
 
 <p align="center">
-  <em>Apple Silicon · ad-hoc signed / not notarized · no Windows, Linux, or Intel build</em>
+  <em>macOS (Apple Silicon) & Linux (Arch, Omarchy, Ubuntu, Debian) · Tauri 2 Desktop</em>
 </p>
 
 <p align="center">
@@ -108,7 +109,7 @@ npm run tauri:build
 
 The release app bundle is written under `src-tauri/target/release/bundle/macos/`.
 
-### Install to /Applications
+### Install to /Applications (macOS)
 
 ```bash
 cp -R "src-tauri/target/release/bundle/macos/NODAYSIDLE Cascade V3.app" /Applications/
@@ -117,6 +118,25 @@ open "/Applications/NODAYSIDLE Cascade V3.app"
 
 > [!NOTE]
 > Local builds are **ad-hoc signed and not Apple-notarized**. On first launch, macOS may ask you to right-click the app and choose **Open**, or approve it in **System Settings → Privacy & Security**.
+
+### Running on Arch Linux / Omarchy
+
+1. Install WebKit2GTK dependencies on Arch:
+   ```bash
+   sudo pacman -S webkit2gtk-4.1 openssl
+   ```
+2. Download the `.AppImage`, `.deb`, or `.tar.gz` from [GitHub Releases](https://github.com/nodaysidle/nodaysidle-cascade-v3/releases).
+3. If using `.AppImage`:
+   ```bash
+   chmod +x NODAYSIDLE-Cascade-V3*.AppImage
+   ./NODAYSIDLE-Cascade-V3*.AppImage
+   ```
+4. If building or running from source on Arch:
+   ```bash
+   npm install
+   npm run tauri:dev    # for development
+   npm run tauri:build  # builds AppImage and deb in src-tauri/target/release/bundle/
+   ```
 
 ## Usage
 

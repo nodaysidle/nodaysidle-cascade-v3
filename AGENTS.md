@@ -1,6 +1,6 @@
 # NODAYSIDLE Cascade V3
 
-A macOS Tauri 2 app that compiles one software idea plus one locked stack preset into five
+A macOS + Linux Tauri 2 app that compiles one software idea plus one locked stack preset into five
 Markdown files (PRD, ARD, TRD, TASKS, AGENTS) that a coding agent can build from, plus a tested
 starter kit under `kit/` for presets that have one (`src/kits.ts`).
 One DeepSeek request supplies product meaning, with at most one repair request when its content

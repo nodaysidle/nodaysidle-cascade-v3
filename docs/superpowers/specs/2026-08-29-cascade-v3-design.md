@@ -1,8 +1,10 @@
 # NODAYSIDLE Cascade V3 Architecture Specification
 
+> **Historical design (2026-08-29).** Parts of this spec have been superseded. Since v3.1.0 the provider gets **at most one repair request** that names the checks it failed, and Linux builds ship alongside macOS. Where this spec disagrees, follow `AGENTS.md`, `README.md` and the code.
+
 ## Product boundary
 
-NODAYSIDLE Cascade V3 is a standalone macOS Tauri 2 application at `/Applications/NODAYSIDLE Cascade V3.app`, bundle ID `com.nodaysidle.cascade.v3`. It accepts one software idea, one locked technology preset, one selected DeepSeek model, and two memory-only keys (DeepSeek and TypeSafe Jev), then produces exactly `PRD.md`, `ARD.md`, `TRD.md`, `TASKS.md`, and `AGENTS.md`.
+NODAYSIDLE Cascade V3 is a standalone macOS + Linux Tauri 2 application at `/Applications/NODAYSIDLE Cascade V3.app`, bundle ID `com.nodaysidle.cascade.v3`. It accepts one software idea, one locked technology preset, one selected DeepSeek model, and two memory-only keys (DeepSeek and TypeSafe Jev), then produces exactly `PRD.md`, `ARD.md`, `TRD.md`, `TASKS.md`, and `AGENTS.md`.
 
 It has no accounts, telemetry, analytics, database, remote backend, settings persistence, automatic model fallback, provider retry, provider repair, or compatibility path to an older compiler.
 

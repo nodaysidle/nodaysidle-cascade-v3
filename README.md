@@ -71,7 +71,7 @@ You describe the product once. Cascade returns exactly **`PRD.md`**, **`ARD.md`*
 | **Agent-ready packet** | Full contract prose in TRD/TASKS; trace indexes in PRD/ARD/AGENTS |
 | **Astro web quality** | Content collections, routes, design tokens, seed guidance for static portfolios |
 | **Exact-five export** | Atomic write of five canonical files; SHA-256 hash equality with preview |
-| **Safe provider boundary** | Rust HTTPS client; memory-only API key; no retry, no repair pass, no persisted secrets |
+| **Safe provider boundary** | Rust HTTPS client; memory-only API keys; no automatic retry, at most one repair request that names the failed checks, no persisted secrets |
 | **Jev guardrails** | Rejects non-product intake before DeepSeek, warns on preset conflict, heals missing platform needs, blocks foreign-stack leakage and untestable acceptance signals, and lists features that may not match your idea for review (never blocks) |
 | **Validation ledger** | Local proof of compiler gates, graph audits, and export eligibility in the UI |
 
@@ -83,7 +83,7 @@ Cascade is local-first by design:
 - Your separate **DeepSeek and TypeSafe Jev API keys stay in memory** for their requests, then are cleared after Gate Clean.
 - Provider failures surface **safe, allowlisted diagnostics** — never raw response bodies or prompts in the UI.
 - Exported markdown is written only to the folder you choose.
-- The compiler and audits run **entirely on your Mac** after the single provider response.
+- The compiler and audits run **entirely on your machine** after the single provider response.
 
 ## Install
 
@@ -93,7 +93,7 @@ Cascade is local-first by design:
 2. Open the DMG and drag the app to `/Applications`.
 3. First launch: right-click → **Open** if Gatekeeper blocks it (ad-hoc / not notarized).
 
-Apple Silicon only. No Windows, Linux, or Intel macOS build in this release.
+macOS builds are Apple Silicon only. Linux x86_64 builds (AppImage, deb, tar.gz) are listed under [Running on Arch Linux / Omarchy](#running-on-arch-linux--omarchy). No Windows or Intel macOS build in this release.
 
 ### Build from source
 
@@ -125,12 +125,22 @@ open "/Applications/NODAYSIDLE Cascade V3.app"
    ```bash
    sudo pacman -S webkit2gtk-4.1 openssl
    ```
-2. Download the `.AppImage`, `.deb`, or `.tar.gz` from [GitHub Releases](https://github.com/nodaysidle/nodaysidle-cascade-v3/releases).
-3. If using `.AppImage`:
+2. Download one of the v3.1.0 Linux assets from [GitHub Releases](https://github.com/nodaysidle/nodaysidle-cascade-v3/releases/tag/v3.1.0) and verify it with `sha256sum`:
+
+   | Asset | SHA-256 |
+   | --- | --- |
+   | `NODAYSIDLE.Cascade.V3_3.1.0_amd64.AppImage` | `fe784421f37d6148e1c8f13639ad261cbe930ab6357f8d25528e9c8ed120eac4` |
+   | `NODAYSIDLE.Cascade.V3_3.1.0_amd64.deb` | `5dddd77aef0f4c5156cd1987547ebda5f3e06f795ba11d6809a87c08dedb297e` |
+   | `NODAYSIDLE-Cascade-V3-3.1.0-linux-x86_64.tar.gz` | `f3e7693d2d9ed9657fca75f4168295c4283ca280a0636537ce606990419b83b3` |
+
+3. If using the `.AppImage`:
    ```bash
-   chmod +x NODAYSIDLE-Cascade-V3*.AppImage
-   ./NODAYSIDLE-Cascade-V3*.AppImage
+   chmod +x NODAYSIDLE.Cascade.V3_3.1.0_amd64.AppImage
+   ./NODAYSIDLE.Cascade.V3_3.1.0_amd64.AppImage
    ```
+   For the `.deb` (Debian/Ubuntu): `sudo apt install ./NODAYSIDLE.Cascade.V3_3.1.0_amd64.deb`.
+
+You need two API keys, entered in the app and kept in memory only: a **DeepSeek** key and a **TypeSafe Jev** key (TypeSafe's System One API, `api.typesafe.ai`).
 4. If building or running from source on Arch:
    ```bash
    npm install

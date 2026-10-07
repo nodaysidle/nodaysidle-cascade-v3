@@ -4,6 +4,8 @@
 
 <h1 align="center">NODAYSIDLE Cascade V3</h1>
 
+![Cascade: one idea in, five planning docs out](docs/cascade.gif)
+
 <p align="center">
   <strong>Turn one software idea into five agent-ready markdown contracts.</strong><br>
   One model call for product meaning. Local code owns everything else.

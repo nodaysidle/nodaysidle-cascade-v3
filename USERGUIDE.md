@@ -5,7 +5,7 @@
 1. Open **NODAYSIDLE Cascade V3**.
 2. Choose the preset that matches the product's actual target platform.
 3. Choose **DeepSeek Flash** for speed or **DeepSeek V4 Pro** for maximum quality.
-4. Enter the DeepSeek API key and the TypeSafe Jev API key. Both are memory-only.
+4. Enter your own **provider credentials** in the app (memory-only; not saved to disk).
 5. Describe a coherent software product: users, outcome, core features, data, integrations, privacy, and recovery constraints.
 6. Select **Generate**.
 
@@ -14,7 +14,7 @@ Jev first rejects non-product input before a paid DeepSeek request. A preset mis
 ## Interpret outcomes
 
 - **Intake rejected** — rewrite the input as one implementable software product.
-- **Jev failure** — the fast decision request failed closed; retry without changing keys unless the provider rejected them.
+- **Jev failure** — the fast decision request failed closed; retry without changing credentials unless the provider rejected them.
 - **Integrity blocked** — Jev found either a technology-stack conflict or features whose acceptance signals automated tests can't check. The headline says which; Technical details lists the fields. Retry, or describe those features as checkable outcomes.
 - **Gate Clean** — inspect all five previews, then export. If the status line says Jev suggests checking features against your idea, compare those features' rules in PRD with your idea first; Technical details shows each score. This never blocks export, and Jev can flag correct features too.
 
@@ -57,8 +57,8 @@ To compare agents fairly, start each one from a fresh copy of the same exported 
 
 ## Privacy and recovery
 
-- Keys are never saved, logged, exported, or included in request bodies.
-- Failed and cancelled generations preserve both keys for a safe retry.
-- Both keys are cleared only after Gate Clean.
+- Your **provider credentials stay in memory** for their requests, are cleared after Gate Clean, and are never saved to disk.
+- They are never logged, exported, or included in request bodies.
+- Failed and cancelled generations keep credentials in memory for a safe retry.
 - Cascade performs no automatic provider retry.
 - If export fails, choose a new empty parent folder and retry; the current verified previews remain available.

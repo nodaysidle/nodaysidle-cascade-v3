@@ -73,7 +73,7 @@ You describe the product once. Cascade returns exactly **`PRD.md`**, **`ARD.md`*
 | **Agent-ready packet** | Full contract prose in TRD/TASKS; trace indexes in PRD/ARD/AGENTS |
 | **Astro web quality** | Content collections, routes, design tokens, seed guidance for static portfolios |
 | **Exact-five export** | Atomic write of five canonical files; SHA-256 hash equality with preview |
-| **Safe provider boundary** | Rust HTTPS client; memory-only API keys; no automatic retry, at most one repair request that names the failed checks, no persisted secrets |
+| **Safe provider boundary** | Rust HTTPS client; memory-only provider credentials; no automatic retry, at most one repair request that names the failed checks, no persisted secrets |
 | **Jev guardrails** | Rejects non-product intake before DeepSeek, warns on preset conflict, heals missing platform needs, blocks foreign-stack leakage and untestable acceptance signals, and lists features that may not match your idea for review (never blocks) |
 | **Validation ledger** | Local proof of compiler gates, graph audits, and export eligibility in the UI |
 
@@ -82,7 +82,7 @@ You describe the product once. Cascade returns exactly **`PRD.md`**, **`ARD.md`*
 Cascade is local-first by design:
 
 - **No accounts**, cloud backend, telemetry, analytics, or settings sync.
-- Your separate **DeepSeek and TypeSafe Jev API keys stay in memory** for their requests, then are cleared after Gate Clean.
+- Your **provider credentials stay in memory** for their requests, are cleared after Gate Clean, and are never saved to disk.
 - Provider failures surface **safe, allowlisted diagnostics** — never raw response bodies or prompts in the UI.
 - Exported markdown is written only to the folder you choose.
 - The compiler and audits run **entirely on your machine** after the single provider response.
@@ -142,7 +142,6 @@ open "/Applications/NODAYSIDLE Cascade V3.app"
    ```
    For the `.deb` (Debian/Ubuntu): `sudo apt install ./NODAYSIDLE.Cascade.V3_3.1.0_amd64.deb`.
 
-You need two API keys, entered in the app and kept in memory only: a **DeepSeek** key and a **TypeSafe Jev** key (TypeSafe's System One API, `api.typesafe.ai`).
 4. If building or running from source on Arch:
    ```bash
    npm install
@@ -150,32 +149,21 @@ You need two API keys, entered in the app and kept in memory only: a **DeepSeek*
    npm run tauri:build  # builds AppImage and deb in src-tauri/target/release/bundle/
    ```
 
+> [!NOTE]
+> Cascade needs your own AI provider credentials. You enter them in the app; they are kept in memory only and never saved to disk.
+
 ## Usage
 
 1. Launch **NODAYSIDLE Cascade V3**.
 2. Choose a **technology preset** (for example, Astro Web or native macOS SwiftUI).
 3. Select **DeepSeek V4 Pro** or **DeepSeek Flash**.
 4. Paste your **software idea** — product summary, users, features, data, and constraints.
-5. Enter separate **DeepSeek** and **TypeSafe Jev** API keys (memory-only; not saved to disk).
+5. Enter your own **provider credentials** in the app (memory-only; not saved to disk).
 6. Click **Generate** and wait for the pipeline:
    - Jev preflight → provider → blueprint validation → Jev integrity → local normalization → preset compiler → audits → rendering
 7. When status is **Gate Clean**, inspect the five preview tabs and **Export** to a folder.
 
 Hand the exported folder to your coding agent. Read **`AGENTS.md` first**, then follow **`TASKS.md`** in phase order.
-
-### Live provider probe (optional)
-
-Type the key at a hidden prompt so it never lands in shell history:
-
-```sh
-# fish
-read -s -x -P 'DeepSeek key: ' DEEPSEEK_API_KEY; npm run probe:live; set -e DEEPSEEK_API_KEY
-
-# zsh; in bash replace the first command with: read -rsp 'DeepSeek key: ' DEEPSEEK_API_KEY
-read -rs 'DEEPSEEK_API_KEY?DeepSeek key: '; export DEEPSEEK_API_KEY; npm run probe:live; unset DEEPSEEK_API_KEY
-```
-
-Without `DEEPSEEK_API_KEY` the probe is skipped. It runs one authenticated DeepSeek request through the TypeScript pipeline (no Rust provider, no Jev) and reports whether local compilation reached Gate Clean. Set `CASCADE_MODEL=deepseek-flash` or `deepseek-v4-pro` to choose the model (default `deepseek-flash`).
 
 ## Output
 
@@ -206,7 +194,7 @@ Each preset owns runtime APIs, file layouts, ownership mappings, persistence, in
 ## Architecture
 
 ```text
-idea + locked preset + model + two memory-only keys
+idea + locked preset + model + memory-only provider credentials
   → Jev viability + preset-fit preflight
   → one Rust DeepSeek Responses request when viable
   → strict JSON schema validation
@@ -247,7 +235,7 @@ npm run tauri:dev
 # Production macOS app + DMG
 npm run tauri:build
 
-# Smoke build with fixture provider (no API key)
+# Smoke build with fixture provider (no credentials needed)
 npm run tauri:build:smoke
 ```
 
@@ -264,7 +252,6 @@ cargo test --manifest-path src-tauri/Cargo.toml
 | `npm run build` | Production frontend bundle |
 | `npm run typecheck` | TypeScript strict check |
 | `npm test` | Vitest — compiler, graph, audit, preset regressions |
-| `npm run probe:live` | One authenticated DeepSeek request through the TypeScript pipeline |
 | `npm run tauri:build` | Release `.app` and `.dmg` |
 | `npm run install:app` | Build and replace `/Applications/NODAYSIDLE Cascade V3.app`; add `-- --clean` to remove build output |
 

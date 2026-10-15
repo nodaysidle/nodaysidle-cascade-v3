@@ -92,6 +92,7 @@ Cascade is local-first by design:
 ### Download (macOS Apple Silicon)
 
 1. Download [`NODAYSIDLE-Cascade-V3-3.1.0-aarch64.dmg`](https://github.com/nodaysidle/nodaysidle-cascade-v3/releases/download/v3.1.0/NODAYSIDLE-Cascade-V3-3.1.0-aarch64.dmg).
+   SHA-256: `1aec1ffd45ce4dde171210a3ad1a0b195da0214316b2d1adb27e2657979ed3d9`. Verify with `shasum -a 256 NODAYSIDLE-Cascade-V3-3.1.0-aarch64.dmg`.
 2. Open the DMG and drag the app to `/Applications`.
 3. First launch: right-click → **Open** if Gatekeeper blocks it (ad-hoc / not notarized).
 
@@ -127,13 +128,13 @@ open "/Applications/NODAYSIDLE Cascade V3.app"
    ```bash
    sudo pacman -S webkit2gtk-4.1 openssl
    ```
-2. Download one of the v3.1.0 Linux assets from [GitHub Releases](https://github.com/nodaysidle/nodaysidle-cascade-v3/releases/tag/v3.1.0) and verify it with `sha256sum`:
+2. Download one of the v3.1.0 Linux assets below (direct links) and verify it with `sha256sum`:
 
    | Asset | SHA-256 |
    | --- | --- |
-   | `NODAYSIDLE.Cascade.V3_3.1.0_amd64.AppImage` | `fe784421f37d6148e1c8f13639ad261cbe930ab6357f8d25528e9c8ed120eac4` |
-   | `NODAYSIDLE.Cascade.V3_3.1.0_amd64.deb` | `5dddd77aef0f4c5156cd1987547ebda5f3e06f795ba11d6809a87c08dedb297e` |
-   | `NODAYSIDLE-Cascade-V3-3.1.0-linux-x86_64.tar.gz` | `f3e7693d2d9ed9657fca75f4168295c4283ca280a0636537ce606990419b83b3` |
+   | [`NODAYSIDLE.Cascade.V3_3.1.0_amd64.AppImage`](https://github.com/nodaysidle/nodaysidle-cascade-v3/releases/download/v3.1.0/NODAYSIDLE.Cascade.V3_3.1.0_amd64.AppImage) | `fe784421f37d6148e1c8f13639ad261cbe930ab6357f8d25528e9c8ed120eac4` |
+   | [`NODAYSIDLE.Cascade.V3_3.1.0_amd64.deb`](https://github.com/nodaysidle/nodaysidle-cascade-v3/releases/download/v3.1.0/NODAYSIDLE.Cascade.V3_3.1.0_amd64.deb) | `5dddd77aef0f4c5156cd1987547ebda5f3e06f795ba11d6809a87c08dedb297e` |
+   | [`NODAYSIDLE-Cascade-V3-3.1.0-linux-x86_64.tar.gz`](https://github.com/nodaysidle/nodaysidle-cascade-v3/releases/download/v3.1.0/NODAYSIDLE-Cascade-V3-3.1.0-linux-x86_64.tar.gz) | `f3e7693d2d9ed9657fca75f4168295c4283ca280a0636537ce606990419b83b3` |
 
 3. If using the `.AppImage`:
    ```bash

@@ -64,19 +64,27 @@ jobs:
       - name: Build frontend and Tauri Linux bundles
         run: npx tauri build
 
+      - name: Fix AppImage permissions (AppRun.wrapped must be executable for all users)
+        run: |
+          for f in src-tauri/target/release/bundle/appimage/*.AppImage; do bash scripts/fix-appimage-perms.sh "$f"; done
+
       - name: Package standalone Linux binary
         run: |
           cd src-tauri/target/release
           TAG="${{ needs.release.outputs.tag }}"
           tar -czvf "NODAYSIDLE-Cascade-V3-${TAG#v}-linux-x86_64.tar.gz" nodaysidle-cascade-v3
           ls -la bundle/appimage/ bundle/deb/
+          for f in bundle/appimage/*.AppImage; do (cd "$(dirname "$f")" && sha256sum "$(basename "$f")" > "$(basename "$f").sha256"); done
 
       - name: Upload Linux assets to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.release.outputs.tag }}
+          # Never replace an AppImage that was already uploaded (and launch-tested) by hand.
+          overwrite_files: false
           files: |
             src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/appimage/*.AppImage.sha256
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/*.tar.gz
         env:
